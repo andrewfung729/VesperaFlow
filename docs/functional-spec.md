@@ -184,7 +184,7 @@ Allow the user to define repeatable AI work that runs on a continuing cadence.
 1. User selects one recurring occurrence in calendar
 2. User chooses to edit the occurrence
 3. System prompts whether to apply the change to `only this occurrence` or `this and future`
-4. If `only this occurrence` is selected, system creates or updates a single-occurrence override
+4. If `only this occurrence` is selected, system creates or updates a single-occurrence override; MVP allows both time edits and instruction edits in this scope
 5. If `this and future` is selected, system updates the parent recurring definition for future occurrences only
 6. Past occurrences and finished runs remain unchanged
 
@@ -193,6 +193,7 @@ Allow the user to define repeatable AI work that runs on a continuing cadence.
 - Recurring tasks must have exactly one active recurrence definition in MVP
 - Pausing a recurring task stops future execution but preserves the task and history
 - Resuming a recurring task re-enables future execution without creating a new task
+- Single-occurrence edits may override time, instructions, or both without changing the parent recurring definition
 - Editing the recurrence affects future runs only
 - Calendar edits for recurring tasks must offer scoped editing behavior similar to common recurring-calendar products
 - Historical runs must remain attached to the same task even if recurrence changes
@@ -202,6 +203,7 @@ Allow the user to define repeatable AI work that runs on a continuing cadence.
 - If a recurring run fails, that failure must be visible without deleting the recurring schedule
 - If a recurrence rule becomes invalid after editing, the change must be rejected
 - If multiple future occurrences exist in projection, they must still map back to one recurring task definition
+- Timezone evaluation, DST transitions, missed occurrences during pause, and minimum frequency bounds follow the authoritative rules in `docs/domain-model.md` §12
 
 ## 6. Feature: Template Management
 
@@ -310,6 +312,7 @@ Allow the user to inspect future AI work through a time-based planning surface.
 - Recurring tasks appear based on future schedule projection
 - Recurring task edits from calendar must support scoped changes for single occurrence versus future series
 - Selecting a calendar item must resolve to a task-level object the user can inspect or modify
+- Calendar rescheduling in MVP must use explicit edit actions; drag-to-reschedule is not supported
 
 ### 7.6 Edge Cases
 
@@ -356,6 +359,7 @@ Allow the user to inspect one-time AI work by current execution state instead of
 - A task must appear in only one primary kanban grouping at a time
 - The board should prioritize current operational understanding over full historical completeness
 - Historical detail belongs in the task detail surface, not on the card face
+- Completed one-time cards remain visible until archived or filtered out
 
 ### 8.6 Edge Cases
 
@@ -399,6 +403,8 @@ Allow the user to inspect and manage recurring tasks as ongoing commitments rath
 - Only recurring tasks appear in recurring todo view
 - Recurring items remain stable over time instead of moving across kanban columns
 - Latest run outcome may be shown as context, but recurring work remains anchored to its schedule identity
+- Recurring todo is grouped by schedule state: active scheduled items first, then paused items
+- Active scheduled items are sorted by `next_run_at` ascending; paused items are sorted by most recently updated first
 
 ### 9.6 Edge Cases
 
@@ -407,7 +413,7 @@ Allow the user to inspect and manage recurring tasks as ongoing commitments rath
 
 ## 10. Shared Detail and Inspection Flow
 
-### 9.1 Goal
+### 10.1 Goal
 
 Allow the user to inspect any task from any surface and understand:
 
@@ -416,7 +422,7 @@ Allow the user to inspect any task from any surface and understand:
 - what happened most recently
 - what actions are currently available
 
-### 9.2 Main Flow
+### 10.2 Main Flow
 
 1. User opens task detail from calendar, kanban, recurring todo view, or task list
 2. System shows task definition
@@ -425,7 +431,7 @@ Allow the user to inspect any task from any surface and understand:
 5. System shows recent run history
 6. System shows available actions based on state
 
-### 9.3 Available Actions by State
+### 10.3 Available Actions by State
 
 - `scheduled`: edit, cancel, reschedule
 - `paused`: resume, edit, cancel
@@ -487,9 +493,3 @@ Allow the user to review completed and failed runs across one-time and recurring
 - passive push notifications or overnight digests
 - team approval workflows
 - advanced multi-agent composition
-
-## 14. Open Functional Questions
-
-- Should calendar allow direct drag-rescheduling in MVP, or route rescheduling through detail/edit flow only?
-- For `only this occurrence`, should MVP allow both time edits and instruction edits, or time edits only?
-- Should recurring todo items be grouped by schedule state, due time, or left as a flat list in MVP?

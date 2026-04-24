@@ -66,9 +66,19 @@ The following ideas are not required for MVP and should be treated as optional o
 
 ## 3. Architecture Principles
 
-### 3.1 Local-First
+### 3.1 Local-First (Scoped)
 
 The system is primarily designed for an individual user running the application locally. Data ownership, ease of startup, and operational simplicity take priority over distributed scale.
+
+This is a scoped interpretation of local-first, not a pure offline-first product:
+
+- Product data and run history are stored locally in the user-owned PostgreSQL instance
+- Local development and startup must be possible with `docker compose` against local services only
+- AI execution is performed by a locally installed coding-agent runtime (see §6.4), invoked through its official SDK in VesperaFlow's Worker process. The runtime, in turn, talks to its own upstream LLM provider, which requires network connectivity at execution time
+- VesperaFlow itself never calls an LLM provider API; it only invokes the executor runtime
+- Temporal server coordination also requires local network connectivity to the Temporal dev stack
+
+A fully offline or peer-to-peer sync model is explicitly out of scope for MVP.
 
 ### 3.2 Plan First, Execute Later
 
@@ -85,6 +95,20 @@ Task planning, scheduling, and run tracking should remain stable even if the und
 ### 3.5 MVP Over Platform Ambition
 
 The initial design should favor a small number of clear domain concepts over a generalized orchestration platform.
+
+### 3.6 Single Durable Scheduler
+
+Temporal is the sole scheduling system for VesperaFlow. All time-based triggering — recurring runs, one-time deferred runs, and any future time-based behavior — is implemented through Temporal Schedules and Temporal timers.
+
+VesperaFlow does not use:
+
+- operating-system `cron` or `at`
+- in-process schedulers such as APScheduler, Celery beat, or RQ scheduled jobs
+- PostgreSQL-backed polling schedulers
+- application-level delay queues or sleep loops
+- any hybrid fallback between Temporal and another scheduler
+
+This is a single-path decision, not a preference. Adding a second scheduling mechanism is out of scope. See `docs/adr/002-execution-engine-choice.md`.
 
 ## 4. Technical Selection
 
@@ -167,8 +191,8 @@ Temporal should be modeled as a durable orchestration system rather than a gener
 High-level rules:
 
 - Workflows coordinate durable execution, waiting, cancellation, retries, and state transitions
-- Activities own external I/O, database writes, LLM provider calls, and other side effects
-- Temporal Schedules should back recurring execution and may also back one-time deferred execution for MVP consistency
+- Activities own external I/O, database writes, and executor SDK invocations
+- Temporal Schedules back all scheduled execution, both recurring and one-time deferred; no alternative scheduler is used
 - PostgreSQL remains authoritative for product-facing tasks, schedules, runs, and read models
 - FastAPI remains the public command boundary and must not host the main Worker runtime
 - Workflow code changes require a Temporal-safe rollout path and replay verification
@@ -256,7 +280,7 @@ The UI should not own:
 
 - scheduling truth
 - execution state transitions
-- provider-specific orchestration rules
+- executor-specific SDK orchestration rules
 
 ### 6.2 Application Backend
 
@@ -309,16 +333,43 @@ This layer should not be treated as the product domain model. It supports execut
 
 ### 6.4 AI Executor Adapter
 
-This component converts a planned task into a provider-specific execution request.
+This component delegates a planned task to an external coding-agent runtime invoked inside a run-scoped working directory. VesperaFlow does not implement an agent runtime and does not call LLM provider APIs directly; it relies on each executor's existing runtime to do that work. See `docs/adr/002-execution-engine-choice.md`.
 
 Primary responsibilities:
 
-- map task content into an execution payload
-- invoke the configured provider
-- stream or collect execution progress
-- normalize outcomes back into backend-owned run states
+- translate task content into a normalized invocation of the configured executor
+- invoke the executor inside the run's working directory through its official SDK in VesperaFlow's Worker process
+- observe and persist the executor's progress signals from the SDK event stream
+- observe the executor's terminal outcome and translate it to backend-owned run states
+- propagate cancellation into the executor using its native SDK cancellation mechanism
 
-By isolating executor logic, the system avoids coupling task planning to a single provider.
+By isolating executor logic behind a stable adapter, the system avoids coupling task planning to any single agent runtime or LLM provider.
+
+#### Supported Executors
+
+MVP supports one executor:
+
+- `claude-code` — Anthropic's Claude Code, invoked via the Claude Agent SDK
+
+`codex` and `opencode` are post-MVP candidates. CLI subprocess execution is also post-MVP and is not a fallback path for the first release.
+
+Executor selection is resolved at task creation time from the install-level default or an optional template default. MVP stores the resolved executor on the task so every run can be traced to the executor that was intended when the task was created. Per-task executor switching in the UI and multi-executor installs are reserved for a later iteration.
+
+#### Adapter Interface Shape
+
+The adapter is invoked from executor Activities with a small, stable SDK-oriented contract:
+
+- Input: an execution snapshot containing `run_id`, the selected executor name, normalized instructions, the run's working directory, optional executor-specific parameters, and an idempotency key derived from `run_id`
+- Output: a normalized execution outcome containing terminal status (`completed` / `failed`), a short `result_summary`, optional `result_artifact_ref` (path to files written inside the working directory), a terminal-outcome code from the SDK, and a `failure_reason` category when not successful
+- Cancellation: the adapter must translate an Activity cancellation into the executor's native SDK cancellation mechanism and must not retry after a cancellation signal
+
+Executor-specific details (SDK client construction, SDK event framing, file layout conventions, and the executor's own authentication with its upstream provider) remain inside the adapter and are not exposed to the Workflow.
+
+#### Non-Goals
+
+- the adapter does not call LLM APIs directly; the executor SDK makes those calls
+- the adapter does not implement prompt construction, tool selection, tool calling, memory, or streaming agent logic; those live in the executor SDK
+- the adapter does not manage LLM provider credentials; the executor is expected to be authenticated by the user through its SDK-supported mechanism before VesperaFlow invokes it
 
 ### 6.5 Local Data Store
 
@@ -337,7 +388,7 @@ The local store should preserve the information required to render product views
 
 ## 7. Domain Model
 
-Some early discussions use terms such as `schedule`, `run`, and `vibe`. In the formal architecture, the core domain should be normalized into a smaller set of stable concepts.
+Some early discussions use terms such as `schedule` and `run`. In the formal architecture, the core domain should be normalized into a smaller set of stable concepts.
 
 ### 7.1 Core Entities
 
@@ -404,23 +455,22 @@ Key attributes:
 
 #### Run State
 
-Suggested backend-owned states:
+Backend-owned run states, authoritative in `docs/domain-model.md`:
 
 - `planned`
-- `ready`
+- `queued`
 - `running`
 - `completed`
 - `failed`
 - `canceled`
-- `paused`
 
-These are backend semantics. UI columns may group or rename them.
+These are backend semantics. UI columns may group or rename them. `paused` is a `Schedule` state, not a `Run` state, and is surfaced through recurring todo and task detail rather than kanban.
 
 #### View Grouping
 
 Kanban columns should be derived from domain state rather than treated as the source of truth. For MVP, kanban applies only to one-time tasks:
 
-- `Upcoming` maps to `planned`, `ready`, and scheduled future work
+- `Upcoming` maps to `planned`, `queued`, and scheduled future work without an active run
 - `Running` maps to active execution
 - `Completed` maps to successful terminal runs
 - `Failed` maps to unsuccessful terminal runs
@@ -514,14 +564,14 @@ UI requests history view
 
 One of the key SA tasks is making ownership explicit.
 
-### 8.1 UI-Owned State
+### 9.1 UI-Owned State
 
 - current filters
 - selected view mode
 - expanded card or modal state
 - temporary form state before save
 
-### 8.2 Backend-Owned State
+### 9.2 Backend-Owned State
 
 - task definition truth
 - template truth
@@ -530,21 +580,25 @@ One of the key SA tasks is making ownership explicit.
 - status mapping rules
 - editability rules
 
-### 8.3 Scheduler-Owned State
+### 9.3 Scheduler-Owned State
 
 - trigger timing
 - durable workflow progression
 - internal retry bookkeeping
 
-### 8.4 Provider-Owned State
+### 9.4 Executor-Owned State
 
-- provider execution internals
-- model-specific logs or session details
-- provider-specific token accounting where available
+State owned by the external executor runtime SDK and its upstream LLM provider; opaque to VesperaFlow:
+
+- executor internal session state, tool-call traces, and any files it writes outside the run working directory
+- model-specific logs, provider request/response payloads, and streaming chunks or SDK event streams
+- token accounting, rate-limit counters, and cost data
+
+VesperaFlow treats this layer as a black box; the executor's terminal outcome and a short result summary are the only signals the product surfaces.
 
 ## 10. Data Boundaries
 
-### 9.1 Product Store Versus Execution Store
+### 10.1 Product Store Versus Execution Store
 
 The product must not rely exclusively on execution-engine internals for user-facing queries.
 
@@ -554,11 +608,11 @@ Therefore:
 - execution-engine identifiers should be stored as references, not used as primary user-facing objects
 - task and template retrieval should remain available even if execution history is archived or rotated
 
-### 9.2 Event Synchronization
+### 10.2 Execution Progress Synchronization
 
-The backend should receive execution progress and translate it into product-facing updates.
+Execution progress is persisted to PostgreSQL by backend-owned persistence Activities running inside the Worker process. There is no separate event bus between the execution layer and the backend API in MVP; both share the PostgreSQL system of record.
 
-Typical synchronization points:
+Typical synchronization points persisted as PostgreSQL writes:
 
 - schedule created
 - schedule paused or resumed
@@ -567,11 +621,13 @@ Typical synchronization points:
 - run failed
 - run canceled
 
+Detailed Activity-level contracts and idempotency rules for these writes are defined in `docs/temporal-architecture.md`.
+
 ## 11. Read Models for Core Views
 
 The current product direction strongly implies three primary operational views and one task creation surface. These should be reflected in architecture as explicit read models.
 
-### 10.1 Calendar Read Model
+### 11.1 Calendar Read Model
 
 Purpose:
 
@@ -588,7 +644,7 @@ Required fields:
 - scheduled timestamp or occurrence window
 - current state
 
-### 10.2 Kanban Read Model
+### 11.2 Kanban Read Model
 
 Purpose:
 
@@ -610,7 +666,7 @@ Rules:
 - only one-time tasks are included
 - cards are grouped by derived execution state
 
-### 10.3 Recurring Todo Read Model
+### 11.3 Recurring Todo Read Model
 
 Purpose:
 
@@ -627,7 +683,7 @@ Required fields:
 - `schedule_status`
 - `latest_run_outcome`
 
-### 10.4 Task Detail Read Model
+### 11.4 Task Detail Read Model
 
 Purpose:
 
@@ -645,7 +701,7 @@ Required fields:
 
 Formal payload design belongs in a separate API specification, but the architecture should define responsibility boundaries.
 
-### 11.1 Task Management Interface
+### 12.1 Task Management Interface
 
 Supports:
 
@@ -654,7 +710,7 @@ Supports:
 - delete or cancel task
 - retrieve task detail
 
-### 11.2 Schedule Management Interface
+### 12.2 Schedule Management Interface
 
 Supports:
 
@@ -664,7 +720,7 @@ Supports:
 - resume schedule
 - reschedule future execution
 
-### 11.3 Template Management Interface
+### 12.3 Template Management Interface
 
 Supports:
 
@@ -674,7 +730,7 @@ Supports:
 - delete template
 - instantiate task from template
 
-### 11.4 View Query Interface
+### 12.4 View Query Interface
 
 Supports:
 
@@ -683,20 +739,20 @@ Supports:
 - fetch recurring todo items
 - fetch run history
 
-### 11.5 Execution Update Interface
+### 12.5 Execution Update Interface
 
 Supports:
 
 - receive status updates from execution layer
 - push live status updates to UI if needed
 
-## 12. Non-Functional Requirements
+## 13. Non-Functional Requirements
 
-### 12.1 Reliability
+### 13.1 Reliability
 
 The system should not miss due executions under normal local operation and restart scenarios.
 
-### 12.2 Recoverability
+### 13.2 Recoverability
 
 After local restart, the system should recover:
 
@@ -704,7 +760,7 @@ After local restart, the system should recover:
 - pending one-time tasks
 - run history references
 
-### 12.3 Observability
+### 13.3 Observability
 
 The user should be able to inspect:
 
@@ -712,31 +768,66 @@ The user should be able to inspect:
 - what actually ran
 - whether it succeeded or failed
 
-Developer-facing observability should also make it possible to trace a run from task definition to external execution reference.
+Developer-facing observability must make it possible to trace a run from task definition to external execution reference end-to-end.
 
-### 12.4 Simplicity of Deployment
+MVP observability baseline:
+
+- structured JSON logs across API, Worker, and adapter processes
+- every log line carries `task_id`, `schedule_id`, `run_id`, and the Temporal `workflow_id` / `run_id` when present
+- Activity attempts log start, success, retry, and terminal failure with the same identifiers
+- a minimal metrics set is exposed for local introspection: `runs_started_total`, `runs_completed_total`, `runs_failed_total`, `executor_run_latency_seconds`, `schedule_fire_delay_seconds`
+- detailed tracing is optional for MVP but the log correlation-ID strategy must not block adding OpenTelemetry later
+
+### 13.4 Security and Secrets
+
+MVP security posture:
+
+- authentication and authorization are intentionally out of scope for the single-local-user MVP, but the domain model must preserve a clean extension point for a future `user_id` association
+- VesperaFlow does not hold or manage LLM provider credentials; the supported executor SDK is authenticated by the user through its own configuration, for example the SDK's expected environment variable or runtime config file
+- VesperaFlow must not copy, read, or log executor credentials even if they are discoverable in the Worker process environment; the SDK reads them directly from the environment when invoked
+- task `instruction_source` and executor output may contain sensitive content; they must not be serialized into Temporal Workflow input payloads beyond what is strictly required, and structured logs must not emit full instruction or output bodies at default log levels
+- PostgreSQL is assumed to be on trusted local storage for MVP; at-rest encryption is a deployment concern tracked in `docs/adr/004-security-posture.md`
+
+### 13.5 Concurrency and Reconciliation
+
+The system must behave predictably under concurrent edits and partial failure between PostgreSQL and Temporal.
+
+MVP rules:
+
+- mutating API endpoints must support optimistic concurrency via a resource `version` field or `If-Match` header; concurrent writers receive `409 conflict`
+- a user-initiated edit, pause, resume, or cancel that cannot be mirrored to Temporal must be rolled back in PostgreSQL and surfaced as `execution_unavailable`
+- scheduler-fired runs and user edits that target the same schedule are resolved by the product command path owning the final state; in-flight runs are not retroactively mutated
+- PostgreSQL is authoritative for user-visible status; divergence from Temporal is reconciled by backend-owned tooling described in `docs/temporal-architecture.md`
+
+### 13.6 Simplicity of Deployment
 
 The architecture should remain operable by one user on one machine with minimal setup.
 
-## 13. Architecture Decisions to Record Separately
+## 14. Architecture Decisions to Record Separately
 
-These topics should be tracked as ADRs rather than remaining implicit:
+These topics are tracked as ADRs rather than remaining implicit:
 
-- why the product is local-first
-- why a durable scheduling engine is used instead of simple cron
-- why task, schedule, and run are separate domain objects
-- why kanban state is derived from backend semantics rather than UI-only labels
-- why executor integrations are abstracted behind adapters
+- `docs/adr/001-local-first.md` — why the product is local-first (scoped)
+- `docs/adr/002-execution-engine-choice.md` — why Temporal is the sole scheduling system and why MVP uses the Claude Agent SDK as the only executor integration
+- `docs/adr/003-task-schedule-run-separation.md` — why task, schedule, and run are separate domain objects
+- `docs/adr/004-security-posture.md` — MVP secrets handling and future authz extension
+- `docs/adr/005-derived-view-states.md` — why kanban state is derived from backend semantics rather than UI-only labels
 
-## 14. Open Architecture Questions
+## 15. Resolved Architecture Questions
 
-- Should recurring future occurrences be materialized ahead of time or generated on demand for calendar rendering?
-- How should the system model a one-off exception created by editing only a single recurring occurrence?
-- How much provider-specific metadata should be preserved in run detail without leaking executor complexity into product views?
-- Should task creation store both original natural language input and normalized execution instructions as first-class fields?
-- Is `vibe` retained as a user-facing concept, or replaced by a more literal `task` / `template` vocabulary in formal specs?
+These items were previously open and are now architectural decisions for MVP:
 
-## 15. Recommended Next Documents
+- Recurring future occurrences are generated on demand for bounded calendar windows. PostgreSQL persists the parent `Schedule`, completed or in-flight `Run`s, and explicit `OccurrenceOverride`s; it does not eagerly materialize all future recurring occurrences.
+- A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
+- Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
+- Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
+- MVP resolves the executor from the install-level default or optional template default and stores the resolved value on `Task.executor`. The only supported MVP value is `claude_code`; per-task executor selection and additional executors are post-MVP.
+- The adapter performs a preflight check for SDK availability, supported version, authentication/configuration, and working-directory access. Failures are mapped to actionable product errors such as `executor_sdk_not_importable`, `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
+- Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
+- The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
+- The Claude Agent SDK compatibility policy is lockfile-driven: fail below the locked minimum or outside the supported major version, warn on unvalidated newer minor or patch versions within the same major, and fail closed on unknown newer major versions.
+
+## 16. Recommended Next Documents
 
 This architecture document should be followed by:
 
@@ -745,4 +836,9 @@ This architecture document should be followed by:
 3. `docs/functional-spec.md`
 4. `docs/api-spec.md`
 5. `docs/ux-spec.md`
-6. `docs/adr/001-local-first.md`
+6. `docs/glossary.md`
+7. `docs/adr/001-local-first.md`
+8. `docs/adr/002-execution-engine-choice.md`
+9. `docs/adr/003-task-schedule-run-separation.md`
+10. `docs/adr/004-security-posture.md`
+11. `docs/adr/005-derived-view-states.md`

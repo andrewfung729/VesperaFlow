@@ -28,7 +28,7 @@ It does not cover:
 
 - internal service-to-service contracts
 - storage schema
-- provider-specific execution payloads
+- executor-specific SDK invocation payloads and SDK event formats
 - realtime push interfaces, which are out of scope for MVP
 
 ## 2. API Style
@@ -37,7 +37,7 @@ It does not cover:
 
 - Protocol: HTTPS or local HTTP in development
 - Format: JSON request and response bodies
-- Time format: ISO 8601 with timezone
+- Time format: ISO 8601 with an explicit timezone offset on every timestamp
 - Resource ids: opaque strings
 
 ### 2.2 Versioning
@@ -108,14 +108,19 @@ All non-2xx responses return:
 
 ### 4.3 Common Error Codes
 
-- `validation_error`
-- `not_found`
-- `conflict`
-- `invalid_state_transition`
-- `invalid_schedule_scope`
-- `unsupported_operation`
-- `execution_unavailable`
-- `internal_error`
+- `validation_error` — the request payload failed field or format validation
+- `not_found` — the addressed resource does not exist
+- `conflict` — optimistic concurrency conflict; the client's `If-Match` or `version` did not match current state
+- `invalid_state_transition` — the requested action is not valid for the resource's current state
+- `invalid_schedule_scope` — recurring-scope parameter is missing or not applicable
+- `unsupported_operation` — operation is not supported by the current execution mode
+- `execution_unavailable` — the command was rejected because the execution layer could not be reached or rolled back safely; the PostgreSQL write was rolled back and the client should retry
+- `executor_not_available` — the requested or default executor is not available on the host; surfaced on task creation and on run start
+- `executor_sdk_not_importable` — the configured executor SDK cannot be imported by the Worker
+- `executor_not_authenticated` — the configured executor SDK is installed but not authenticated or not configured for use
+- `executor_misconfigured` — the configured executor SDK is present but fails adapter preflight checks
+- `executor_workspace_unavailable` — the run working directory cannot be created or accessed
+- `internal_error` — unexpected server failure
 
 ### 4.4 Pagination
 
@@ -123,6 +128,8 @@ List endpoints that can grow unbounded should support:
 
 - `limit`
 - `offset`
+
+The calendar endpoint is additionally bounded by the `from`/`to` window; see §11.
 
 ### 4.5 Filtering
 
@@ -133,6 +140,22 @@ Read endpoints may support:
 - `from`
 - `to`
 - `include_archived`
+
+### 4.6 Optimistic Concurrency
+
+Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) enforce optimistic concurrency:
+
+- every mutable resource exposes a monotonically increasing `version` integer
+- clients must echo the observed `version` using either the `If-Match` header (`If-Match: "42"`) or a `version` field in the request body
+- create endpoints do not require `If-Match`; all updates, archives, cancels, pause/resume commands, and scoped occurrence edits require an observed version
+- if the server's current version differs, the endpoint returns `409 conflict` with error code `conflict` and does not partially apply
+- the server's response to a successful mutation always includes the new `version`
+
+### 4.7 Timezone Rules
+
+- all `planned_at`, `next_run_at`, `actual_start_at`, `finished_at`, and `original_occurrence_at` fields are serialized in ISO 8601 with an explicit timezone offset
+- recurring schedules carry an additional `recurrence_timezone` (IANA zone name) in addition to any RRULE timestamps
+- the server evaluates recurrence rules in `recurrence_timezone` and normalizes fire times to UTC; see `docs/domain-model.md` §12 for DST and missed-occurrence rules
 
 ## 5. Shared Schemas
 
@@ -148,8 +171,10 @@ Read endpoints may support:
   "default_execution_mode": "recurring",
   "default_schedule_config": {
     "schedule_type": "recurring_rule",
-    "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"
+    "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+    "recurrence_timezone": "Asia/Hong_Kong"
   },
+  "version": 1,
   "created_at": "2026-04-24T09:00:00+08:00",
   "updated_at": "2026-04-24T09:00:00+08:00",
   "archived_at": null
@@ -167,11 +192,21 @@ Read endpoints may support:
   "execution_mode": "one_time",
   "task_status": "scheduled",
   "template_id": "tpl_123",
+  "executor": "claude_code",
+  "version": 1,
   "created_at": "2026-04-24T09:00:00+08:00",
   "updated_at": "2026-04-24T09:00:00+08:00",
   "archived_at": null
 }
 ```
+
+`task_status` is a server-derived projection; see `docs/domain-model.md` §4.4.
+
+`executor` identifies the resolved coding-agent runtime that will perform this task's runs. MVP supports:
+
+- `claude_code` — Claude Agent SDK
+
+Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex`, `opencode`, CLI subprocess execution, and per-task executor switching are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor SDK performs the AI work. See `docs/adr/002-execution-engine-choice.md`.
 
 ### 5.3 Schedule Object
 
@@ -183,13 +218,17 @@ Read endpoints may support:
   "schedule_status": "active",
   "planned_at": "2026-04-24T23:30:00+08:00",
   "recurrence_rule": null,
+  "recurrence_timezone": null,
   "next_run_at": "2026-04-24T23:30:00+08:00",
   "last_materialized_at": null,
   "external_schedule_ref": "vesperaflow.schedule.sch_123",
+  "version": 1,
   "created_at": "2026-04-24T09:00:00+08:00",
   "updated_at": "2026-04-24T09:00:00+08:00"
 }
 ```
+
+`recurrence_timezone` is required for recurring schedules and null for single-run schedules.
 
 ### 5.4 Run Object
 
@@ -392,7 +431,8 @@ Request for recurring:
   "template_id": "tpl_123",
   "schedule": {
     "schedule_type": "recurring_rule",
-    "recurrence_rule": "RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0"
+    "recurrence_rule": "RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+    "recurrence_timezone": "Asia/Hong_Kong"
   }
 }
 ```
@@ -415,9 +455,12 @@ Validation:
 - `title` is required
 - `instruction_source` is required
 - `execution_mode` is required
-- one-time tasks must provide `planned_at`
-- recurring tasks must provide `recurrence_rule`
+- one-time tasks must provide `planned_at` with a timezone offset in the future
+- recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
 - `schedule.schedule_type` must match `execution_mode`
+- recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
+- `executor`, if provided, must be `claude_code`; if omitted the template default or install default is used
+- if the resolved executor SDK is not importable, authenticated, configured, or able to access the run workspace, the endpoint returns a `409` executor preflight error
 
 ### 7.2 List Tasks
 
@@ -525,7 +568,8 @@ Request:
 
 ```json
 {
-  "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=8;BYMINUTE=0"
+  "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=8;BYMINUTE=0",
+  "recurrence_timezone": "Asia/Hong_Kong"
 }
 ```
 
@@ -533,6 +577,8 @@ Validation:
 
 - task must be `recurring`
 - recurrence rule must be valid
+- recurrence frequency must not exceed once per 15 minutes
+- if `recurrence_timezone` is omitted the server keeps the prior value
 
 ### 8.4 Pause Recurring Schedule
 
@@ -573,9 +619,11 @@ Behavior:
 
 ## 9. Recurring Occurrence Editing Endpoints
 
+Occurrence edits are POST endpoints with the occurrence timestamp in the body. An earlier draft passed the timestamp in the URL path; that design was dropped because URL-encoding of ISO timestamps with timezone offsets was awkward and hard to parse consistently across clients.
+
 ### 9.1 Update Recurring Occurrence
 
-`PATCH /api/v1/tasks/{task_id}/occurrences/{original_occurrence_at}`
+`POST /api/v1/tasks/{task_id}/occurrences/update`
 
 Purpose:
 
@@ -585,6 +633,7 @@ Request:
 
 ```json
 {
+  "original_occurrence_at": "2026-04-29T09:00:00+08:00",
   "scope": "this_occurrence_only",
   "planned_at": "2026-04-29T11:00:00+08:00",
   "instruction_source": null
@@ -598,24 +647,26 @@ Allowed scope values:
 
 Behavior:
 
-- `this_occurrence_only` creates or updates an `OccurrenceOverride`
+- `this_occurrence_only` creates or updates an `OccurrenceOverride`; `planned_at`, `instruction_source`, or both may be provided
 - `this_and_future` updates the parent recurring definition for future occurrences only
 
 Validation:
 
 - task must be recurring
+- `original_occurrence_at` is required and must match a projected occurrence of the active recurrence rule
 - `scope` is required
 - at least one editable field must be provided
 - if `scope = this_occurrence_only`, the targeted occurrence must be future or not yet started
 
 Error cases:
 
-- `400 validation_error` for missing scope
+- `400 validation_error` for missing `original_occurrence_at` or `scope`
 - `409 invalid_schedule_scope` for unsupported scope or invalid series behavior
+- `409 conflict` if the resource `version` does not match
 
 ### 9.2 Cancel Recurring Occurrence
 
-`POST /api/v1/tasks/{task_id}/occurrences/{original_occurrence_at}/cancel`
+`POST /api/v1/tasks/{task_id}/occurrences/cancel`
 
 Purpose:
 
@@ -625,6 +676,7 @@ Request:
 
 ```json
 {
+  "original_occurrence_at": "2026-04-29T09:00:00+08:00",
   "scope": "this_occurrence_only"
 }
 ```
@@ -755,6 +807,7 @@ Behavior:
 
 - returns one-time tasks only
 - groups cards into `upcoming`, `running`, `completed`, `failed`
+- completed cards are included by default until archived; clients may add filtering later without changing backend state semantics
 
 ## 13. Recurring Todo Endpoints
 
@@ -823,6 +876,8 @@ Behavior:
 - `current_actions` are derived from task and schedule state
 - recurring tasks may include relevant occurrence override context when requested from calendar
 - recurring-task actions are derived from conservative task lifecycle states (`scheduled` or `paused`) plus latest run outcome context
+- `recent_runs` returns the latest 10 runs in reverse chronological order; full history is paged through run and history endpoints
+- archived tasks remain readable through this endpoint by id, but are omitted from default active list endpoints unless `include_archived` is provided
 
 Optional query params:
 
@@ -907,6 +962,8 @@ Recurring run failure note:
 
 - all scheduled times must be timezone-aware timestamps
 - one-time `planned_at` must be in the future at the time of request
+- recurring schedules must provide a valid IANA `recurrence_timezone`
+- recurrence frequency must not exceed once per 15 minutes
 - `from` must be earlier than `to`
 
 ### 17.2 Mode and Schedule Consistency
@@ -934,8 +991,9 @@ Recurring run failure note:
 - `422 Unprocessable Entity` for semantically invalid fields
 - `500 Internal Server Error` for unexpected failures
 
-## 19. Open API Questions
+## 19. API Decisions
 
-- Should direct drag-reschedule in calendar call the same schedule patch endpoint or a dedicated convenience endpoint?
-- Should recurring occurrence edits support instruction overrides in MVP, or time-only overrides?
-- Should task detail return all recent runs inline or page them through a separate endpoint once history grows?
+- Calendar drag-reschedule is not part of MVP. All calendar rescheduling uses explicit task, schedule, or occurrence edit endpoints.
+- If drag-reschedule is added later, it should call the same schedule or occurrence mutation endpoints instead of introducing a drag-specific API.
+- Task detail includes the latest 10 runs inline and delegates longer history to paged run/history endpoints.
+- `If-Match` or request-body `version` is required for all mutations of existing resources, even in the single-user local MVP.

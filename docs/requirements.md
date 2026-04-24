@@ -11,7 +11,7 @@ version: "1.0"
 ### CRITICAL GATES (Must Pass)
 
 - [x] All required sections are complete
-- [x] No [NEEDS CLARIFICATION] markers remain
+- [x] No clarification markers remain
 - [x] Problem statement is specific and measurable
 - [x] Every feature has testable acceptance criteria (Gherkin format)
 - [x] No contradictions between sections
@@ -42,9 +42,8 @@ version: "1.0"
 | title | string | Yes | Feature title |
 | status | enum: `DRAFT`, `IN_REVIEW`, `COMPLETE` | Yes | Document readiness |
 | sections | SectionStatus[] | Yes | Status of each PRD section |
-| clarificationsRemaining | number | Yes | Count of `[NEEDS CLARIFICATION]` markers |
+| clarificationsRemaining | number | Yes | Count of clarification markers |
 | acceptanceCriteria | number | Yes | Total testable acceptance criteria defined |
-| openQuestions | string[] | No | Unresolved items requiring stakeholder input |
 
 ### SectionStatus
 
@@ -59,12 +58,11 @@ version: "1.0"
 | Product Overview | COMPLETE | Core problem, value, and target user are defined |
 | User Personas | COMPLETE | Primary and secondary personas are distinct |
 | User Journey Maps | COMPLETE | One-time and scheduled usage paths are covered |
-| Feature Requirements | IN_PROGRESS | Core scope and acceptance criteria are defined, with lifecycle semantics being normalized across downstream specs |
-| Detailed Feature Specifications | IN_PROGRESS | One-time behavior is detailed; recurring-state and history semantics are being aligned downstream |
+| Feature Requirements | COMPLETE | Core scope and acceptance criteria are defined and lifecycle semantics are normalized across downstream specs |
+| Detailed Feature Specifications | COMPLETE | One-time deferred task is detailed in PRD; remaining features are fully specified in `docs/functional-spec.md` |
 | Success Metrics | COMPLETE | Product success and tracking are defined |
 | Constraints and Assumptions | COMPLETE | Non-technical boundaries and assumptions are documented |
 | Risks and Mitigations | COMPLETE | Key product risks are identified |
-| Open Questions | IN_PROGRESS | Product-level open questions remain, but core MVP lifecycle decisions are now narrowed |
 | Supporting Research | IN_PROGRESS | Current evidence state is documented honestly, but formal validation is still incomplete |
 
 **PRD Status Report**
@@ -74,10 +72,6 @@ version: "1.0"
 - `status`: `DRAFT`
 - `clarificationsRemaining`: `0`
 - `acceptanceCriteria`: `26`
-- `openQuestions`:
-  - Final target user scope is still broad between solo builders and heavier AI power users
-  - The acceptable level of unattended autonomy still needs a product decision
-  - The launch value of schedule recommendations still needs validation
 
 ---
 
@@ -141,7 +135,7 @@ Compared with manual prompting, reminders, or ad hoc scripts, VesperaFlow offers
 
 ### Secondary Journey 1: Capture Now, Schedule for the Next Available Window
 1. **Awareness:** The user hits a provider usage limit and cannot run the task immediately.
-2. **Consideration:** They decide whether to wait and remember later or store the task now for future execution.
+2. **Consideration:** They choose between relying on memory later or storing the task now for future execution.
 3. **Adoption:** They use VesperaFlow to capture the task while the intent is fresh.
 4. **Usage:** They assign the next suitable time window and leave the task pending.
 5. **Retention:** They keep using the product because they no longer lose task intent while waiting for usage to reset.
@@ -271,6 +265,8 @@ No additional should-have features are required for the first draft beyond the m
 
 ## Detailed Feature Specifications
 
+The PRD documents a single illustrative feature in detail here to anchor the product-level description. Full per-feature functional behavior, main flows, alternate flows, business rules, and edge cases for every feature above are specified in `docs/functional-spec.md`.
+
 ### Feature: Create a One-Time Deferred Task
 **Description:** This feature allows the user to describe a piece of AI work now, decide that it should happen later, and leave it in a planned state until its execution time arrives. It is the clearest expression of the product's value because it converts immediate intent into deferred execution.
 
@@ -291,6 +287,10 @@ No additional should-have features are required for the first draft beyond the m
 - Scenario 1: The user schedules a task for a time that is already in the past -> Expected: the product blocks save or asks the user to choose a valid future time
 - Scenario 2: The user forgets what the task was meant to do before it runs -> Expected: the product preserves the original task intent in a readable form
 - Scenario 3: The task fails overnight -> Expected: the user can clearly identify failure the next time they review the product
+
+### Other Features
+
+Features 2 through 10 (recurring task, review, planning/execution separation, templates, calendar, kanban, todo, history, suggested timing, overnight notifications) are captured in full behavioral detail in `docs/functional-spec.md`. The PRD intentionally does not duplicate that content.
 
 ## Success Metrics
 
@@ -321,7 +321,8 @@ No additional should-have features are required for the first draft beyond the m
 - The first phase is optimized for individual use, not teams
 - The product must stay understandable to users who think in tasks and time, not in automation logic
 - The initial scope must solve planning and visibility before expanding into advanced autonomy
-- The product should be useful even if users rely on different LLM providers with different usage windows
+- The product should be useful even if future users rely on different LLM providers with different usage windows, but MVP validates the loop with Claude Code first
+- The product does not implement its own AI agent runtime and does not call LLM APIs directly; MVP orchestrates the user's existing Claude Code runtime through the Claude Agent SDK, which must already be installed and authenticated on the host. See `docs/adr/002-execution-engine-choice.md`.
 
 ### Assumptions
 - Users already know what kinds of AI work they want to delegate, even if they do not know how to automate it
@@ -338,11 +339,12 @@ No additional should-have features are required for the first draft beyond the m
 | Users may confuse task planning with full workflow automation | Medium | High | Keep positioning focused on planning, scheduling, and review rather than complex autonomous systems |
 | Users may expect perfect results from long-running AI tasks | Medium | Medium | Set expectations around visibility and follow-up rather than guaranteed quality of task outcomes |
 
-## Open Questions
-- [ ] Should the first release prioritize overnight execution as the core story, or position it more broadly as deferred AI work anytime the user is offline?
-- [ ] How much result detail does a user need after a run to feel confident without being overwhelmed?
-- [ ] Should schedule recommendations be a launch requirement or a post-launch enhancement?
-- [ ] What specific task categories should be highlighted in onboarding examples: research, drafting, monitoring, summarization, or mixed use cases?
+## Product Decisions
+
+- First release positioning is deferred AI work anytime the user is offline or away. Overnight execution remains the strongest example, not the only story.
+- Run review should show enough detail to build confidence without exposing executor internals: terminal outcome, short result summary, timestamps, failure category when relevant, and artifact links.
+- Schedule recommendations are post-launch. MVP requires user-controlled scheduling only.
+- Onboarding examples should use a mixed set of task categories, led by research, drafting, and summarization. Monitoring examples are secondary because they can imply broader autonomous behavior than MVP intends.
 
 ---
 

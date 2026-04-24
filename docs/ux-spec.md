@@ -69,7 +69,7 @@ Potentially destructive actions such as cancel, archive, or series-wide edit mus
 
 ## 3. Primary Navigation
 
-## 3.1 Main Sidebar
+### 3.1 Main Sidebar
 
 MVP navigation:
 
@@ -87,7 +87,7 @@ Deferred from MVP-primary navigation:
 - `Agents`
 - `Skills`
 
-## 3.2 Default Landing Behavior
+### 3.2 Default Landing Behavior
 
 Recommended default landing page:
 
@@ -100,7 +100,7 @@ If no tasks exist:
 
 ## 4. Shared UX Objects
 
-## 4.1 Task Card Summary
+### 4.1 Task Card Summary
 
 Used in:
 
@@ -115,7 +115,7 @@ Minimum content:
 - next run time or latest run state
 - one primary status label
 
-## 4.2 Task Detail Panel
+### 4.2 Task Detail Panel
 
 Can appear as:
 
@@ -132,7 +132,7 @@ Must include:
 - recent runs
 - allowed actions
 
-## 4.3 Confirmation Modal
+### 4.3 Confirmation Modal
 
 Used for:
 
@@ -152,11 +152,11 @@ Must include:
 
 ## 5. Composer
 
-## 5.1 Goal
+### 5.1 Goal
 
 Allow the user to create a task quickly, choose whether it is one-time or recurring, and save it with minimal friction.
 
-## 5.2 Layout
+### 5.2 Layout
 
 Primary regions:
 
@@ -167,7 +167,7 @@ Primary regions:
 - optional template actions
 - save actions
 
-## 5.3 Creation Flow
+### 5.3 Creation Flow
 
 1. User enters title and instructions
 2. User chooses `One-Time` or `Recurring`
@@ -181,7 +181,7 @@ Recommended follow-up routing:
 - one-time task: open task detail or one-time board highlight
 - recurring task: open task detail or recurring todo highlight
 
-## 5.4 Mode Selector Rules
+### 5.4 Mode Selector Rules
 
 Display as segmented control or radio choice:
 
@@ -193,21 +193,21 @@ Rules:
 - default selection may be empty until user chooses, or use `One-Time` if a default is needed
 - changing mode after schedule input should warn before incompatible data is cleared
 
-## 5.5 Schedule Inputs
+### 5.5 Schedule Inputs
 
-### One-Time Inputs
+#### One-Time Inputs
 
 - date picker
 - time picker
 - timezone display
 
-### Recurring Inputs
+#### Recurring Inputs
 
 - cadence preset or recurrence editor
 - next run preview
 - timezone display
 
-## 5.6 Primary Actions
+### 5.6 Primary Actions
 
 - `Save Task`
 - `Save as Template`
@@ -216,7 +216,7 @@ Optional secondary:
 
 - `Cancel`
 
-## 5.7 Validation Behavior
+### 5.7 Validation Behavior
 
 - inline validation for missing title or instructions
 - inline validation for invalid past time
@@ -225,11 +225,11 @@ Optional secondary:
 
 ## 6. Templates
 
-## 6.1 Goal
+### 6.1 Goal
 
 Allow users to create, edit, archive, and reuse templates without copying and pasting task content.
 
-## 6.2 Template List Screen
+### 6.2 Template List Screen
 
 Must show:
 
@@ -246,7 +246,7 @@ Primary actions:
 - `Edit`
 - `Archive`
 
-## 6.3 Create Template Flow
+### 6.3 Create Template Flow
 
 1. User opens `Templates`
 2. User clicks `New Template`
@@ -254,7 +254,7 @@ Primary actions:
 4. User saves
 5. Template appears in list
 
-## 6.4 Save Task as Template Flow
+### 6.4 Save Task as Template Flow
 
 1. User opens task detail or composer
 2. User clicks `Save as Template`
@@ -262,7 +262,7 @@ Primary actions:
 4. User confirms
 5. Template is created
 
-## 6.5 Use Template Flow
+### 6.5 Use Template Flow
 
 1. User starts new task creation
 2. User chooses template
@@ -270,7 +270,7 @@ Primary actions:
 4. User edits task-specific values
 5. Saving creates a task, not a template mutation
 
-## 6.6 Editing Rules
+### 6.6 Editing Rules
 
 - editing a template never edits existing tasks
 - archived templates are hidden from default selection lists
@@ -278,11 +278,11 @@ Primary actions:
 
 ## 7. Calendar
 
-## 7.1 Goal
+### 7.1 Goal
 
 Provide a time-based planning surface for both one-time tasks and recurring occurrences.
 
-## 7.2 Calendar Content Rules
+### 7.2 Calendar Content Rules
 
 Display:
 
@@ -296,7 +296,7 @@ Hide by default:
 - paused recurring future occurrences
 - historical runs
 
-## 7.3 Calendar Item Differentiation
+### 7.3 Calendar Item Differentiation
 
 Each calendar item should visually indicate:
 
@@ -310,7 +310,7 @@ Recommended indicators:
 - lighter or distinct badge for paused or inactive context
 - small marker for overridden instance
 
-## 7.4 Calendar Interaction
+### 7.4 Calendar Interaction
 
 Primary interactions:
 
@@ -318,12 +318,12 @@ Primary interactions:
 - open full detail from preview
 - edit or reschedule from preview
 
-MVP-safe recommendation:
+MVP decision:
 
-- do not require drag-and-drop editing in first release
+- do not support drag-and-drop editing in first release
 - route all edits through explicit edit actions
 
-## 7.5 Recurring Edit Scope Modal
+### 7.5 Recurring Edit Scope Modal
 
 When a user edits a recurring calendar item, the system must show a scope picker before entering the edit form.
 
@@ -343,10 +343,10 @@ Options:
 
 Behavior:
 
-- `Only This Occurrence` creates or updates an occurrence override
+- `Only This Occurrence` creates or updates an occurrence override and may edit the occurrence time, instructions, or both
 - `This and Future` updates the recurring definition for future occurrences
 
-## 7.6 Recurring Cancel Scope Modal
+### 7.6 Recurring Cancel Scope Modal
 
 When canceling from calendar on a recurring item:
 
@@ -359,7 +359,7 @@ Recommended labels:
 - `Skip This Occurrence`
 - `Pause or Cancel Series`
 
-## 7.7 Calendar Empty State
+### 7.7 Calendar Empty State
 
 If no planned work exists:
 
@@ -368,11 +368,11 @@ If no planned work exists:
 
 ## 8. One-Time Kanban Board
 
-## 8.1 Goal
+### 8.1 Goal
 
 Provide an operational board for one-time work only.
 
-## 8.2 Scope Rules
+### 8.2 Scope Rules
 
 The board must exclude recurring tasks entirely.
 
@@ -387,7 +387,7 @@ Optional future column:
 
 - `Canceled`
 
-## 8.3 Card Content
+### 8.3 Card Content
 
 Each card should show:
 
@@ -396,7 +396,7 @@ Each card should show:
 - primary status
 - short result summary if completed or failed
 
-## 8.4 Card Actions
+### 8.4 Card Actions
 
 From card or card detail:
 
@@ -406,13 +406,14 @@ From card or card detail:
 - retry failed one-time task
 - cancel upcoming one-time task
 
-## 8.5 Board Behavior
+### 8.5 Board Behavior
 
 - a task appears in only one column at a time
 - cards move between columns based on backend state
 - no manual drag between columns in MVP
+- completed cards remain visible in the `Completed` column until the user archives them or applies a filter
 
-## 8.6 Board Empty State
+### 8.6 Board Empty State
 
 If no one-time tasks exist:
 
@@ -421,15 +422,15 @@ If no one-time tasks exist:
 
 ## 9. Recurring Todo View
 
-## 9.1 Goal
+### 9.1 Goal
 
 Provide a stable management list for recurring tasks.
 
-## 9.2 Why It Is Not Kanban
+### 9.2 Why It Is Not Kanban
 
 Recurring tasks represent ongoing commitments rather than transient execution cards. The UX should keep them stable and list-oriented.
 
-## 9.3 Item Content
+### 9.3 Item Content
 
 Each recurring item should show:
 
@@ -439,7 +440,7 @@ Each recurring item should show:
 - schedule state: `Scheduled` or `Paused`
 - latest outcome summary if relevant
 
-## 9.4 Item Actions
+### 9.4 Item Actions
 
 - open task detail
 - edit recurring definition
@@ -447,19 +448,19 @@ Each recurring item should show:
 - resume
 - cancel series
 
-## 9.5 Grouping
+### 9.5 Grouping And Sort
 
-Recommended default grouping:
+Default grouping:
 
 - `Scheduled`
 - `Paused`
 
-Alternative future options:
+Default sort:
 
-- due soon
-- custom sorting
+- `Scheduled` group first, sorted by `next_run_at` ascending
+- `Paused` group second, sorted by most recently updated first
 
-## 9.6 Failure Presentation
+### 9.6 Failure Presentation
 
 If the latest recurring run failed:
 
@@ -467,7 +468,7 @@ If the latest recurring run failed:
 - surface failure as a contextual badge or secondary status
 - do not move it to the one-time kanban board
 
-## 9.7 Empty State
+### 9.7 Empty State
 
 If no recurring tasks exist:
 
@@ -476,11 +477,11 @@ If no recurring tasks exist:
 
 ## 10. Task Detail
 
-## 10.1 Goal
+### 10.1 Goal
 
 Provide one place to understand what the task is, when it runs, what happened recently, and what actions are available.
 
-## 10.2 Sections
+### 10.2 Sections
 
 Recommended section order:
 
@@ -491,7 +492,7 @@ Recommended section order:
 5. Template origin
 6. Available actions
 
-## 10.3 Header
+### 10.3 Header
 
 Must show:
 
@@ -499,9 +500,9 @@ Must show:
 - mode badge
 - status badge
 
-## 10.4 Actions by Mode
+### 10.4 Actions by Mode
 
-### One-Time
+#### One-Time
 
 - edit
 - reschedule
@@ -509,14 +510,14 @@ Must show:
 - retry after failure
 - duplicate
 
-### Recurring
+#### Recurring
 
 - edit recurrence
 - pause
 - resume
 - cancel series
 
-## 10.5 Detail Entry Context
+### 10.5 Detail Entry Context
 
 If opened from calendar on a recurring occurrence:
 
@@ -526,11 +527,11 @@ If opened from calendar on a recurring occurrence:
 
 ## 11. History
 
-## 11.1 Goal
+### 11.1 Goal
 
 Provide a low-friction way to review completed and failed runs over time.
 
-## 11.2 Minimum Content
+### 11.2 Minimum Content
 
 - task title
 - run timestamp
@@ -538,7 +539,7 @@ Provide a low-friction way to review completed and failed runs over time.
 - short summary
 - link to task detail
 
-## 11.3 Filters
+### 11.3 Filters
 
 - status
 - mode
@@ -546,20 +547,20 @@ Provide a low-friction way to review completed and failed runs over time.
 
 ## 12. Shared States
 
-## 12.1 Loading States
+### 12.1 Loading States
 
 - use skeletons for list and board surfaces
 - use spinner only for short blocking actions
 - preserve previous data when refreshing if possible
 
-## 12.2 Empty States
+### 12.2 Empty States
 
 Every primary screen should include:
 
 - concise explanation
 - one primary CTA
 
-## 12.3 Error States
+### 12.3 Error States
 
 User-visible errors should:
 
@@ -573,7 +574,7 @@ Examples:
 - `Could not update recurring schedule`
 - `Could not load calendar items`
 
-## 12.4 Success Feedback
+### 12.4 Success Feedback
 
 Use lightweight toasts or inline confirmations for:
 
@@ -585,16 +586,16 @@ Use lightweight toasts or inline confirmations for:
 
 ## 13. Mobile and Responsive Behavior
 
-## 13.1 Navigation
+### 13.1 Navigation
 
 - sidebar becomes bottom nav or drawer
 - primary views remain first-level destinations
 
-## 13.2 Task Detail
+### 13.2 Task Detail
 
 - use full-screen sheet instead of side drawer
 
-## 13.3 Board and List Behavior
+### 13.3 Board and List Behavior
 
 - kanban may collapse into horizontally scrollable columns
 - recurring todo remains a vertical list
@@ -635,9 +636,28 @@ Avoid overly technical internal labels in the UI:
 - avoid exposing `occurrence_override`
 - avoid exposing backend workflow ids in normal user flows
 
-## 16. Open UX Questions
+### 15.1 Label ↔ API Enum Mapping
 
-- Should calendar support drag-to-reschedule in MVP or only explicit edit flows?
-- For `Only This Occurrence`, should MVP allow instruction edits as well as time edits, or time edits only?
-- Should one-time kanban keep completed cards visible indefinitely until archive, or hide them after a configurable period?
-- Should recurring todo default sort by next run time, last updated time, or active/paused grouping first?
+The frontend is responsible for translating backend enum values into user-visible labels. Mapping is authoritative against `docs/api-spec.md` and `docs/domain-model.md`.
+
+| Backend value | UI label | Used for |
+|---|---|---|
+| `one_time` | `One-Time` | execution mode selector, badges |
+| `recurring` | `Recurring` | execution mode selector, badges |
+| `single_run` | hidden from UI | internal schedule classification |
+| `recurring_rule` | hidden from UI | internal schedule classification |
+| `scheduled` | `Scheduled` | task status badge, kanban `Upcoming` column, recurring todo state |
+| `paused` | `Paused` | recurring todo state |
+| `running` | `Running` | kanban column, task status badge |
+| `completed` | `Completed` | kanban column, history filter |
+| `failed` | `Failed` | kanban column, history filter |
+| `canceled` | `Canceled` | history filter, hidden from default board |
+| `archived` | `Archived` | filtered views only |
+| `planned` (run) | `Scheduled` | recent runs list; not shown as a separate kanban column |
+| `queued` (run) | `Scheduled` | recent runs list; grouped under `Upcoming` on the board |
+
+Rules:
+
+- run-level `planned` and `queued` states collapse into the user-facing `Scheduled` label
+- `paused` appears only on recurring surfaces; it must not appear on the one-time kanban board
+- `Canceled` is filter-only on the board and always visible in history

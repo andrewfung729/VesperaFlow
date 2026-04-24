@@ -60,7 +60,7 @@ Purpose:
 
 - execute one concrete `Run`
 - move product-visible run state through queued, running, and terminal outcomes
-- call provider and persistence Activities
+- call executor and persistence Activities
 
 Input:
 
@@ -75,7 +75,7 @@ Behavior:
 
 1. materialize or load the product Run through a persistence Activity
 2. mark the run as `running` through a persistence Activity
-3. execute the provider request through a provider Activity
+3. execute the agent through an executor Activity using the configured executor SDK
 4. persist successful result summary through a persistence Activity
 5. persist failed or canceled outcome through a persistence Activity
 
@@ -83,17 +83,17 @@ Rules:
 
 - The Workflow must be short-lived and scoped to one run.
 - The Workflow must not read PostgreSQL directly.
-- The Workflow must not call the provider directly.
+- The Workflow must not invoke the executor directly by importing an SDK; all executor invocation runs inside an Executor Activity.
 - The Workflow must receive the execution snapshot it needs at start time or through deterministic Activity results.
 
 ### 3.2 Deferred One-Time Work
 
-One-time tasks should use Temporal Schedule for MVP consistency unless implementation pressure proves this too heavy.
+One-time tasks use Temporal Schedule. Temporal is the sole scheduling system in VesperaFlow (see `docs/architecture.md` §3.6); no alternative delayed-start mechanism is used, either outside Temporal or elsewhere inside Temporal such as long-sleep Workflows acting as ad-hoc schedulers.
 
 Model:
 
 - Backend creates `Task`, `Schedule(single_run)`, and a planned `Run`.
-- Backend creates a Temporal Schedule that starts `TaskRunWorkflow` at `planned_at`.
+- Backend creates one dedicated Temporal Schedule per one-time task that starts `TaskRunWorkflow` at `planned_at`.
 - After the run starts, the product schedule transitions toward `completed` or terminal state according to domain rules.
 
 Rationale:
@@ -102,10 +102,11 @@ Rationale:
 - rescheduling maps to Temporal Schedule update
 - cancellation maps to Temporal Schedule delete or pause plus product state update
 - the system avoids long-sleeping Workflows for future work
+- a dedicated Schedule per one-time task keeps reconciliation direct because each product `Schedule` maps to one Temporal Schedule reference
 
 ### 3.3 Recurring Work
 
-Recurring tasks should use Temporal Schedules.
+Recurring tasks use Temporal Schedules. As with deferred one-time work, Temporal is the sole scheduling system; long-sleeping Workflows must not be used as ad-hoc recurring schedulers.
 
 Model:
 
@@ -119,7 +120,7 @@ Rules:
 - Pause and resume use Temporal Schedule pause and unpause operations.
 - Updating the recurrence updates both PostgreSQL schedule truth and the linked Temporal Schedule.
 - Canceling the recurring series cancels future Temporal Schedule actions without deleting historical runs.
-- `Skip This Occurrence` is represented by `OccurrenceOverride`; it must prevent or no-op the corresponding run without redefining the whole recurring Temporal Schedule.
+- `Skip This Occurrence` is represented by `OccurrenceOverride`; the corresponding Workflow may still start, but its first persistence Activity must detect the override and complete as a no-op without invoking the executor.
 
 ## 4. Temporal Identity
 
@@ -151,13 +152,19 @@ Use this pattern when a recurring Temporal Schedule starts a Workflow before the
 vesperaflow.occurrence.{schedule_id}.{occurrence_key}
 ```
 
-`occurrence_key` is a stable key for the scheduled occurrence, such as the planned fire time normalized to UTC.
+`occurrence_key` is the canonical form of the scheduled occurrence's planned fire time. It is defined as:
+
+- the planned fire instant in UTC
+- formatted as ISO 8601 basic notation with second precision and a trailing `Z`, using only digits and the characters `T` and `Z` (for example `20260429T010000Z`)
+- no colons, no dashes, no fractional seconds, no timezone offsets other than `Z`
+
+This format is frozen for the lifetime of a Temporal Schedule. Changing the format after any Workflow has started would produce conflicting Workflow IDs for the same occurrence and is forbidden without a migration plan.
 
 Rules:
 
 - Retrying or rescheduling a failed one-time task creates a new `Run` and therefore a new Workflow ID.
 - Reusing a Workflow ID for a different run is forbidden.
-- Duplicate start attempts for the same `run_id` or occurrence key must collapse to, or conflict with, the existing Workflow execution instead of creating duplicate provider calls.
+- Duplicate start attempts for the same `run_id` or occurrence key must collapse to, or conflict with, the existing Workflow execution instead of creating duplicate executor invocations.
 - The first persistence Activity in a schedule-fired recurring Workflow must create or load exactly one `Run` for the `(schedule_id, occurrence_key)` pair.
 - If the selected Temporal Schedule implementation cannot provide unique Workflow IDs per occurrence, the system must pre-materialize occurrence Runs and start Workflows by `run_id` instead.
 
@@ -192,21 +199,43 @@ Rules:
 - State transitions must enforce the domain model state machine.
 - Activity results should return the persisted state needed by the Workflow; the Workflow should not inspect the database directly.
 
-### 5.2 Provider Activities
+### 5.2 Executor Activities
 
-Provider Activities call LLM or agent providers.
+Executor Activities delegate AI execution to an external coding-agent runtime invoked from a Temporal Activity through its official SDK. The executor SDK is imported into the Worker process and driven directly from the Activity. VesperaFlow does not call LLM APIs from Workflow or Activity code. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
+
+Supported executor:
+
+- `claude-code` via the Claude Agent SDK
+
+`codex`, `opencode`, and CLI subprocess invocation are post-MVP candidates.
 
 Candidate Activities:
 
-- `execute_provider_run`
-- `cancel_provider_run` if the provider supports external cancellation
+- `execute_agent_run` — invoke the executor, wait for terminal outcome, return normalized result
+- `cancel_agent_run` — cancel the in-flight executor and wait for it to settle
 
-Rules:
+General rules:
 
-- Provider Activities must use an idempotency key when the provider supports one.
-- The default provider idempotency key is `run_id`.
-- Blocking provider clients should be implemented as synchronous Activities executed by a Worker with a `ThreadPoolExecutor`.
-- Async Activities are acceptable only when the provider client is fully non-blocking.
+- The default idempotency key for an executor invocation is `run_id`; it is used to name the run's working directory and any on-disk artifacts, so a retried Activity attempt resumes or overwrites the same working directory deterministically.
+- Each attempt of `execute_agent_run` must reuse or recreate the same `run_id`-scoped working directory; attempts must not be directed to ephemeral temp paths that disappear between retries.
+- Activity timeouts must be large enough to accommodate long-running coding-agent sessions; use `heartbeat_timeout` with regular heartbeats while the executor is active.
+- After Activity cancellation propagates to the executor, the Activity must not retry.
+- Terminal outcomes are normalized: a successful SDK return maps to `completed`; SDK exceptions map to `failed` with a `failure_reason` category derived from the SDK error type; cancellations map to `canceled`.
+
+SDK integration rules:
+
+- SDK-based Executor Activities are async Activities that `await` the SDK's entrypoint; they run on the Worker's async event loop.
+- Activity cancellation is propagated into the SDK through the SDK's native cancellation token, context cancellation, or `asyncio.CancelledError` as the SDK documents.
+- The SDK instance is constructed inside the Activity, not at module import time; Activity retries must not reuse a stale SDK client across attempts.
+- The adapter must not rely on SDK internals beyond the stable documented API; coupling to internal types is forbidden.
+
+Secrets handling rules for Executor Activities:
+
+- VesperaFlow does not pass LLM provider credentials to the executor; the executor SDK is expected to be authenticated independently by the user before invocation
+- the Worker process environment is the minimum necessary for the SDK to locate its credential source; VesperaFlow must not read, copy, or log those credentials
+- Workflow inputs, Activity inputs, and Activity return values must not contain credential material
+- structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
+- rotating an executor's provider credential is a user-side operation that does not require rewriting any existing Workflow history
 
 ### 5.3 Schedule Reconciliation Activities
 
@@ -234,11 +263,11 @@ This queue may run:
 
 - `TaskRunWorkflow`
 - persistence Activities
-- provider Activities
+- executor Activities
 
 ### 6.2 Split Queue Path
 
-If provider calls become blocking, slow, or resource-heavy, split into:
+If executor invocations become blocking, slow, or resource-heavy, split into:
 
 ```text
 vesperaflow-workflows
@@ -248,8 +277,8 @@ vesperaflow-activities
 Rules after splitting:
 
 - Workflow Workers register Workflow types only.
-- Activity Workers register persistence and provider Activities.
-- Provider Activity concurrency is tuned independently from Workflow task execution.
+- Activity Workers register persistence and executor Activities.
+- Executor Activity concurrency is tuned independently from Workflow task execution.
 
 ### 6.3 Worker Processes
 
@@ -284,16 +313,16 @@ Recommended defaults:
 - retry: enabled for transient database failures
 - non-retryable: validation errors, invalid state transitions, malformed payloads
 
-### 7.2 Provider Activity Policy
+### 7.2 Executor Activity Policy
 
 Recommended defaults:
 
-- `schedule_to_close_timeout`: end-to-end cap for provider execution
-- `start_to_close_timeout`: provider-specific bounded attempt duration
-- retry: enabled only when duplicate execution is safe or provider idempotency is available
-- non-retryable: user input validation errors, unsupported provider request, provider authentication/configuration errors
+- `schedule_to_close_timeout`: end-to-end cap for a single executor invocation
+- `start_to_close_timeout`: executor-specific bounded attempt duration
+- retry: enabled only when duplicate execution is safe; default executor idempotency is keyed by `run_id` and the run's working directory
+- non-retryable: user input validation errors, unknown executor, missing or unauthenticated executor SDK, unsupported executor version, inaccessible run working directory
 
-Long-running provider Activities should use heartbeat timeout and call `activity.heartbeat()` when progress or cancellation responsiveness matters.
+Long-running Executor Activities should use heartbeat timeout and call `activity.heartbeat()` while the executor is active to keep cancellation responsive.
 
 ### 7.3 Workflow Failure Policy
 
@@ -370,7 +399,13 @@ Required reconciliation cases:
 - Workflow started but run state remains `queued`
 - run terminal Activity succeeded but the API or UI missed the update
 
-Initial MVP may handle reconciliation manually or through admin/dev tooling, but the state model must not make reconciliation impossible.
+MVP reconciliation is manual or admin/dev-tooling driven. Automatic background reconciliation is post-MVP because command-path rollback and explicit divergence records are sufficient for a single-user local release.
+
+Command-path failure rules:
+
+- if a mutating API command cannot mirror its PostgreSQL write to the corresponding Temporal Schedule or Workflow command, the API must roll the PostgreSQL write back and return `execution_unavailable`
+- if rollback itself fails, the backend must persist a reconciliation record marking the PostgreSQL row as `divergent` and surface the divergence in admin tooling; the user-facing API still returns `execution_unavailable`
+- read endpoints must remain available during divergence; they return the last authoritative PostgreSQL state
 
 ## 10. Payloads And Determinism
 
@@ -378,11 +413,12 @@ Workflow input payloads should be stable versioned data models.
 
 Rules:
 
-- Avoid passing large provider outputs through Workflow history.
-- Store large results in PostgreSQL or provider-specific storage and keep summaries or references in Workflow payloads.
+- Avoid passing large executor outputs through Workflow history.
+- Store large results in PostgreSQL, or in the run's on-disk working directory referenced by `result_artifact_ref`, and keep short summaries in Workflow payloads.
+- Workflow inputs and outputs must not carry executor credentials, since VesperaFlow does not handle them in the first place.
 - Use the same data converter for every Temporal client and Worker that touches VesperaFlow payloads.
 - If Pydantic v2 models are used for payloads, prefer the Temporal Pydantic data converter consistently.
-- Workflow modules must avoid top-level side effects, network calls, disk I/O, randomness, threads, subprocesses, and mutable global state changes.
+- Workflow modules must avoid top-level side effects, network calls, disk I/O, randomness, threads, and mutable global state changes.
 
 ## 11. Versioning And Deployment
 
@@ -395,7 +431,14 @@ Rules:
 - Preserve replay compatibility for existing Workflow histories.
 - Keep Workflow, Activity, task queue, Schedule ID, Workflow ID, and payload model names stable unless intentionally versioned.
 
-API-only and Activity-only changes are lower risk, but provider Activity changes must still preserve idempotency and retry semantics.
+API-only and Activity-only changes are lower risk, but Executor Activity changes must still preserve idempotency and retry semantics.
+
+Claude Agent SDK compatibility policy:
+
+- The dependency lockfile is the source of truth for the supported SDK major version.
+- The adapter fails preflight when the installed SDK is below the locked minimum or outside the supported major version.
+- Newer patch or minor versions within the supported major version may run, but the adapter should emit a warning until that version is validated.
+- Unknown newer major versions fail closed because SDK event, cancellation, and result semantics may have changed.
 
 ## 12. Testing And Verification
 
@@ -415,10 +458,3 @@ Operational verification:
 - Worker shutdown is graceful
 - local `docker compose` can run API, PostgreSQL, Temporal, and Worker together
 - developer logs can trace from `task_id` to `schedule_id` to `run_id` to Temporal reference
-
-## 13. Open Questions
-
-- Should one-time tasks continue using Temporal Schedules after MVP, or move to a different delayed-start pattern if operational overhead is too high?
-- Should recurring `Skip This Occurrence` prevent the Workflow start, or allow a started Workflow to no-op after checking an occurrence override?
-- How much provider result detail should be stored in PostgreSQL versus provider-specific artifact storage?
-- When should reconciliation become an automatic background process rather than developer/admin tooling?
