@@ -3,6 +3,7 @@ title: "VesperaFlow System Architecture"
 status: draft
 version: "1.0"
 aligned_requirements: "docs/requirements.md"
+aligned_temporal_architecture: "docs/temporal-architecture.md"
 ---
 
 # VesperaFlow System Architecture
@@ -25,6 +26,7 @@ It does not define:
 - detailed UI copy or interaction mockups
 - full API payload schemas
 - implementation task breakdown
+- Temporal-specific Workflow, Activity, Worker, and retry/timeout design, which is defined in `docs/temporal-architecture.md`
 
 ## 2. Scope Alignment
 
@@ -84,7 +86,126 @@ Task planning, scheduling, and run tracking should remain stable even if the und
 
 The initial design should favor a small number of clear domain concepts over a generalized orchestration platform.
 
-## 4. System Context
+## 4. Technical Selection
+
+This section records the current implementation-oriented architecture choices that best fit the MVP domain model and expected near-term evolution.
+
+### 4.1 Frontend
+
+Recommended selection:
+
+- `Vue 3`
+- `Tailwind CSS`
+
+Rationale:
+
+- the product is an authenticated planning and operations interface rather than an SEO-first content surface
+- the primary UI complexity is view switching, task composition, filtering, and detail inspection across calendar, kanban, recurring todo, and history
+- Vue provides a clear component model for these interaction-heavy surfaces
+- Tailwind CSS supports fast MVP iteration, but should still be constrained by shared design tokens and reusable UI primitives
+
+Implementation note:
+
+- domain and workflow rules must remain backend-owned; frontend state should stay focused on presentation, form interaction, and user-driven filtering
+
+### 4.2 Backend API
+
+Recommended selection:
+
+- `FastAPI`
+
+Rationale:
+
+- the backend is primarily a typed product API for task, schedule, run, template, and read-model management
+- FastAPI fits schema validation, explicit request and response contracts, and local-first MVP development speed
+- Python keeps the API layer aligned with the selected Temporal SDK and reduces cross-language workflow boundaries
+
+Implementation note:
+
+- route handlers should stay thin; domain services should own lifecycle rules, projection logic, and workflow-triggering behavior
+
+### 4.3 Primary Data Store
+
+Recommended selection:
+
+- `PostgreSQL`
+
+Rationale:
+
+- the MVP domain is strongly relational, especially across `Task`, `Schedule`, `Run`, `Template`, and `OccurrenceOverride`
+- calendar, history, recurring todo, and task detail all rely on filtering, joining, sorting, and integrity constraints
+- PostgreSQL is a better fit than document-oriented storage for preserving product truth and supporting stable read models
+
+Architectural rule:
+
+- PostgreSQL remains the product system of record for user-facing domain state and read-model projections
+
+### 4.4 Durable Execution and Scheduling
+
+Recommended selection:
+
+- `Temporal.io`
+- `Temporal Python SDK`
+
+Rationale:
+
+- durable execution is a core product capability rather than a peripheral background job
+- the system must support future scheduled work, recurring runs, retries, execution continuity, and long-running orchestration
+- Temporal is expected to be the primary workflow engine beyond MVP, so adopting it now avoids a later architecture pivot in the core execution path
+
+Architectural rule:
+
+- Temporal is the execution orchestration layer, not the system of record
+- workflow progress, retries, timers, and durable execution state may live in Temporal
+- product-visible truth for tasks, schedules, runs, and history remains persisted in PostgreSQL through backend-owned synchronization
+- recurring scheduling should prefer Temporal Schedules over Temporal Cron Jobs
+
+### 4.5 Temporal Alignment Rules
+
+Temporal should be modeled as a durable orchestration system rather than a generic background queue.
+
+High-level rules:
+
+- Workflows coordinate durable execution, waiting, cancellation, retries, and state transitions
+- Activities own external I/O, database writes, LLM provider calls, and other side effects
+- Temporal Schedules should back recurring execution and may also back one-time deferred execution for MVP consistency
+- PostgreSQL remains authoritative for product-facing tasks, schedules, runs, and read models
+- FastAPI remains the public command boundary and must not host the main Worker runtime
+- Workflow code changes require a Temporal-safe rollout path and replay verification
+
+Detailed Temporal implementation architecture is defined separately in `docs/temporal-architecture.md`, including Workflow types, Activity groups, task queues, Worker topology, Temporal identifiers, retry/timeout policy, idempotency, and replay testing.
+
+### 4.6 Realtime Updates
+
+Current decision:
+
+- realtime updates are explicitly out of scope for MVP
+
+Rationale:
+
+- the primary MVP value is reliable deferred execution and later review, not live collaborative or streaming supervision
+- manual refresh and normal polling-based reads are sufficient for the current scope
+
+Future note:
+
+- the backend may later expose SSE or WebSocket streams, but current architecture should not depend on a subscription model
+
+### 4.7 Deployment Position
+
+Current decision:
+
+- production deployment architecture is deferred
+
+Working assumption:
+
+- local development and service composition should remain compatible with `docker compose`
+
+Rationale:
+
+- the selected stack already implies multiple runtime concerns, including web UI, API, PostgreSQL, Temporal services, and worker processes
+- even without finalizing production topology, the architecture should preserve clean service boundaries and container-friendly startup assumptions
+
+## 5. System Context
 
 At a high level, the system consists of four layers:
 
@@ -114,9 +235,9 @@ AI Executor Adapter(s)
 LLM / Agent Provider
 ```
 
-## 5. Logical Components
+## 6. Logical Components
 
-### 5.1 Web UI
+### 6.1 Web UI
 
 The UI is responsible for user-facing planning and review workflows.
 
@@ -137,7 +258,7 @@ The UI should not own:
 - execution state transitions
 - provider-specific orchestration rules
 
-### 5.2 Application Backend
+### 6.2 Application Backend
 
 The backend is the system of record for product semantics.
 
@@ -145,7 +266,7 @@ Primary responsibilities:
 
 - validate user intent
 - persist tasks, templates, schedules, and runs
-- translate task definitions into executable jobs
+- translate task definitions into Temporal-facing execution commands
 - synchronize user-visible state with execution state
 - expose read and write interfaces to the UI
 
@@ -158,21 +279,35 @@ The backend is the place where product rules live, such as:
 - how recurring tasks are represented in the recurring todo view
 - how history entries are projected from run records
 - how recurring task lifecycle remains separate from recurring run outcomes
+- how PostgreSQL records and Temporal resources stay synchronized
 
-### 5.3 Scheduling / Durable Execution Layer
+The backend should own:
+
+- Temporal Schedule creation, update, pause, resume, trigger, and delete commands for recurring tasks
+- Workflow start and control commands for one-time or in-flight execution
+- translation between product ids and Temporal ids or handles
+
+### 6.3 Scheduling / Durable Execution Layer
 
 This layer is responsible for time-based triggering and reliable progression of execution.
 
 Primary responsibilities:
 
+- host Temporal Schedules for recurring execution timing
 - wake jobs at scheduled times
 - preserve execution continuity across restarts
 - track workflow progress
 - support retries or terminal failure states where needed
 
+Temporal-specific responsibilities:
+
+- maintain durable Workflow execution history
+- deliver Signals, Updates, and Queries to the correct Workflow when used
+- provide Schedule lifecycle operations without redefining product semantics
+
 This layer should not be treated as the product domain model. It supports execution durability, but product state naming and UX semantics remain owned by the backend.
 
-### 5.4 AI Executor Adapter
+### 6.4 AI Executor Adapter
 
 This component converts a planned task into a provider-specific execution request.
 
@@ -185,7 +320,7 @@ Primary responsibilities:
 
 By isolating executor logic, the system avoids coupling task planning to a single provider.
 
-### 5.5 Local Data Store
+### 6.5 Local Data Store
 
 The local store persists product-facing state that should remain queryable independent of execution history internals.
 
@@ -200,11 +335,11 @@ Primary responsibilities:
 
 The local store should preserve the information required to render product views even if the underlying execution system changes later.
 
-## 6. Domain Model
+## 7. Domain Model
 
 Some early discussions use terms such as `schedule`, `run`, and `vibe`. In the formal architecture, the core domain should be normalized into a smaller set of stable concepts.
 
-### 6.1 Core Entities
+### 7.1 Core Entities
 
 #### Task
 
@@ -260,7 +395,7 @@ Key attributes:
 - default execution settings
 - created / updated timestamps
 
-### 6.2 Supporting Concepts
+### 7.2 Supporting Concepts
 
 #### Task Mode
 
@@ -301,32 +436,34 @@ Recurring tasks should be exposed through a separate todo-style management view 
 - active versus paused state
 - latest run outcome summary
 
-## 7. Primary Flows
+## 8. Primary Flows
 
-### 7.1 One-Time Deferred Task Flow
+### 8.1 One-Time Deferred Task Flow
 
 ```text
 User creates task
   -> Backend validates and stores task
   -> Backend creates single-run schedule
-  -> Scheduler triggers execution at planned time
-  -> Executor runs provider job
-  -> Backend records run outcome
+  -> Backend starts or arranges the Temporal execution path
+  -> Temporal Workflow waits until planned time or is started for due execution
+  -> Workflow invokes Activities for provider work and persistence side effects
+  -> Backend-owned records are synchronized from execution progress
   -> UI surfaces result in calendar / kanban / detail view
 ```
 
-### 7.2 Recurring Task Flow
+### 8.2 Recurring Task Flow
 
 ```text
 User creates recurring task
   -> Backend stores task and recurrence rule
-  -> Scheduler materializes each due run
-  -> Executor performs run
-  -> Backend appends run history
+  -> Backend creates or updates a linked Temporal Schedule
+  -> Temporal Schedule starts each due Workflow run
+  -> Workflow executes Activities for provider work and persistence side effects
+  -> Backend appends run history and updates recurring read models
   -> UI shows future occurrences and past outcomes
 ```
 
-### 7.3 Template Reuse Flow
+### 8.3 Template Reuse Flow
 
 ```text
 User creates or saves template
@@ -336,7 +473,7 @@ User creates or saves template
   -> New task becomes independently editable
 ```
 
-### 7.4 Calendar Flow
+### 8.4 Calendar Flow
 
 ```text
 UI requests upcoming scheduled work
@@ -345,7 +482,7 @@ UI requests upcoming scheduled work
   -> User opens an item for details or editing
 ```
 
-### 7.5 Kanban Flow
+### 8.5 Kanban Flow
 
 ```text
 UI requests one-time work grouped by execution state
@@ -354,7 +491,7 @@ UI requests one-time work grouped by execution state
   -> User opens a card for details or action
 ```
 
-### 7.6 Recurring Todo Flow
+### 8.6 Recurring Todo Flow
 
 ```text
 UI requests recurring tasks
@@ -364,7 +501,7 @@ UI requests recurring tasks
   -> User opens an item to inspect, pause, resume, or edit recurrence
 ```
 
-### 7.7 History Flow
+### 8.7 History Flow
 
 ```text
 UI requests history view
@@ -373,7 +510,7 @@ UI requests history view
   -> User opens an item to inspect related task detail
 ```
 
-## 8. State Ownership
+## 9. State Ownership
 
 One of the key SA tasks is making ownership explicit.
 
@@ -405,7 +542,7 @@ One of the key SA tasks is making ownership explicit.
 - model-specific logs or session details
 - provider-specific token accounting where available
 
-## 9. Data Boundaries
+## 10. Data Boundaries
 
 ### 9.1 Product Store Versus Execution Store
 
@@ -430,7 +567,7 @@ Typical synchronization points:
 - run failed
 - run canceled
 
-## 10. Read Models for Core Views
+## 11. Read Models for Core Views
 
 The current product direction strongly implies three primary operational views and one task creation surface. These should be reflected in architecture as explicit read models.
 
@@ -504,7 +641,7 @@ Required fields:
 - recent run list
 - current editable actions
 
-## 11. API Surface Areas
+## 12. API Surface Areas
 
 Formal payload design belongs in a separate API specification, but the architecture should define responsibility boundaries.
 
@@ -604,7 +741,8 @@ These topics should be tracked as ADRs rather than remaining implicit:
 This architecture document should be followed by:
 
 1. `docs/domain-model.md`
-2. `docs/functional-spec.md`
-3. `docs/api-spec.md`
-4. `docs/ux-spec.md`
-5. `docs/adr/001-local-first.md`
+2. `docs/temporal-architecture.md`
+3. `docs/functional-spec.md`
+4. `docs/api-spec.md`
+5. `docs/ux-spec.md`
+6. `docs/adr/001-local-first.md`

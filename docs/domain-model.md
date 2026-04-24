@@ -106,6 +106,7 @@ Fields:
 - `recurrence_rule` nullable
 - `next_run_at` nullable
 - `last_materialized_at` nullable
+- `external_schedule_ref` nullable
 - `created_at`
 - `updated_at`
 

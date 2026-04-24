@@ -29,6 +29,7 @@ It does not cover:
 - internal service-to-service contracts
 - storage schema
 - provider-specific execution payloads
+- realtime push interfaces, which are out of scope for MVP
 
 ## 2. API Style
 
@@ -184,6 +185,7 @@ Read endpoints may support:
   "recurrence_rule": null,
   "next_run_at": "2026-04-24T23:30:00+08:00",
   "last_materialized_at": null,
+  "external_schedule_ref": "vesperaflow.schedule.sch_123",
   "created_at": "2026-04-24T09:00:00+08:00",
   "updated_at": "2026-04-24T09:00:00+08:00"
 }
@@ -873,36 +875,9 @@ Behavior:
 - is a derived read model built from `Run` plus task metadata
 - preserves historical visibility even if the parent task or template is later archived
 
-## 16. Live Update Endpoint
+## 16. State-Dependent Action Matrix
 
-### 16.1 Execution Event Stream
-
-`GET /api/v1/streams/runs`
-
-Transport:
-
-- WebSocket or Server-Sent Events
-
-Purpose:
-
-- push execution state changes to active clients
-
-Event shape:
-
-```json
-{
-  "event_type": "run.updated",
-  "task_id": "task_123",
-  "run_id": "run_123",
-  "run_status": "running",
-  "task_status": "running",
-  "occurred_at": "2026-04-24T23:31:00+08:00"
-}
-```
-
-## 17. State-Dependent Action Matrix
-
-### 17.1 Task Actions
+### 16.1 Task Actions
 
 | State | Allowed Actions |
 |-------|-----------------|
@@ -914,7 +889,7 @@ Event shape:
 | `completed` one-time | inspect, duplicate, archive |
 | `canceled` | inspect, duplicate where supported, archive |
 
-### 17.2 Template Actions
+### 16.2 Template Actions
 
 | State | Allowed Actions |
 |-------|-----------------|
@@ -926,30 +901,30 @@ Recurring run failure note:
 - a recurring task with a failed latest run remains `scheduled` or `paused` at the task level
 - failure is exposed through run resources, history view, and recurring todo `latest_run_outcome`
 
-## 18. Validation Rules
+## 17. Validation Rules
 
-### 18.1 Date and Time
+### 17.1 Date and Time
 
 - all scheduled times must be timezone-aware timestamps
 - one-time `planned_at` must be in the future at the time of request
 - `from` must be earlier than `to`
 
-### 18.2 Mode and Schedule Consistency
+### 17.2 Mode and Schedule Consistency
 
 - `execution_mode = one_time` requires `schedule_type = single_run`
 - `execution_mode = recurring` requires `schedule_type = recurring_rule`
 
-### 18.3 Recurring Scope
+### 17.3 Recurring Scope
 
 - `this_occurrence_only` must not mutate the recurrence rule
 - `this_and_future` must not mutate completed past occurrences or finished runs
 
-### 18.4 Template Integrity
+### 17.4 Template Integrity
 
 - archiving a template must not break task detail for historical tasks
 - task creation from template must copy task content rather than reference mutable template fields directly
 
-## 19. HTTP Status Codes
+## 18. HTTP Status Codes
 
 - `200 OK` for successful reads and updates
 - `201 Created` for successful creates
@@ -959,9 +934,8 @@ Recurring run failure note:
 - `422 Unprocessable Entity` for semantically invalid fields
 - `500 Internal Server Error` for unexpected failures
 
-## 20. Open API Questions
+## 19. Open API Questions
 
 - Should direct drag-reschedule in calendar call the same schedule patch endpoint or a dedicated convenience endpoint?
 - Should recurring occurrence edits support instruction overrides in MVP, or time-only overrides?
 - Should task detail return all recent runs inline or page them through a separate endpoint once history grows?
-- Should live updates use WebSocket only, or offer SSE as a simpler local-first default?
