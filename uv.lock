@@ -1,0 +1,63 @@
+version = 1
+revision = 3
+requires-python = ">=3.13"
+
+[manifest]
+members = [
+    "vesperaflow",
+    "vesperaflow-api",
+    "vesperaflow-core",
+    "vesperaflow-store",
+    "vesperaflow-worker",
+]
+
+[[package]]
+name = "vesperaflow"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "vesperaflow-api"
+version = "0.1.0"
+source = { editable = "apps/api" }
+dependencies = [
+    { name = "vesperaflow-core" },
+    { name = "vesperaflow-store" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vesperaflow-core", editable = "packages/core" },
+    { name = "vesperaflow-store", editable = "packages/store" },
+]
+
+[[package]]
+name = "vesperaflow-core"
+version = "0.1.0"
+source = { editable = "packages/core" }
+
+[[package]]
+name = "vesperaflow-store"
+version = "0.1.0"
+source = { editable = "packages/store" }
+dependencies = [
+    { name = "vesperaflow-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vesperaflow-core", editable = "packages/core" }]
+
+[[package]]
+name = "vesperaflow-worker"
+version = "0.1.0"
+source = { editable = "apps/worker" }
+dependencies = [
+    { name = "vesperaflow-core" },
+    { name = "vesperaflow-store" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vesperaflow-core", editable = "packages/core" },
+    { name = "vesperaflow-store", editable = "packages/store" },
+]

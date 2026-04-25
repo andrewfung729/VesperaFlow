@@ -1,0 +1,2 @@
+"""API settings placeholder."""
+
