@@ -6,6 +6,17 @@ version: "1.0"
 
 # Product Requirements Document
 
+## Executive Summary
+
+VesperaFlow lets an individual plan AI work now and execute it later through
+one-time and recurring schedules. The MVP focuses on separating planning from
+execution, preserving visible task/schedule/run history, and making off-hours
+AI work reliable without building custom automations.
+
+Primary users are subscription-constrained AI power users, busy solo operators,
+and experiment-heavy AI tinkerers. The product value is time-aware workflow
+control, not stronger model inference.
+
 ## Validation Checklist
 
 ### CRITICAL GATES (Must Pass)
