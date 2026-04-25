@@ -73,6 +73,7 @@ MVP supports one integration mode at the adapter layer:
 Supported executor for MVP:
 
 - `claude-code` — Anthropic's Claude Code, via the Claude Agent SDK
+- `debug_printer` — local runtime simulator for end-to-end workflow testing
 
 `codex`, `opencode`, and CLI subprocess integrations are post-MVP candidates. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
 
@@ -84,12 +85,12 @@ Supported executor for MVP:
 
 Executor and integration-mode selection:
 
-- MVP has a single install-level default executor: `claude_code`
-- templates may optionally declare a default executor, but in MVP the only valid resolved value is `claude_code`
+- MVP supports install-level defaults of `claude_code` or `debug_printer`
+- templates may optionally declare a default executor; valid resolved values are `claude_code` and `debug_printer`
 - the domain model stores the resolved executor on `Task.executor` for traceability and future multi-executor support
 - integration mode is not configurable in MVP; SDK is the only supported mode
 - the configured default is recorded in environment configuration, not in the database
-- when additional executors are added after MVP, executor selection should remain default-driven first; per-template defaults are the next extension point, and per-task UI switching should wait until there is a demonstrated user need
+- per-task UI switching is available for choosing between the supported MVP executors
 - CLI subprocess integration is deferred and should be introduced only if an executor cannot provide a stable SDK or if process isolation becomes a concrete requirement
 - the Claude Agent SDK dependency lockfile is the source of truth for the supported SDK major version; the adapter fails below the locked minimum or outside the supported major, warns on unvalidated newer minor or patch versions, and fails closed on unknown newer major versions
 - one-time deferred tasks use one dedicated Temporal Schedule per product `Schedule`; VesperaFlow does not use a shared dispatcher Schedule for MVP

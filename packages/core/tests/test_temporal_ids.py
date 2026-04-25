@@ -18,4 +18,3 @@ def test_workflow_id_for_occurrence_uses_schedule_id_and_occurrence_key() -> Non
         workflow_id_for_occurrence("sch_123", "20260429T010000Z")
         == "vesperaflow.occurrence.sch_123.20260429T010000Z"
     )
-

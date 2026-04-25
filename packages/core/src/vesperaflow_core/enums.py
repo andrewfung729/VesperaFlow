@@ -13,6 +13,7 @@ class ExecutionMode(StrEnum):
 
 class ExecutorName(StrEnum):
     CLAUDE_CODE = "claude_code"
+    DEBUG_PRINTER = "debug_printer"
 
 
 class ScheduleType(StrEnum):
@@ -45,4 +46,3 @@ class RunStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELED = "canceled"
-

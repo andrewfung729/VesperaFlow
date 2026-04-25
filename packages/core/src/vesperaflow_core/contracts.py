@@ -1,39 +1,43 @@
 """Shared workflow and activity payload contracts.
 
-These are intentionally stdlib-only for the initial scaffold. Introduce Pydantic
-here only after the dependency policy is settled, and keep Temporal payloads
-version-conscious.
+All contracts use Pydantic v2 for runtime validation, serialization, and
+version-conscious schema evolution across Temporal boundaries.
 """
 
-from dataclasses import dataclass
 from datetime import datetime
+from typing import ClassVar
+
+from pydantic import BaseModel, ConfigDict
 
 from .enums import ExecutorName, RunStatus
 
 
-@dataclass(frozen=True, slots=True)
-class ExecutionSnapshot:
+class ExecutionSnapshot(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
     run_id: str
     task_id: str
-    schedule_id: str | None
+    schedule_id: str | None = None
     executor: ExecutorName
     instruction_source: str
     planned_start_at: datetime
     working_directory: str
 
 
-@dataclass(frozen=True, slots=True)
-class TaskRunInput:
-    run_id: str | None
+class TaskRunInput(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    run_id: str | None = None
     task_id: str
-    schedule_id: str | None
+    schedule_id: str | None = None
     planned_start_at: datetime
-    occurrence_key: str | None
+    occurrence_key: str | None = None
     execution_snapshot: ExecutionSnapshot
 
 
-@dataclass(frozen=True, slots=True)
-class ExecutorOutcome:
+class ExecutorOutcome(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
     terminal_status: RunStatus
     result_summary: str | None = None
     result_artifact_ref: str | None = None

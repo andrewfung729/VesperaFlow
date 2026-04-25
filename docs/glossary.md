@@ -66,6 +66,7 @@ An external coding-agent runtime that performs the AI work for a task. VesperaFl
 Supported executor for MVP:
 
 - `claude-code` — Anthropic's Claude Code, via the Claude Agent SDK
+- `debug_printer` — local runtime simulator for end-to-end workflow testing
 
 `codex`, `opencode`, and CLI subprocess integration are post-MVP candidates.
 

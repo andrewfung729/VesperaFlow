@@ -205,8 +205,9 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 `executor` identifies the resolved coding-agent runtime that will perform this task's runs. MVP supports:
 
 - `claude_code` — Claude Agent SDK
+- `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
-Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex`, `opencode`, CLI subprocess execution, and per-task executor switching are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor SDK performs the AI work. See `docs/adr/002-execution-engine-choice.md`.
+Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex`, `opencode`, and CLI subprocess execution are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
 
 ### 5.3 Schedule Object
 
@@ -459,7 +460,7 @@ Validation:
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
 - `schedule.schedule_type` must match `execution_mode`
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
-- `executor`, if provided, must be `claude_code`; if omitted the template default or install default is used
+- `executor`, if provided, must be `claude_code` or `debug_printer`; if omitted the template default or install default is used
 - if the resolved executor SDK is not importable, authenticated, configured, or able to access the run workspace, the endpoint returns a `409` executor preflight error
 
 ### 7.2 List Tasks

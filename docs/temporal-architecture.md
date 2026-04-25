@@ -206,6 +206,7 @@ Executor Activities delegate AI execution to an external coding-agent runtime in
 Supported executor:
 
 - `claude-code` via the Claude Agent SDK
+- `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
 
 `codex`, `opencode`, and CLI subprocess invocation are post-MVP candidates.
 

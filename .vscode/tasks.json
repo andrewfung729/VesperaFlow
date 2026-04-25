@@ -1,33 +1,26 @@
 {
   "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "alembicMessage",
+      "type": "promptString",
+      "description": "Migration message",
+      "default": "auto"
+    }
+  ],
   "tasks": [
     {
       "label": "dev: all",
       "dependsOrder": "parallel",
-      "dependsOn": ["dev: temporal", "dev: api", "dev: worker", "dev: web"],
+      "dependsOn": ["dev: api", "dev: worker", "dev: web"],
       "problemMatcher": []
-    },
-    {
-      "label": "dev: temporal",
-      "type": "shell",
-      "command": "temporal server start-dev --ui-port 8233 --port 7233 --namespace default",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "isBackground": true,
-      "problemMatcher": [],
-      "presentation": {
-        "group": "dev",
-        "panel": "dedicated",
-        "reveal": "always"
-      }
     },
     {
       "label": "dev: api",
       "type": "shell",
-      "command": "uv run --package vesperaflow-api vesperaflow-api",
+      "command": "uv run uvicorn vesperaflow_api.app:create_app --factory --host 0.0.0.0 --port 8000 --reload",
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder}/apps/api"
       },
       "isBackground": true,
       "problemMatcher": [],
@@ -40,9 +33,9 @@
     {
       "label": "dev: worker",
       "type": "shell",
-      "command": "uv run --package vesperaflow-worker vesperaflow-worker",
+      "command": "uv run vesperaflow-worker",
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder}/apps/worker"
       },
       "isBackground": true,
       "problemMatcher": [],
@@ -63,6 +56,48 @@
       "problemMatcher": [],
       "presentation": {
         "group": "dev",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "db: migrate",
+      "type": "shell",
+      "command": "uv run alembic upgrade head",
+      "options": {
+        "cwd": "${workspaceFolder}/packages/store"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "group": "db",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "db: revision",
+      "type": "shell",
+      "command": "uv run alembic revision --autogenerate -m \"${input:alembicMessage}\"",
+      "options": {
+        "cwd": "${workspaceFolder}/packages/store"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "group": "db",
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "db: downgrade",
+      "type": "shell",
+      "command": "uv run alembic downgrade -1",
+      "options": {
+        "cwd": "${workspaceFolder}/packages/store"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "group": "db",
         "panel": "dedicated",
         "reveal": "always"
       }

@@ -59,7 +59,7 @@ Fields:
 - `default_task_title`
 - `default_execution_mode`
 - `default_schedule_config`
-- `default_executor` nullable enum: `claude_code`; when null, tasks created from the template use the install-level default executor
+- `default_executor` nullable enum: `claude_code`, `debug_printer`; when null, tasks created from the template use the install-level default executor
 - `version` monotonically increasing integer, used for optimistic concurrency
 - `created_at`
 - `updated_at`
@@ -84,7 +84,7 @@ Fields:
 - `execution_mode` enum: `one_time`, `recurring`
 - `task_status` enum, **derived** from schedule and latest run (see §4.4)
 - `template_id` nullable
-- `executor` enum: `claude_code`; resolved from the install-level default or optional template default at task creation time
+- `executor` enum: `claude_code`, `debug_printer`; resolved from the install-level default or optional template default at task creation time
 - `version` monotonically increasing integer, used for optimistic concurrency
 - `created_at`
 - `updated_at`
@@ -95,7 +95,7 @@ Notes:
 - A task is the primary product object a user creates, reviews, edits, and inspects.
 - A task may exist before any run has happened.
 - A task may be created from a template but becomes independently editable after creation.
-- MVP supports only `claude_code`; `codex`, `opencode`, and per-task executor switching are post-MVP.
+- MVP supports `claude_code` and `debug_printer`; `codex` and `opencode` are post-MVP.
 
 ### 3.3 Schedule
 

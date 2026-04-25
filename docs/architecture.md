@@ -347,13 +347,14 @@ By isolating executor logic behind a stable adapter, the system avoids coupling 
 
 #### Supported Executors
 
-MVP supports one executor:
+MVP supports these executors:
 
 - `claude-code` — Anthropic's Claude Code, invoked via the Claude Agent SDK
+- `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
 `codex` and `opencode` are post-MVP candidates. CLI subprocess execution is also post-MVP and is not a fallback path for the first release.
 
-Executor selection is resolved at task creation time from the install-level default or an optional template default. MVP stores the resolved executor on the task so every run can be traced to the executor that was intended when the task was created. Per-task executor switching in the UI and multi-executor installs are reserved for a later iteration.
+Executor selection is resolved at task creation time from the install-level default, an optional template default, or the task creation request. MVP stores the resolved executor on the task so every run can be traced to the executor that was intended when the task was created.
 
 #### Adapter Interface Shape
 
@@ -821,7 +822,7 @@ These items were previously open and are now architectural decisions for MVP:
 - A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
-- MVP resolves the executor from the install-level default or optional template default and stores the resolved value on `Task.executor`. The only supported MVP value is `claude_code`; per-task executor selection and additional executors are post-MVP.
+- MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code` and `debug_printer`.
 - The adapter performs a preflight check for SDK availability, supported version, authentication/configuration, and working-directory access. Failures are mapped to actionable product errors such as `executor_sdk_not_importable`, `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
