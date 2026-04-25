@@ -1,13 +1,14 @@
 """Worker runtime settings."""
 
 from functools import lru_cache
+from typing import ClassVar
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class WorkerSettings(BaseSettings):
-    model_config = SettingsConfigDict(
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_prefix="VESPERAFLOW_",
         env_file=".env",
         extra="ignore",
@@ -20,6 +21,8 @@ class WorkerSettings(BaseSettings):
     temporal_namespace: str = "default"
     task_queue: str = "vesperaflow-default"
     executor_adapter: str = "auto"
+    claude_max_turns: int = 20
+    claude_max_budget_usd: float | None = None
 
 
 @lru_cache

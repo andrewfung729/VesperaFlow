@@ -52,6 +52,11 @@ describe('App', () => {
 
     await wrapper.get('input[type="text"]').setValue('Created Task')
     await wrapper.get('textarea').setValue('Run this later.')
+    const targetInput = wrapper
+      .findAll('input[type="text"]')
+      .find((input) => input.attributes('placeholder') === '/Users/you/project')
+    if (!targetInput) throw new Error('Expected target directory input to render')
+    await targetInput.setValue('/tmp')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -129,6 +134,7 @@ function stubFetch() {
           task_id: 'task-1',
           title: 'Created Task',
           instruction_source: 'Run this later.',
+          target_working_directory: '/tmp',
           execution_mode: 'one_time',
           task_status: 'scheduled',
           executor: 'debug_printer',
@@ -148,6 +154,7 @@ function stubFetch() {
           task_id: 'task-1',
           title: 'Detailed Task',
           instruction_source: 'Run this later.',
+          target_working_directory: '/tmp',
           execution_mode: 'one_time',
           task_status: 'scheduled',
           executor: 'debug_printer',

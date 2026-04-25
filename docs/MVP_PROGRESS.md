@@ -42,7 +42,7 @@ implemented.
 
 | MVP Feature | Status | Current Implementation Evidence | Remaining Gap |
 |---|---|---|---|
-| Create one-time deferred task | Partial | API route and repository create a task, single-run schedule, and planned run; web composer creates one-time tasks; Temporal schedule client creates one-time Temporal Schedules. | Need full end-to-end verification with local Temporal/Postgres/Worker and clear success path for the selected production executor. |
+| Create one-time deferred task | Partial | API route and repository create a task, single-run schedule, planned run, target working directory, and Temporal Schedule; web composer creates one-time tasks. | Need full end-to-end verification with local Temporal/Postgres/Worker and clear success path for the selected production executor. |
 | Create recurring scheduled task | Not Started | Core enums and status derivation recognize `recurring`; docs define schedule semantics. API currently rejects recurring create requests as unsupported. | Add recurring models/repositories, API commands, Temporal Schedule creation, pause/resume/update, occurrence materialization, and tests. |
 | Review planned and completed work | Partial | Task detail returns task, schedule, latest run, and runs; one-time board groups tasks by status. | Add dedicated history read model, richer completed/failed run review, recurring context, and filters. |
 | Separate planning from execution | Partial | One-time task creation stores intent and a planned run before execution; reschedule/cancel are supported before run start. | Extend same lifecycle guarantees to recurring tasks, templates, and calendar edits; add stronger integration coverage. |
@@ -51,7 +51,7 @@ implemented.
 | One-time kanban view | Partial | `/api/v1/views/kanban` and `KanbanBoardView.vue` exist for one-time tasks. | Add stronger filtering/empty/error behavior, hide or filter canceled items per UX rules, and broaden web/API tests. |
 | Recurring todo view | Not Started | UX and functional specs define the surface. | Add recurring task read model, pause/resume commands, latest-run context, web view, and tests. |
 | History view for run review | Not Started | Runs are persisted and task detail lists runs for one task. | Add cross-task history endpoint, filters by outcome/mode, web history view, and tests. |
-| Executor integration | Partial | Worker workflow, activities, executor router, debug printer, fake executor tests, and Claude Code adapter boundary exist. | Implement hardened Claude Agent SDK invocation, preflight checks, workspace handling, and failure classification. |
+| Executor integration | Partial | Worker workflow, activities, executor router, debug printer, and Claude Agent SDK invocation exist; Claude output artifacts and expected SDK failure classifications are covered with mocked Worker tests. | Add live Claude Code smoke coverage, stronger preflight UX, and full-stack execution verification. |
 | Temporal production hardening | Partial | One-time Temporal Schedule client and Worker workflow exist; repo check enforces Temporal as sole scheduler. | Add replay tests, full-stack integration tests, recurring schedule behavior, idempotency coverage, and rollout/versioning discipline. |
 
 ## Layer Readiness
@@ -60,10 +60,10 @@ implemented.
 |---|---|---|
 | Domain docs | Done | Requirements, functional spec, domain model, API spec, UX spec, architecture, Temporal architecture, and ADRs exist. |
 | Core domain package | Partial | Shared enums, contracts, IDs, validation, and status derivation exist; recurring/template/calendar behavior needs more domain helpers as features land. |
-| Store | Partial | Task, schedule, and run tables exist for the vertical slice; template and occurrence override tables are absent from the implementation. |
+| Store | Partial | Task, schedule, and run tables exist for the vertical slice, including target working directory; template and occurrence override tables are absent from the implementation. |
 | API | Partial | One-time task, schedule, run, detail, and kanban endpoints exist; recurring, templates, calendar, recurring todo, and history endpoints are absent. |
-| Worker | Partial | TaskRunWorkflow and activities exist for single-run execution; recurring schedule behavior and Claude SDK execution are not complete. |
-| Web | Partial | Composer, one-time board, and task detail exist; templates, calendar, recurring todo, and history views are absent. |
+| Worker | Partial | TaskRunWorkflow, activities, debug printer, Claude Agent SDK executor, and import-hygiene regression coverage exist for single-run execution; recurring schedule behavior, replay tests, and live executor integration tests are not complete. |
+| Web | Partial | Composer, one-time board, task detail, executor selection, and target directory capture exist; templates, calendar, recurring todo, and history views are absent. |
 | Verification | Partial | Unit/API/web smoke checks exist; full local stack, replay, and deeper E2E coverage are missing. |
 
 ## Recommended Build Order
@@ -79,15 +79,15 @@ implemented.
    Temporal Schedule creation.
 5. Add recurring todo and calendar read models after recurring storage and
    schedule behavior are stable.
-6. Harden Claude Code executor invocation after the debug-printer path is
-   proven through the full stack.
+6. Add a live Claude Code smoke test and preflight UX once the local stack
+   success path is stable.
 
 ## Current Blockers And Risks
 
 - The MVP scope in docs is broader than the implemented product surface; new
   agents should not assume every specified endpoint or view exists.
-- The Claude Code executor currently records the boundary but does not perform
-  full SDK execution.
+- Claude Agent SDK execution is implemented, but live authenticated CLI coverage
+  is still missing from automated verification.
 - Recurring schedule semantics are well documented but not implemented in the
   store/API/worker/web layers.
 - Without generated schema/API snapshots under `docs/generated/`, agents still

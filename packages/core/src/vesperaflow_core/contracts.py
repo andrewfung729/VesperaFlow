@@ -22,6 +22,7 @@ class ExecutionSnapshot(BaseModel):
     instruction_source: str
     planned_start_at: datetime
     working_directory: str
+    target_working_directory: str | None = None
 
 
 class TaskRunInput(BaseModel):

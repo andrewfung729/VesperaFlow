@@ -85,6 +85,8 @@ class TemporalScheduler:
     ) -> Schedule:
         if schedule.planned_at is None:
             raise ValueError("single-run schedule requires planned_at")
+        if task.target_working_directory is None:
+            raise ValueError("task requires target_working_directory")
         planned_at = schedule.planned_at.astimezone(UTC)
         workflow_input = TaskRunInput(
             run_id=run.run_id,
@@ -102,6 +104,7 @@ class TemporalScheduler:
                 working_directory=str(
                     Path(self._settings.run_workspace_root) / run.run_id
                 ),
+                target_working_directory=task.target_working_directory,
             ),
         )
         return Schedule(

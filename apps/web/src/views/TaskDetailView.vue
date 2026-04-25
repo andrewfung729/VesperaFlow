@@ -92,6 +92,9 @@ async function submitCancel() {
             {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
           </p>
           <p class="m-0 text-sm text-slate-500">Executor: {{ selectedDetail.task.executor }}</p>
+          <p class="m-0 text-sm text-slate-500">
+            Target: {{ selectedDetail.task.target_working_directory ?? 'none' }}
+          </p>
           <pre
             class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 [overflow-wrap:anywhere]"
           >{{ selectedDetail.task.instruction_source }}</pre>

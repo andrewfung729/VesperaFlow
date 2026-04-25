@@ -15,6 +15,7 @@ describe('api', () => {
     await createTask({
       title: 'Debug task',
       instruction_source: 'Print the snapshot.',
+      target_working_directory: '/tmp',
       executor: 'debug_printer',
       planned_at: '2026-04-25T10:00:00+08:00',
     })
@@ -23,5 +24,6 @@ describe('api', () => {
     expect(init).toBeDefined()
     const body = JSON.parse(String(init?.body))
     expect(body.executor).toBe('debug_printer')
+    expect(body.target_working_directory).toBe('/tmp')
   })
 })

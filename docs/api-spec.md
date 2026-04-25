@@ -116,10 +116,10 @@ All non-2xx responses return:
 - `unsupported_operation` — operation is not supported by the current execution mode
 - `execution_unavailable` — the command was rejected because the execution layer could not be reached or rolled back safely; the PostgreSQL write was rolled back and the client should retry
 - `executor_not_available` — the requested or default executor is not available on the host; surfaced on task creation and on run start
-- `executor_sdk_not_importable` — the configured executor SDK cannot be imported by the Worker
+- `executor_sdk_not_importable` — the configured executor SDK is missing from the Worker environment during deployment or preflight
 - `executor_not_authenticated` — the configured executor SDK is installed but not authenticated or not configured for use
 - `executor_misconfigured` — the configured executor SDK is present but fails adapter preflight checks
-- `executor_workspace_unavailable` — the run working directory cannot be created or accessed
+- `executor_workspace_unavailable` — the run artifact directory or selected target working directory cannot be created or accessed
 - `internal_error` — unexpected server failure
 
 ### 4.4 Pagination
@@ -189,6 +189,7 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
   "title": "Nightly Deep Research",
   "instruction_source": "Research competitor pricing changes...",
   "normalized_instruction": null,
+  "target_working_directory": "/Users/you/project",
   "execution_mode": "one_time",
   "task_status": "scheduled",
   "template_id": "tpl_123",
@@ -208,6 +209,8 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
 Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex`, `opencode`, and CLI subprocess execution are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
+
+`target_working_directory` is the absolute existing directory where the executor performs user work. It is distinct from the per-run artifact workspace used by VesperaFlow to store summaries and transcripts.
 
 ### 5.3 Schedule Object
 
@@ -413,6 +416,7 @@ Request for one-time:
 {
   "title": "Overnight Research",
   "instruction_source": "Research funding announcements...",
+  "target_working_directory": "/Users/you/project",
   "execution_mode": "one_time",
   "template_id": null,
   "schedule": {
@@ -455,13 +459,15 @@ Validation:
 
 - `title` is required
 - `instruction_source` is required
+- `target_working_directory` is required, absolute, and must refer to an existing directory on the API/Worker host
 - `execution_mode` is required
 - one-time tasks must provide `planned_at` with a timezone offset in the future
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
 - `schedule.schedule_type` must match `execution_mode`
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
 - `executor`, if provided, must be `claude_code` or `debug_printer`; if omitted the template default or install default is used
-- if the resolved executor SDK is not importable, authenticated, configured, or able to access the run workspace, the endpoint returns a `409` executor preflight error
+- if the target working directory is invalid, the endpoint returns `422 validation_error`
+- SDK import, authentication, and runtime configuration failures are reported by the Worker on run start
 
 ### 7.2 List Tasks
 

@@ -81,6 +81,7 @@ Fields:
 - `title`
 - `instruction_source`
 - `normalized_instruction` nullable
+- `target_working_directory` nullable string for legacy rows; new executable tasks require an absolute existing directory where the selected executor performs user work
 - `execution_mode` enum: `one_time`, `recurring`
 - `task_status` enum, **derived** from schedule and latest run (see §4.4)
 - `template_id` nullable
@@ -96,6 +97,7 @@ Notes:
 - A task may exist before any run has happened.
 - A task may be created from a template but becomes independently editable after creation.
 - MVP supports `claude_code` and `debug_printer`; `codex` and `opencode` are post-MVP.
+- The target working directory is distinct from a run artifact directory. The target is the user project being changed; the run artifact directory is VesperaFlow-owned storage for executor output.
 
 ### 3.3 Schedule
 

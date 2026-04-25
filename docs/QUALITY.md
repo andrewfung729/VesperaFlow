@@ -24,7 +24,7 @@ Update this file when any of these change:
 | `packages/core` | B | Small, dependency-light domain layer with tests. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, but generated schema docs are missing. |
 | `apps/api` | C | Vertical slice is tested with a fake scheduler; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; replay and Temporal environment tests are not in place yet. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene is covered, but replay and Temporal environment tests are not in place yet. |
 | `apps/web` | C | Vue surface has unit and Playwright scaffolding; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation and active-plan structure are now present. |
@@ -58,3 +58,5 @@ Update this file when any of these change:
   the initial agent-first bootstrap.
 - 2026-04-25: Added `docs/MVP_PROGRESS.md` to track current implementation
   status against the documented MVP.
+- 2026-04-25: Isolated Worker startup and executor factory imports so Workflow
+  sandbox import paths do not load the Claude Agent SDK.

@@ -364,7 +364,7 @@ The adapter is invoked from executor Activities with a small, stable SDK-oriente
 - Output: a normalized execution outcome containing terminal status (`completed` / `failed`), a short `result_summary`, optional `result_artifact_ref` (path to files written inside the working directory), a terminal-outcome code from the SDK, and a `failure_reason` category when not successful
 - Cancellation: the adapter must translate an Activity cancellation into the executor's native SDK cancellation mechanism and must not retry after a cancellation signal
 
-Executor-specific details (SDK client construction, SDK event framing, file layout conventions, and the executor's own authentication with its upstream provider) remain inside the adapter and are not exposed to the Workflow.
+Executor-specific details (SDK client construction, SDK event framing, file layout conventions, and the executor's own authentication with its upstream provider) remain inside the adapter and are not exposed to the Workflow. Concrete executor modules may import their SDK at module top level, but those modules must only be reachable from Worker startup or Activity-only paths; package roots, Workflow modules, and lightweight facades must stay SDK-free for Temporal sandbox imports.
 
 #### Non-Goals
 

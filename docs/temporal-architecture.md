@@ -201,7 +201,7 @@ Rules:
 
 ### 5.2 Executor Activities
 
-Executor Activities delegate AI execution to an external coding-agent runtime invoked from a Temporal Activity through its official SDK. The executor SDK is imported into the Worker process and driven directly from the Activity. VesperaFlow does not call LLM APIs from Workflow or Activity code. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
+Executor Activities delegate AI execution to an external coding-agent runtime invoked from a Temporal Activity through its official SDK. The executor SDK is imported into the Worker process through Worker startup or Activity-only modules and driven directly from the Activity. It must not be imported through package root, Workflow modules, or any Workflow-reachable facade. VesperaFlow does not call LLM APIs from Workflow or Activity code. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
 
 Supported executor:
 
@@ -227,7 +227,8 @@ SDK integration rules:
 
 - SDK-based Executor Activities are async Activities that `await` the SDK's entrypoint; they run on the Worker's async event loop.
 - Activity cancellation is propagated into the SDK through the SDK's native cancellation token, context cancellation, or `asyncio.CancelledError` as the SDK documents.
-- The SDK instance is constructed inside the Activity, not at module import time; Activity retries must not reuse a stale SDK client across attempts.
+- Concrete executor modules may import their SDK dependencies at module top level, but only if those modules are unreachable from Workflow imports.
+- The SDK client instance is constructed inside the Activity execution path, not at module import time; Activity retries must not reuse a stale SDK client across attempts.
 - The adapter must not rely on SDK internals beyond the stable documented API; coupling to internal types is forbidden.
 
 Secrets handling rules for Executor Activities:

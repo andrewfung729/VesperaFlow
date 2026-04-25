@@ -31,10 +31,12 @@ async def test_create_one_time_task_creates_task_schedule_and_planned_run(
             session,
             title="Research",
             instruction_source="Find updates",
+            target_working_directory="/tmp",
             planned_at=planned_at,
         )
 
     assert bundle.task.task_status is TaskStatus.SCHEDULED
+    assert bundle.task.target_working_directory == "/tmp"
     assert bundle.schedule.schedule_status is ScheduleStatus.ACTIVE
     assert bundle.run.run_status is RunStatus.PLANNED
 
@@ -48,6 +50,7 @@ async def test_create_one_time_task_persists_debug_printer_executor(
             session,
             title="Research",
             instruction_source="Find updates",
+            target_working_directory="/tmp",
             planned_at=datetime.now(UTC) + timedelta(hours=1),
             executor=ExecutorName.DEBUG_PRINTER,
         )
@@ -65,6 +68,7 @@ async def test_reschedule_requires_observed_schedule_version(
             session,
             title="Research",
             instruction_source="Find updates",
+            target_working_directory="/tmp",
             planned_at=datetime.now(UTC) + timedelta(hours=1),
         )
 
@@ -87,6 +91,7 @@ async def test_terminal_run_updates_task_and_schedule_state(
             session,
             title="Research",
             instruction_source="Find updates",
+            target_working_directory="/tmp",
             planned_at=datetime.now(UTC) + timedelta(hours=1),
         )
         await repo.mark_run_queued(session, run_id=bundle.run.run_id)

@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import pytest
 import pytest_asyncio
@@ -61,10 +61,16 @@ async def test_create_task_success(client: AsyncClient) -> None:
     response = await client.post("/api/v1/tasks", json=_create_payload())
 
     assert response.status_code == 201
-    body = response.json()["data"]
-    assert body["task"]["task_status"] == "scheduled"
-    assert body["schedule"]["external_schedule_ref"].startswith("vesperaflow.schedule.")
-    assert body["run"]["run_status"] == "planned"
+    body = cast(dict[str, object], response.json()["data"])
+    task = cast(dict[str, object], body["task"])
+    assert cast(str, task["task_status"]) == "scheduled"
+    assert cast(str, task["target_working_directory"]) == str(Path.cwd())
+    schedule = cast(dict[str, object], body["schedule"])
+    assert cast(str, schedule["external_schedule_ref"]).startswith(
+        "vesperaflow.schedule."
+    )
+    run = cast(dict[str, object], body["run"])
+    assert cast(str, run["run_status"]) == "planned"
 
 
 @pytest.mark.asyncio
@@ -94,6 +100,19 @@ async def test_create_task_rejects_past_time(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_task_rejects_relative_target_directory(
+    client: AsyncClient,
+) -> None:
+    payload = _create_payload()
+    payload["target_working_directory"] = "relative/path"
+
+    response = await client.post("/api/v1/tasks", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
 async def test_create_task_rejects_recurring_as_unsupported(
     client: AsyncClient,
 ) -> None:
@@ -109,17 +128,20 @@ async def test_create_task_rejects_recurring_as_unsupported(
 @pytest.mark.asyncio
 async def test_cancel_task_updates_kanban(client: AsyncClient) -> None:
     created = await client.post("/api/v1/tasks", json=_create_payload())
-    data = created.json()["data"]
+    data = cast(dict[str, object], created.json()["data"])
+    task = cast(dict[str, object], data["task"])
+    schedule = cast(dict[str, object], data["schedule"])
 
     canceled = await client.post(
-        f"/api/v1/tasks/{data['task']['task_id']}/schedule/cancel",
-        json={"version": data["schedule"]["version"]},
+        f"/api/v1/tasks/{cast(str, task['task_id'])}/schedule/cancel",
+        json={"version": cast(str, schedule["version"])},
     )
     board = await client.get("/api/v1/views/kanban")
 
     assert canceled.status_code == 200
     assert board.status_code == 200
-    assert len(board.json()["data"]["columns"]["canceled"]) == 1
+    columns = cast(dict[str, object], board.json()["data"]["columns"])
+    assert len(cast(list[object], columns["canceled"])) == 1
 
 
 class _SchedulePayload(TypedDict):
@@ -130,6 +152,7 @@ class _SchedulePayload(TypedDict):
 class _CreatePayload(TypedDict):
     title: str
     instruction_source: str
+    target_working_directory: str
     execution_mode: str
     executor: str
     schedule: _SchedulePayload
@@ -139,6 +162,7 @@ def _create_payload() -> _CreatePayload:
     return {
         "title": "Overnight research",
         "instruction_source": "Find relevant updates.",
+        "target_working_directory": str(Path.cwd()),
         "execution_mode": "one_time",
         "executor": "claude_code",
         "schedule": {

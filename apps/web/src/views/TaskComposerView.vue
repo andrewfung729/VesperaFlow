@@ -14,6 +14,7 @@ const executorOptions: Array<{ label: string; value: ExecutorName }> = [
 
 const title = ref('')
 const instructions = ref('')
+const targetWorkingDirectory = ref('')
 const executor = ref<ExecutorName>('debug_printer')
 const plannedAt = ref(defaultDateTimeLocal())
 const isSaving = ref(false)
@@ -24,12 +25,14 @@ const canSave = computed(
   () =>
     title.value.trim().length > 0 &&
     instructions.value.trim().length > 0 &&
+    targetWorkingDirectory.value.trim().startsWith('/') &&
     isFutureLocal(plannedAt.value),
 )
 
 async function submitTask() {
   if (!canSave.value) {
-    errorMessage.value = 'Add a title, instructions, and a future execution time.'
+    errorMessage.value =
+      'Add a title, instructions, an absolute target directory, and a future execution time.'
     return
   }
   isSaving.value = true
@@ -38,11 +41,13 @@ async function submitTask() {
     const created = await createTask({
       title: title.value.trim(),
       instruction_source: instructions.value.trim(),
+      target_working_directory: targetWorkingDirectory.value.trim(),
       executor: executor.value,
       planned_at: toIsoWithOffset(plannedAt.value),
     })
     title.value = ''
     instructions.value = ''
+    targetWorkingDirectory.value = ''
     plannedAt.value = defaultDateTimeLocal()
     await router.push({ name: 'task-detail', params: { taskId: created.task.task_id } })
   } catch (error) {
@@ -94,6 +99,15 @@ async function submitTask() {
             v-model="plannedAt"
             class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="datetime-local"
+          />
+        </label>
+        <label class="grid gap-2 font-semibold text-slate-700">
+          <span>Target Directory</span>
+          <input
+            v-model="targetWorkingDirectory"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            type="text"
+            placeholder="/Users/you/project"
           />
         </label>
         <label class="grid gap-2 font-semibold text-slate-700">

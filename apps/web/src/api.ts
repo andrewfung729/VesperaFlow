@@ -14,6 +14,7 @@ export interface Task {
   task_id: string
   title: string
   instruction_source: string
+  target_working_directory: string | null
   execution_mode: 'one_time'
   task_status: TaskStatus
   executor: ExecutorName
@@ -81,6 +82,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api
 export async function createTask(payload: {
   title: string
   instruction_source: string
+  target_working_directory: string
   executor: ExecutorName
   planned_at: string
 }): Promise<TaskBundle> {
@@ -89,6 +91,7 @@ export async function createTask(payload: {
     body: JSON.stringify({
       title: payload.title,
       instruction_source: payload.instruction_source,
+      target_working_directory: payload.target_working_directory,
       execution_mode: 'one_time',
       executor: payload.executor,
       schedule: {

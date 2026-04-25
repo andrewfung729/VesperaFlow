@@ -44,6 +44,7 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     instruction_source: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_instruction: Mapped[str | None] = mapped_column(Text)
+    target_working_directory: Mapped[str | None] = mapped_column(Text)
     execution_mode: Mapped[ExecutionMode] = enum_column(ExecutionMode)
     task_status: Mapped[TaskStatus] = enum_column(TaskStatus)
     template_id: Mapped[str | None] = mapped_column(String(48))

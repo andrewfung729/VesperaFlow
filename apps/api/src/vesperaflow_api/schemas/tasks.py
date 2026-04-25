@@ -45,6 +45,7 @@ class ScheduleCreate(BaseModel):
 class TaskCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     instruction_source: str = Field(min_length=1)
+    target_working_directory: str = Field(min_length=1)
     execution_mode: ExecutionMode
     template_id: str | None = None
     executor: ExecutorName | None = None
@@ -71,6 +72,7 @@ class TaskResponse(BaseModel):
     title: str
     instruction_source: str
     normalized_instruction: str | None
+    target_working_directory: str | None
     execution_mode: ExecutionMode
     task_status: TaskStatus
     template_id: str | None

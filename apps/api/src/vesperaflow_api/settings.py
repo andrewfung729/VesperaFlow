@@ -23,6 +23,8 @@ class ApiSettings(BaseSettings):
     run_workspace_root: str = "/tmp/vesperaflow-runs"
     default_executor: ExecutorName = ExecutorName.CLAUDE_CODE
     cors_origins: list[str] = ["http://localhost:5173"]
+    host: str = "0.0.0.0"
+    port: int = 8000
 
 
 @lru_cache

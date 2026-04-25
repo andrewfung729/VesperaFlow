@@ -1,5 +1,6 @@
 """Task and one-time board routes."""
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -42,11 +43,15 @@ async def create_task(
         raise ValueError(
             "one-time tasks require schedule_type single_run and planned_at"
         )
+    target_working_directory = _require_existing_absolute_directory(
+        payload.target_working_directory
+    )
     async with session.begin():
         bundle = await repo.create_one_time_task(
             session,
             title=payload.title,
             instruction_source=payload.instruction_source,
+            target_working_directory=target_working_directory,
             planned_at=payload.schedule.planned_at,
             template_id=payload.template_id,
             executor=payload.executor or request.app.state.settings.default_executor,
@@ -241,3 +246,14 @@ def _observed_version(body_version: int | None, if_match: str | None) -> int:
     if if_match is None:
         raise ValueError("version is required")
     return int(if_match.strip('"'))
+
+
+def _require_existing_absolute_directory(value: str) -> str:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise ValueError("target_working_directory must be an absolute path")
+    if not path.exists():
+        raise ValueError("target_working_directory does not exist")
+    if not path.is_dir():
+        raise ValueError("target_working_directory must be a directory")
+    return str(path.resolve())
