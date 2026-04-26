@@ -20,7 +20,7 @@
       "type": "shell",
       "command": "uv run vesperaflow-api",
       "options": {
-        "cwd": "${workspaceFolder}/apps/api"
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
       "problemMatcher": [],
@@ -35,7 +35,7 @@
       "type": "shell",
       "command": "uv run vesperaflow-worker",
       "options": {
-        "cwd": "${workspaceFolder}/apps/worker"
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
       "problemMatcher": [],

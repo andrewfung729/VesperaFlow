@@ -1,0 +1,18 @@
+procs:
+  web:
+    shell: "bun run dev"
+    cwd: "apps/web"
+    autostart: true
+    autorestart: false
+
+  api:
+    shell: "uv run vesperaflow-api"
+    cwd: "."
+    autostart: true
+    autorestart: false
+
+  worker:
+    shell: "uv run vesperaflow-worker"
+    cwd: "."
+    autostart: true
+    autorestart: false
