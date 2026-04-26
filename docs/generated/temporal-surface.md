@@ -42,7 +42,7 @@
 
 | Field | Type | Required |
 |---|---|---:|
-| `run_id` | `str` | yes |
+| `run_id` | `str | None` | yes |
 | `task_id` | `str` | yes |
 | `schedule_id` | `str | None` | no |
 | `executor` | `ExecutorName` | yes |
@@ -55,4 +55,6 @@
 
 - One-time API creation creates a Temporal Schedule whose action starts `TaskRunWorkflow`.
 - The product `runs` row is created before Schedule creation and passed to the Workflow by `run_id`.
-- Recurring Temporal Schedules are not implemented yet.
+- Recurring API creation creates a Temporal Schedule whose action starts `TaskRunWorkflow` without a pre-existing `run_id`.
+- The first persistence Activity materializes each recurring occurrence into a product `runs` row idempotently by `(schedule_id, occurrence_key)`.
+- Pause/resume/update/cancel commands mutate both PostgreSQL schedule truth and the matching Temporal Schedule.

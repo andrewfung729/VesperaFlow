@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import Select, func, select
@@ -9,13 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from vesperaflow_core import (
     ExecutionMode,
+    ExecutionSnapshot,
     ExecutorName,
+    MaterializedRun,
     RunStatus,
     ScheduleStatus,
     ScheduleType,
     TaskStatus,
     derive_task_status,
+    next_occurrence_after,
+    occurrence_key_for_datetime,
     require_future_datetime,
+    require_recurring_schedule_consistency,
     require_run_transition,
     require_template_schedule_defaults,
     to_utc,
@@ -34,7 +40,7 @@ def new_id(prefix: str) -> str:
 class TaskBundle:
     task: Task
     schedule: Schedule
-    run: Run
+    run: Run | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +60,19 @@ class HistoryItem:
 @dataclass(frozen=True, slots=True)
 class HistoryPage:
     items: list[HistoryItem]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecurringTodoItem:
+    task: Task
+    schedule: Schedule
+    latest_run: Run | None
+
+
+@dataclass(frozen=True, slots=True)
+class RecurringTodoPage:
+    items: list[RecurringTodoItem]
     total: int
 
 
@@ -118,12 +137,70 @@ async def create_one_time_task(
         result_summary=None,
         failure_reason=None,
         external_execution_ref=None,
+        occurrence_key=None,
         created_at=now,
         updated_at=now,
     )
     session.add_all([task, schedule, run])
     await session.flush()
     return TaskBundle(task=task, schedule=schedule, run=run)
+
+
+async def create_recurring_task(
+    session: AsyncSession,
+    *,
+    title: str,
+    instruction_source: str,
+    target_working_directory: str,
+    recurrence_rule: str,
+    recurrence_timezone: str,
+    template_id: str | None = None,
+    executor: ExecutorName = ExecutorName.CLAUDE_CODE,
+) -> TaskBundle:
+    _require_recurring_schedule(
+        schedule_type=ScheduleType.RECURRING_RULE,
+        recurrence_rule=recurrence_rule,
+        recurrence_timezone=recurrence_timezone,
+    )
+    now = utc_now()
+    next_run_at = next_occurrence_after(
+        recurrence_rule=recurrence_rule,
+        recurrence_timezone=recurrence_timezone,
+        after=now,
+    )
+    task = Task(
+        task_id=new_id("task"),
+        title=title,
+        instruction_source=instruction_source,
+        normalized_instruction=None,
+        target_working_directory=target_working_directory,
+        execution_mode=ExecutionMode.RECURRING,
+        task_status=TaskStatus.SCHEDULED,
+        template_id=template_id,
+        executor=executor,
+        version=1,
+        created_at=now,
+        updated_at=now,
+        archived_at=None,
+    )
+    schedule = Schedule(
+        schedule_id=new_id("sch"),
+        task_id=task.task_id,
+        schedule_type=ScheduleType.RECURRING_RULE,
+        schedule_status=ScheduleStatus.ACTIVE,
+        planned_at=None,
+        recurrence_rule=recurrence_rule,
+        recurrence_timezone=recurrence_timezone,
+        next_run_at=next_run_at,
+        last_materialized_at=None,
+        external_schedule_ref=None,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add_all([task, schedule])
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=None)
 
 
 async def create_template(
@@ -445,6 +522,57 @@ async def list_history(
     )
 
 
+async def list_recurring_todo(
+    session: AsyncSession,
+    *,
+    status: ScheduleStatus | None = None,
+    include_paused: bool = True,
+    limit: int = 100,
+    offset: int = 0,
+) -> RecurringTodoPage:
+    requested_statuses = _recurring_todo_statuses(
+        status=status,
+        include_paused=include_paused,
+    )
+    if not requested_statuses:
+        return RecurringTodoPage(items=[], total=0)
+
+    rows: list[tuple[Task, Schedule]] = []
+    if ScheduleStatus.ACTIVE in requested_statuses:
+        rows.extend(
+            await _list_recurring_todo_rows(
+                session,
+                status=ScheduleStatus.ACTIVE,
+                order_by_next_run=True,
+            )
+        )
+    if ScheduleStatus.PAUSED in requested_statuses:
+        rows.extend(
+            await _list_recurring_todo_rows(
+                session,
+                status=ScheduleStatus.PAUSED,
+                order_by_next_run=False,
+            )
+        )
+
+    paged_rows = rows[offset : offset + limit]
+    latest_runs = await _latest_runs_by_task_id(
+        session,
+        task_ids=[task.task_id for task, _ in paged_rows],
+    )
+    return RecurringTodoPage(
+        items=[
+            RecurringTodoItem(
+                task=task,
+                schedule=schedule,
+                latest_run=latest_runs.get(task.task_id),
+            )
+            for task, schedule in paged_rows
+        ],
+        total=len(rows),
+    )
+
+
 async def get_task_detail(session: AsyncSession, task_id: str) -> TaskDetail:
     task = await get_task(session, task_id)
     schedule = await get_schedule_for_task(session, task_id)
@@ -557,6 +685,214 @@ async def cancel_one_time_task(
     await _recompute_task_status(session, task)
     await session.flush()
     return TaskBundle(task=task, schedule=schedule, run=run)
+
+
+async def update_recurring_task_schedule(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+    recurrence_rule: str,
+    recurrence_timezone: str,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    _require_version(schedule.version, version)
+    _require_active_recurring_task(task, schedule, action="updated")
+    _require_recurring_schedule(
+        schedule_type=ScheduleType.RECURRING_RULE,
+        recurrence_rule=recurrence_rule,
+        recurrence_timezone=recurrence_timezone,
+    )
+
+    now = utc_now()
+    schedule.recurrence_rule = recurrence_rule
+    schedule.recurrence_timezone = recurrence_timezone
+    schedule.next_run_at = (
+        next_occurrence_after(
+            recurrence_rule=recurrence_rule,
+            recurrence_timezone=recurrence_timezone,
+            after=now,
+        )
+        if schedule.schedule_status is ScheduleStatus.ACTIVE
+        else None
+    )
+    schedule.version += 1
+    schedule.updated_at = now
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=None)
+
+
+async def pause_recurring_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    _require_version(schedule.version, version)
+    _require_active_recurring_task(task, schedule, action="paused")
+    if schedule.schedule_status is not ScheduleStatus.ACTIVE:
+        raise InvalidStateTransitionError(
+            "only active recurring schedules can be paused"
+        )
+
+    schedule.schedule_status = ScheduleStatus.PAUSED
+    schedule.next_run_at = None
+    schedule.version += 1
+    schedule.updated_at = utc_now()
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=None)
+
+
+async def resume_recurring_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    _require_version(schedule.version, version)
+    if task.execution_mode is not ExecutionMode.RECURRING:
+        raise InvalidStateTransitionError("only recurring schedules can be resumed")
+    if schedule.schedule_status is not ScheduleStatus.PAUSED:
+        raise InvalidStateTransitionError(
+            "only paused recurring schedules can be resumed"
+        )
+    if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
+        raise InvalidStateTransitionError("recurring schedule is missing recurrence")
+
+    now = utc_now()
+    schedule.schedule_status = ScheduleStatus.ACTIVE
+    schedule.next_run_at = next_occurrence_after(
+        recurrence_rule=schedule.recurrence_rule,
+        recurrence_timezone=schedule.recurrence_timezone,
+        after=now,
+    )
+    schedule.version += 1
+    schedule.updated_at = now
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=None)
+
+
+async def cancel_recurring_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    _require_version(schedule.version, version)
+    if task.execution_mode is not ExecutionMode.RECURRING:
+        raise InvalidStateTransitionError("only recurring schedules can be canceled")
+    if schedule.schedule_status not in {ScheduleStatus.ACTIVE, ScheduleStatus.PAUSED}:
+        raise InvalidStateTransitionError(
+            "only active or paused recurring schedules can be canceled"
+        )
+
+    schedule.schedule_status = ScheduleStatus.CANCELED
+    schedule.next_run_at = None
+    schedule.version += 1
+    schedule.updated_at = utc_now()
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=None)
+
+
+async def materialize_run(
+    session: AsyncSession,
+    *,
+    payload_task_id: str,
+    payload_schedule_id: str | None,
+    payload_run_id: str | None,
+    planned_start_at: datetime,
+    occurrence_key: str | None,
+    workflow_id: str,
+    run_workspace_root: str,
+) -> MaterializedRun:
+    if payload_run_id is not None:
+        run = await get_run(session, payload_run_id)
+        task = await get_task(session, run.task_id)
+        return _materialized_run_response(
+            run=run,
+            task=task,
+            workflow_id=workflow_id,
+            run_workspace_root=run_workspace_root,
+        )
+    if payload_schedule_id is None:
+        raise ValueError("recurring materialization requires schedule_id")
+
+    schedule = await get_schedule(session, payload_schedule_id)
+    if schedule.task_id != payload_task_id:
+        raise InvalidStateTransitionError("schedule does not belong to task")
+    task = await get_task(session, schedule.task_id)
+    if task.execution_mode is not ExecutionMode.RECURRING:
+        raise InvalidStateTransitionError("only recurring schedules materialize runs")
+    if occurrence_key is None:
+        occurrence_key = occurrence_key_for_datetime(planned_start_at)
+    existing = await _get_run_for_occurrence(
+        session,
+        schedule_id=schedule.schedule_id,
+        occurrence_key=occurrence_key,
+    )
+    if existing is not None:
+        return _materialized_run_response(
+            run=existing,
+            task=task,
+            workflow_id=workflow_id,
+            run_workspace_root=run_workspace_root,
+        )
+
+    now = utc_now()
+    run_status = (
+        RunStatus.PLANNED
+        if schedule.schedule_status is ScheduleStatus.ACTIVE
+        else RunStatus.CANCELED
+    )
+    run = Run(
+        run_id=new_id("run"),
+        task_id=task.task_id,
+        schedule_id=schedule.schedule_id,
+        run_status=run_status,
+        planned_start_at=to_utc(planned_start_at),
+        actual_start_at=None,
+        finished_at=now if run_status is RunStatus.CANCELED else None,
+        result_summary=None,
+        failure_reason=None
+        if run_status is RunStatus.PLANNED
+        else "recurring schedule was inactive at materialization",
+        external_execution_ref=workflow_id,
+        occurrence_key=occurrence_key,
+        created_at=now,
+        updated_at=now,
+    )
+    schedule.last_materialized_at = run.planned_start_at
+    if schedule.schedule_status is ScheduleStatus.ACTIVE:
+        if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
+            raise InvalidStateTransitionError(
+                "recurring schedule is missing recurrence"
+            )
+        schedule.next_run_at = next_occurrence_after(
+            recurrence_rule=schedule.recurrence_rule,
+            recurrence_timezone=schedule.recurrence_timezone,
+            after=run.planned_start_at,
+        )
+    schedule.updated_at = now
+    session.add(run)
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return _materialized_run_response(
+        run=run,
+        task=task,
+        workflow_id=workflow_id,
+        run_workspace_root=run_workspace_root,
+    )
 
 
 async def mark_run_queued(
@@ -681,6 +1017,64 @@ async def get_one_time_kanban(session: AsyncSession) -> dict[str, list[TaskDetai
     return board
 
 
+async def _list_recurring_todo_rows(
+    session: AsyncSession,
+    *,
+    status: ScheduleStatus,
+    order_by_next_run: bool,
+) -> list[tuple[Task, Schedule]]:
+    statement = (
+        select(Task, Schedule)
+        .join(Schedule)
+        .where(
+            Task.execution_mode == ExecutionMode.RECURRING,
+            Task.archived_at.is_(None),
+            Schedule.schedule_type == ScheduleType.RECURRING_RULE,
+            Schedule.schedule_status == status,
+        )
+    )
+    if order_by_next_run:
+        statement = statement.order_by(
+            Schedule.next_run_at.asc(),
+            Schedule.updated_at.desc(),
+            Task.task_id.asc(),
+        )
+    else:
+        statement = statement.order_by(Schedule.updated_at.desc(), Task.task_id.asc())
+    return [(task, schedule) for task, schedule in (await session.execute(statement))]
+
+
+def _recurring_todo_statuses(
+    *,
+    status: ScheduleStatus | None,
+    include_paused: bool,
+) -> tuple[ScheduleStatus, ...]:
+    supported = {ScheduleStatus.ACTIVE, ScheduleStatus.PAUSED}
+    if status is not None:
+        return (status,) if status in supported else ()
+    if include_paused:
+        return (ScheduleStatus.ACTIVE, ScheduleStatus.PAUSED)
+    return (ScheduleStatus.ACTIVE,)
+
+
+async def _latest_runs_by_task_id(
+    session: AsyncSession,
+    *,
+    task_ids: list[str],
+) -> dict[str, Run]:
+    if not task_ids:
+        return {}
+    statement = (
+        select(Run)
+        .where(Run.task_id.in_(task_ids))
+        .order_by(Run.task_id.asc(), Run.created_at.desc(), Run.run_id.desc())
+    )
+    latest: dict[str, Run] = {}
+    for run in await session.scalars(statement):
+        latest.setdefault(run.task_id, run)
+    return latest
+
+
 async def _set_run_status(
     session: AsyncSession,
     *,
@@ -715,6 +1109,19 @@ async def _get_planned_run_for_schedule(
     if run is None:
         raise NotFoundError(f"planned run not found for schedule: {schedule_id}")
     return run
+
+
+async def _get_run_for_occurrence(
+    session: AsyncSession,
+    *,
+    schedule_id: str,
+    occurrence_key: str,
+) -> Run | None:
+    statement = select(Run).where(
+        Run.schedule_id == schedule_id,
+        Run.occurrence_key == occurrence_key,
+    )
+    return (await session.scalars(statement)).one_or_none()
 
 
 async def _recompute_task_status_by_id(session: AsyncSession, task_id: str) -> None:
@@ -756,3 +1163,59 @@ def _require_template_defaults(
         )
     except ValueError as exc:
         raise InvalidStateTransitionError(str(exc)) from exc
+
+
+def _require_recurring_schedule(
+    *,
+    schedule_type: ScheduleType,
+    recurrence_rule: str | None,
+    recurrence_timezone: str | None,
+) -> None:
+    try:
+        require_recurring_schedule_consistency(
+            execution_mode=ExecutionMode.RECURRING,
+            schedule_type=schedule_type,
+            recurrence_rule=recurrence_rule,
+            recurrence_timezone=recurrence_timezone,
+        )
+    except ValueError as exc:
+        raise InvalidStateTransitionError(str(exc)) from exc
+
+
+def _require_active_recurring_task(
+    task: Task,
+    schedule: Schedule,
+    *,
+    action: str,
+) -> None:
+    if task.execution_mode is not ExecutionMode.RECURRING:
+        raise InvalidStateTransitionError(f"only recurring schedules can be {action}")
+    if schedule.schedule_type is not ScheduleType.RECURRING_RULE:
+        raise InvalidStateTransitionError(f"only recurring schedules can be {action}")
+    if schedule.schedule_status is ScheduleStatus.CANCELED:
+        raise InvalidStateTransitionError(
+            "canceled recurring schedules cannot be edited"
+        )
+
+
+def _materialized_run_response(
+    *,
+    run: Run,
+    task: Task,
+    workflow_id: str,
+    run_workspace_root: str,
+) -> MaterializedRun:
+    return MaterializedRun(
+        run_id=run.run_id,
+        run_status=run.run_status,
+        execution_snapshot=ExecutionSnapshot(
+            run_id=run.run_id,
+            task_id=task.task_id,
+            schedule_id=run.schedule_id,
+            executor=task.executor,
+            instruction_source=task.instruction_source,
+            planned_start_at=run.planned_start_at,
+            working_directory=str(Path(run_workspace_root) / run.run_id),
+            target_working_directory=task.target_working_directory,
+        ),
+    )

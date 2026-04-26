@@ -48,6 +48,7 @@ export interface Run {
   finished_at: string | null
   result_summary: string | null
   failure_reason: string | null
+  occurrence_key: string | null
 }
 
 export interface TaskBundle {
@@ -89,6 +90,23 @@ export interface HistoryItem {
   failure_reason: string | null
 }
 
+export interface RecurringTodoItem {
+  item_id: string
+  task_id: string
+  title: string
+  recurrence_rule: string
+  recurrence_timezone: string
+  next_run_at: string | null
+  schedule_status: 'active' | 'paused'
+  task_status: TaskStatus
+  schedule_version: number
+  latest_run_id: string | null
+  latest_run_outcome: RunStatus | null
+  latest_run_finished_at: string | null
+  result_summary: string | null
+  failure_reason: string | null
+}
+
 export interface TemplateScheduleConfig {
   schedule_type: 'single_run' | 'recurring_rule'
   planned_at: string | null
@@ -124,27 +142,48 @@ interface ListEnvelope<T> extends Envelope<T[]> {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
-export async function createTask(payload: {
+type CreateTaskPayloadBase = {
   title: string
   instruction_source: string
   target_working_directory: string
   executor: ExecutorName
-  planned_at: string
   template_id?: string | null
-}): Promise<TaskBundle> {
+}
+
+type CreateTaskPayload =
+  | (CreateTaskPayloadBase & {
+      execution_mode?: 'one_time'
+      planned_at: string
+    })
+  | (CreateTaskPayloadBase & {
+      execution_mode: 'recurring'
+      recurrence_rule: string
+      recurrence_timezone: string
+    })
+
+export async function createTask(payload: CreateTaskPayload): Promise<TaskBundle> {
+  const schedule =
+    payload.execution_mode === 'recurring'
+      ? {
+          schedule_type: 'recurring_rule',
+          recurrence_rule: payload.recurrence_rule,
+          recurrence_timezone: payload.recurrence_timezone,
+        }
+      : {
+          schedule_type: 'single_run',
+          planned_at: payload.planned_at,
+        }
+
   return request<TaskBundle>('/tasks', {
     method: 'POST',
     body: JSON.stringify({
       title: payload.title,
       instruction_source: payload.instruction_source,
       target_working_directory: payload.target_working_directory,
-      execution_mode: 'one_time',
+      execution_mode: payload.execution_mode ?? 'one_time',
       executor: payload.executor,
       template_id: payload.template_id ?? null,
-      schedule: {
-        schedule_type: 'single_run',
-        planned_at: payload.planned_at,
-      },
+      schedule,
     }),
   })
 }
@@ -173,6 +212,22 @@ export async function getHistory(params: {
   }
   const suffix = search.size > 0 ? `?${search}` : ''
   return requestList<HistoryItem>(`/views/history${suffix}`)
+}
+
+export async function getRecurringTodo(params: {
+  status?: RecurringTodoItem['schedule_status'] | ''
+  include_paused?: boolean
+  limit?: number
+  offset?: number
+} = {}): Promise<ListEnvelope<RecurringTodoItem>> {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      search.set(key, String(value))
+    }
+  }
+  const suffix = search.size > 0 ? `?${search}` : ''
+  return requestList<RecurringTodoItem>(`/views/recurring-todo${suffix}`)
 }
 
 export async function listTemplates(
@@ -250,8 +305,44 @@ export async function rescheduleTask(
   })
 }
 
+export async function updateRecurringSchedule(
+  taskId: string,
+  version: number,
+  recurrenceRule: string,
+  recurrenceTimezone: string,
+): Promise<TaskBundle> {
+  return request<TaskBundle>(`/tasks/${taskId}/schedule`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      version,
+      recurrence_rule: recurrenceRule,
+      recurrence_timezone: recurrenceTimezone,
+    }),
+  })
+}
+
 export async function cancelTask(taskId: string, version: number): Promise<TaskBundle> {
   return request<TaskBundle>(`/tasks/${taskId}/schedule/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  })
+}
+
+export async function pauseRecurringTask(
+  taskId: string,
+  version: number,
+): Promise<TaskBundle> {
+  return request<TaskBundle>(`/tasks/${taskId}/schedule/pause`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  })
+}
+
+export async function resumeRecurringTask(
+  taskId: string,
+  version: number,
+): Promise<TaskBundle> {
+  return request<TaskBundle>(`/tasks/${taskId}/schedule/resume`, {
     method: 'POST',
     body: JSON.stringify({ version }),
   })

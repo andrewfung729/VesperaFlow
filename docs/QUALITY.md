@@ -21,11 +21,11 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small, dependency-light domain layer with tests, including template default validation. Keep Temporal-import safety explicit. |
-| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, and template archive/copy semantics, including default target directories, are tested. |
-| `apps/api` | C | Vertical slice, history, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene and a completed-path replay test are covered, but recurring schedule behavior is not in place yet. |
-| `apps/web` | C | Vue surface has composer, board, detail, history, and template route coverage; UI behavior coverage is still shallow. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo has a derived active/paused read model, and template archive/copy semantics are tested. |
+| `apps/api` | C | One-time, recurring lifecycle, recurring todo, history, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, and recurring materialization replay tests are covered, but live recurring stack coverage is not in place yet. |
+| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, and template route coverage; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, and a local full-stack runbook are now present. |
 
@@ -33,13 +33,14 @@ Update this file when any of these change:
 
 - [ ] Generated DB schema, API route map, Temporal surface, and dependency graph
       exist, but refresh is manual.
-- [ ] Temporal replay tests cover the completed one-time path, but not failed or
-      canceled representative histories.
+- [ ] Temporal replay tests cover completed one-time and recurring materialized
+      paths, but not failed or canceled representative histories.
 - [ ] Integration tests requiring the full Postgres/Temporal stack are opt-in and
       not yet a CI gate.
 - [ ] Web E2E coverage is still smoke-level.
-- [ ] History is implemented for terminal runs, but recurring run context depends
-      on M3 materialization.
+- [ ] History and recurring todo latest-run context are implemented for
+      materialized recurring runs; calendar-specific recurring context is still
+      pending.
 - [ ] Templates are implemented for direct management and composer prefill; the
       save-as-template shortcut from an existing task is not yet exposed.
 - [ ] No automated PR-opening cleanup loop yet; CI only detects the first set of drift patterns.
@@ -73,6 +74,12 @@ Update this file when any of these change:
 - 2026-04-26: Added the M1 history read model across store/API/web, including
   status and execution-mode filters, selected-run task detail linking, tests,
   and refreshed generated facts.
+- 2026-04-26: Added the M3 recurring lifecycle across store/API/Temporal
+  Scheduler/Worker, including lazy occurrence run materialization and replay
+  coverage.
 - 2026-04-26: Added the M2 template lifecycle across core/store/API/web,
   including archive behavior, copy-on-instantiate semantics, composer prefill,
   tests, and refreshed generated facts.
+- 2026-04-26: Added the M4 recurring todo read model across store/API/web,
+  including active/paused ordering, latest-run context, pause/resume list
+  actions, tests, and refreshed generated API facts.

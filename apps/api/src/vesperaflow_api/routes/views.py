@@ -5,12 +5,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from vesperaflow_core import ExecutionMode, RunStatus
+from vesperaflow_core import ExecutionMode, RunStatus, ScheduleStatus
 from vesperaflow_store import repositories as repo
 
 from ..dependencies import get_session
 from ..schemas.tasks import DataEnvelope, ListEnvelope
-from ..schemas.views import HistoryItemResponse, KanbanBoardResponse, KanbanCardResponse
+from ..schemas.views import (
+    HistoryItemResponse,
+    KanbanBoardResponse,
+    KanbanCardResponse,
+    RecurringTodoItemResponse,
+)
 
 router = APIRouter()
 
@@ -77,4 +82,28 @@ async def get_history(
             for item in history.items
         ],
         meta={"total": history.total},
+    )
+
+
+@router.get("/views/recurring-todo")
+async def get_recurring_todo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status: ScheduleStatus | None = None,
+    include_paused: bool = True,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ListEnvelope:
+    todo = await repo.list_recurring_todo(
+        session,
+        status=status,
+        include_paused=include_paused,
+        limit=limit,
+        offset=offset,
+    )
+    return ListEnvelope(
+        data=[
+            RecurringTodoItemResponse.from_item(item).model_dump()
+            for item in todo.items
+        ],
+        meta={"total": todo.total},
     )

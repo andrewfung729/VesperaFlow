@@ -11,6 +11,7 @@ from vesperaflow_core import (
     ScheduleStatus,
     ScheduleType,
     TaskStatus,
+    occurrence_key_for_datetime,
 )
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
@@ -119,6 +120,197 @@ async def test_terminal_run_updates_task_and_schedule_state(
     assert detail.schedule.schedule_status is ScheduleStatus.COMPLETED
     assert detail.latest_run is not None
     assert detail.latest_run.result_summary == "Done"
+
+
+@pytest.mark.asyncio
+async def test_recurring_lifecycle_and_materialized_run_keeps_parent_stable(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        task_id = bundle.task.task_id
+        schedule_id = bundle.schedule.schedule_id
+        schedule_version = bundle.schedule.version
+        assert bundle.run is None
+        assert bundle.schedule.next_run_at is not None
+
+    planned_start_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
+    occurrence_key = occurrence_key_for_datetime(planned_start_at)
+    async with session.begin():
+        materialized = await repo.materialize_run(
+            session,
+            payload_task_id=task_id,
+            payload_schedule_id=schedule_id,
+            payload_run_id=None,
+            planned_start_at=planned_start_at,
+            occurrence_key=occurrence_key,
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        duplicate = await repo.materialize_run(
+            session,
+            payload_task_id=task_id,
+            payload_schedule_id=schedule_id,
+            payload_run_id=None,
+            planned_start_at=planned_start_at,
+            occurrence_key=occurrence_key,
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        await repo.mark_run_queued(session, run_id=materialized.run_id)
+        await repo.mark_run_running(session, run_id=materialized.run_id)
+        await repo.mark_run_failed(
+            session,
+            run_id=materialized.run_id,
+            failure_reason="Executor failed",
+        )
+
+    detail = await repo.get_task_detail(session, task_id)
+    assert duplicate.run_id == materialized.run_id
+    assert detail.task.task_status is TaskStatus.SCHEDULED
+    assert detail.latest_run is not None
+    assert detail.latest_run.run_status is RunStatus.FAILED
+    assert detail.latest_run.occurrence_key == occurrence_key
+    assert detail.schedule is not None
+    assert detail.schedule.last_materialized_at == planned_start_at
+    assert detail.schedule.next_run_at is not None
+    await session.rollback()
+
+    async with session.begin():
+        paused = await repo.pause_recurring_task(
+            session,
+            task_id=task_id,
+            version=schedule_version,
+        )
+        paused_version = paused.schedule.version
+    assert paused.task.task_status is TaskStatus.PAUSED
+    assert paused.schedule.next_run_at is None
+
+    async with session.begin():
+        resumed = await repo.resume_recurring_task(
+            session,
+            task_id=task_id,
+            version=paused_version,
+        )
+    assert resumed.task.task_status is TaskStatus.SCHEDULED
+    assert resumed.schedule.schedule_status is ScheduleStatus.ACTIVE
+    assert resumed.schedule.next_run_at is not None
+
+
+@pytest.mark.asyncio
+async def test_recurring_todo_lists_active_then_paused_with_latest_outcome(
+    session: AsyncSession,
+) -> None:
+    active_earlier_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
+    active_later_at = datetime(2026, 4, 27, 2, 0, tzinfo=UTC)
+    paused_old_updated_at = datetime(2026, 4, 25, 9, 0, tzinfo=UTC)
+    paused_recent_updated_at = datetime(2026, 4, 25, 10, 0, tzinfo=UTC)
+    async with session.begin():
+        active_later = await repo.create_recurring_task(
+            session,
+            title="Active later",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        active_earlier = await repo.create_recurring_task(
+            session,
+            title="Active earlier",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        paused_old = await repo.create_recurring_task(
+            session,
+            title="Paused old",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        paused_recent = await repo.create_recurring_task(
+            session,
+            title="Paused recent",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=30",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        one_time = await repo.create_one_time_task(
+            session,
+            title="One-time task",
+            instruction_source="Find one-time updates",
+            target_working_directory="/tmp",
+            planned_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+
+        active_later.schedule.next_run_at = active_later_at
+        active_earlier.schedule.next_run_at = active_earlier_at
+        await repo.pause_recurring_task(
+            session,
+            task_id=paused_old.task.task_id,
+            version=paused_old.schedule.version,
+        )
+        paused_old.schedule.updated_at = paused_old_updated_at
+        await repo.pause_recurring_task(
+            session,
+            task_id=paused_recent.task.task_id,
+            version=paused_recent.schedule.version,
+        )
+        paused_recent.schedule.updated_at = paused_recent_updated_at
+
+        materialized = await repo.materialize_run(
+            session,
+            payload_task_id=active_earlier.task.task_id,
+            payload_schedule_id=active_earlier.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=active_earlier_at,
+            occurrence_key=occurrence_key_for_datetime(active_earlier_at),
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        await repo.mark_run_queued(session, run_id=materialized.run_id)
+        await repo.mark_run_running(session, run_id=materialized.run_id)
+        await repo.mark_run_failed(
+            session,
+            run_id=materialized.run_id,
+            failure_reason="Executor failed",
+        )
+        active_earlier.schedule.next_run_at = active_earlier_at
+        assert one_time.task.execution_mode is ExecutionMode.ONE_TIME
+
+    todo = await repo.list_recurring_todo(session)
+    active_only = await repo.list_recurring_todo(session, include_paused=False)
+
+    assert [item.task.title for item in todo.items] == [
+        "Active earlier",
+        "Active later",
+        "Paused recent",
+        "Paused old",
+    ]
+    assert todo.total == 4
+    assert todo.items[0].task.task_status is TaskStatus.SCHEDULED
+    assert todo.items[0].latest_run is not None
+    assert todo.items[0].latest_run.run_status is RunStatus.FAILED
+    assert active_only.total == 2
+    assert [item.schedule.schedule_status for item in active_only.items] == [
+        ScheduleStatus.ACTIVE,
+        ScheduleStatus.ACTIVE,
+    ]
 
 
 @pytest.mark.asyncio

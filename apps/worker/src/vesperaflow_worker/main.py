@@ -38,6 +38,7 @@ async def run_worker() -> None:
             claude_max_turns=settings.claude_max_turns,
             claude_max_budget_usd=settings.claude_max_budget_usd,
         ),
+        run_workspace_root=settings.run_workspace_root,
     )
     worker = Worker(
         client,

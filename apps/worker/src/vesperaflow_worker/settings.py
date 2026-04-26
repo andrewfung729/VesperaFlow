@@ -20,6 +20,7 @@ class WorkerSettings(BaseSettings):
     temporal_address: str = "localhost:7233"
     temporal_namespace: str = "default"
     task_queue: str = "vesperaflow-default"
+    run_workspace_root: str = "/tmp/vesperaflow-runs"
     executor_adapter: str = "auto"
     claude_max_turns: int = 20
     claude_max_budget_usd: float | None = None

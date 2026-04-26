@@ -36,6 +36,13 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink
           class="flex min-h-10 items-center rounded-md px-3 text-sm font-medium text-slate-300 no-underline transition hover:bg-slate-800 hover:text-white"
           active-class="bg-slate-800 text-white"
+          :to="{ name: 'recurring-todo' }"
+        >
+          Recurring Todo
+        </RouterLink>
+        <RouterLink
+          class="flex min-h-10 items-center rounded-md px-3 text-sm font-medium text-slate-300 no-underline transition hover:bg-slate-800 hover:text-white"
+          active-class="bg-slate-800 text-white"
           :to="{ name: 'history' }"
         >
           History

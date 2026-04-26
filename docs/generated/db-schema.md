@@ -19,10 +19,12 @@
 | `result_summary` | `TEXT` | yes | `` |
 | `failure_reason` | `TEXT` | yes | `` |
 | `external_execution_ref` | `VARCHAR(240)` | yes | `` |
+| `occurrence_key` | `VARCHAR(32)` | yes | `` |
 | `created_at` | `DATETIME` | no | `` |
 | `updated_at` | `DATETIME` | no | `` |
 
 - Primary key: `run_id`
+- Unique constraint `uq_runs_schedule_occurrence_key`: `schedule_id`, `occurrence_key`
 - Foreign key: `schedule_id` -> `schedules.schedule_id`
 - Foreign key: `task_id` -> `tasks.task_id`
 - Index `ix_runs_history_status_finished_at`: `run_status`, `finished_at`

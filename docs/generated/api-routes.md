@@ -16,6 +16,8 @@
 | `GET` | `/api/v1/tasks/{task_id}/schedule` | `get_schedule` | `` | `DataEnvelope` |
 | `PATCH` | `/api/v1/tasks/{task_id}/schedule` | `update_schedule` | `ScheduleUpdateRequest` | `DataEnvelope` |
 | `POST` | `/api/v1/tasks/{task_id}/schedule/cancel` | `cancel_schedule` | `VersionedCommand` | `DataEnvelope` |
+| `POST` | `/api/v1/tasks/{task_id}/schedule/pause` | `pause_schedule` | `VersionedCommand` | `DataEnvelope` |
+| `POST` | `/api/v1/tasks/{task_id}/schedule/resume` | `resume_schedule` | `VersionedCommand` | `DataEnvelope` |
 | `GET` | `/api/v1/templates` | `list_templates` | `` | `ListEnvelope` |
 | `POST` | `/api/v1/templates` | `create_template` | `TemplateCreateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/templates/{template_id}` | `get_template` | `` | `DataEnvelope` |
@@ -24,6 +26,7 @@
 | `POST` | `/api/v1/templates/{template_id}/instantiate` | `instantiate_template` | `TemplateInstantiateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/views/history` | `get_history` | `` | `ListEnvelope` |
 | `GET` | `/api/v1/views/kanban` | `get_kanban` | `` | `DataEnvelope` |
+| `GET` | `/api/v1/views/recurring-todo` | `get_recurring_todo` | `` | `ListEnvelope` |
 
 ## Error Envelopes
 

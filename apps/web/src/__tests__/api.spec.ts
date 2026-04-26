@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { archiveTemplate, createTask, createTemplate, getHistory, listTemplates, updateTemplate } from '../api'
+import {
+  archiveTemplate,
+  createTask,
+  createTemplate,
+  getHistory,
+  getRecurringTodo,
+  listTemplates,
+  pauseRecurringTask,
+  resumeRecurringTask,
+  updateRecurringSchedule,
+  updateTemplate,
+} from '../api'
 
 describe('api', () => {
   it('sends the selected executor when creating a task', async () => {
@@ -25,6 +36,40 @@ describe('api', () => {
     const body = JSON.parse(String(init?.body))
     expect(body.executor).toBe('debug_printer')
     expect(body.target_working_directory).toBe('/tmp')
+    expect(body.execution_mode).toBe('one_time')
+    expect(body.schedule).toEqual({
+      schedule_type: 'single_run',
+      planned_at: '2026-04-25T10:00:00+08:00',
+    })
+  })
+
+  it('sends recurrence fields when creating a recurring task', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ data: { task: null, schedule: null, run: null } }), {
+          status: 200,
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createTask({
+      title: 'Daily task',
+      instruction_source: 'Run every day.',
+      target_working_directory: '/tmp',
+      executor: 'debug_printer',
+      execution_mode: 'recurring',
+      recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+      recurrence_timezone: 'Asia/Hong_Kong',
+    })
+
+    const init = fetchMock.mock.calls[0]?.[1]
+    const body = JSON.parse(String(init?.body))
+    expect(body.execution_mode).toBe('recurring')
+    expect(body.schedule).toEqual({
+      schedule_type: 'recurring_rule',
+      recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+      recurrence_timezone: 'Asia/Hong_Kong',
+    })
   })
 
   it('sends history filters as query parameters', async () => {
@@ -46,6 +91,65 @@ describe('api', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/views/history?status=failed&execution_mode=one_time&limit=25'),
       expect.any(Object),
+    )
+  })
+
+  it('sends recurring todo and lifecycle requests', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.includes('/views/recurring-todo')) {
+        return new Response(JSON.stringify({ data: [], meta: { total: 0 } }), {
+          status: 200,
+        })
+      }
+      return new Response(
+        JSON.stringify({
+          data: { task: null, schedule: null, run: null },
+        }),
+        { status: 200 },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const todo = await getRecurringTodo({ include_paused: false, limit: 20 })
+    await pauseRecurringTask('task-1', 3)
+    await resumeRecurringTask('task-1', 4)
+    await updateRecurringSchedule(
+      'task-1',
+      5,
+      'RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30',
+      'Asia/Hong_Kong',
+    )
+
+    expect(todo.meta.total).toBe(0)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/views/recurring-todo?include_paused=false&limit=20'),
+      expect.any(Object),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/schedule/pause'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ version: 3 }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/schedule/resume'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ version: 4 }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/schedule'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          version: 5,
+          recurrence_rule: 'RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30',
+          recurrence_timezone: 'Asia/Hong_Kong',
+        }),
+      }),
     )
   })
 

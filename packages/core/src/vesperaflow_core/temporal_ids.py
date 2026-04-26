@@ -1,6 +1,7 @@
 """Temporal identifier conventions."""
 
 import re
+from datetime import UTC, datetime
 
 _OCCURRENCE_KEY_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
@@ -16,6 +17,10 @@ def workflow_id_for_run(run_id: str) -> str:
 def workflow_id_for_occurrence(schedule_id: str, occurrence_key: str) -> str:
     validate_occurrence_key(occurrence_key)
     return f"vesperaflow.occurrence.{schedule_id}.{occurrence_key}"
+
+
+def occurrence_key_for_datetime(value: datetime) -> str:
+    return value.astimezone(UTC).replace(microsecond=0).strftime("%Y%m%dT%H%M%SZ")
 
 
 def validate_occurrence_key(occurrence_key: str) -> None:

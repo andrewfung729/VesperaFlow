@@ -23,38 +23,44 @@ The expected user-visible outcome is:
 ## Current State
 
 `docs/MVP_PROGRESS.md` is the implementation truth table. As of 2026-04-26,
-the repo is a one-time task vertical slice, not a complete MVP.
+the repo has backend recurring lifecycle support and recurring management
+surfaces, but it is not a complete MVP because calendar, occurrence overrides,
+recurring creation/edit UI, and release hardening remain incomplete.
 
 Implemented or partially implemented:
 
-- `packages/core` has shared enums, IDs, validation, and status derivation.
-- `packages/store` has Task, Schedule, and Run models/repositories for the
-  one-time flow. `Task.template_id` exists, but Template and
-  OccurrenceOverride tables do not.
+- `packages/core` has shared enums, IDs, validation, status derivation,
+  recurrence validation, next-occurrence calculation, and occurrence-key
+  helpers.
+- `packages/store` has Task, Schedule, Run, and Template models/repositories,
+  plus recurring schedule commands, recurring run materialization, history, and
+  recurring todo read models. OccurrenceOverride tables do not exist yet.
 - `apps/api` supports one-time task create/detail/list/reschedule/cancel,
-  `/api/v1/views/kanban`, `/api/v1/views/history`, and template
-  create/list/detail/update/archive/instantiate; recurring create requests are
-  rejected as unsupported.
+  `/api/v1/views/kanban`, `/api/v1/views/history`, template
+  create/list/detail/update/archive/instantiate, and recurring task
+  create/update/pause/resume/cancel commands.
 - `apps/worker` has `TaskRunWorkflow`, Activities, executor routing,
-  `debug_printer`, and Claude Agent SDK adapter tests.
-- `apps/web` has the task composer, one-time kanban board, history view,
-  template management, template prefill, task detail view, executor selection,
-  and target working directory capture.
+  `debug_printer`, Claude Agent SDK adapter tests, and recurring run
+  materialization support.
+- `apps/web` has a one-time-only task composer, one-time kanban board, history
+  view, template management, template prefill, task detail view, executor
+  selection, target working directory capture, and recurring todo management
+  for existing recurring tasks. It does not yet expose recurring task creation
+  or recurring schedule editing.
 - `infra` has a local Postgres/Temporal compose stack.
 - `docs/generated/` has refreshed schema, API route, Temporal surface, and
   dependency graph snapshots.
 
 Major MVP gaps:
 
-- full-stack one-time execution verification with local Postgres, Temporal, API,
-  Worker, and web smoke coverage
-- generated system fact snapshots for agents
-- recurring schedule storage, API commands, Temporal Schedule behavior,
-  materialized runs, pause/resume/update, and tests
-- recurring todo read model and web view
+- decide whether the opt-in full-stack one-time smoke becomes a CI service test
+- live full-stack recurring smoke coverage with local Postgres, Temporal, API,
+  Worker, and web
+- web composer/detail controls for creating and editing recurring schedules
 - calendar read model and web calendar/agenda view
 - occurrence override support for scoped recurring edits
-- Temporal replay tests and live Claude Code smoke/preflight documentation
+- failed/canceled recurring replay histories
+- live Claude Code smoke/preflight documentation
 
 ## Decisions
 
@@ -211,6 +217,26 @@ Exit criteria:
 Purpose: implement the core recurring schedule semantics before dependent read
 models.
 
+Progress on 2026-04-26:
+
+- Added recurring RRULE/timezone validation, next-occurrence calculation, and
+  occurrence-key helpers in `packages/core`.
+- Added recurring task repository commands for create, update, pause, resume,
+  cancel, and idempotent run materialization keyed by `(schedule_id,
+  occurrence_key)`.
+- Added `runs.occurrence_key` and the unique schedule/occurrence constraint.
+- Added API support for recurring task create, update, pause, resume, and cancel
+  commands with rollback around Temporal Schedule mutations.
+- Extended `TemporalScheduler` to create, update, pause, resume, and delete
+  recurring Temporal Schedules with a short catch-up window to avoid backfilling
+  missed paused occurrences.
+- Extended `TaskRunWorkflow` so recurring schedule-fired runs materialize the
+  product run in the first persistence Activity before executor invocation while
+  preserving the old one-time replay command shape.
+- Added core, repository, API, and one-time/recurring replay tests. Remaining M3
+  hardening is live full-stack recurring smoke coverage, failed/canceled replay
+  histories, and a web creation/editing surface for recurring schedules.
+
 Scope:
 
 - Extend core validation for `ExecutionMode.RECURRING` with
@@ -218,6 +244,9 @@ Scope:
   `recurrence_timezone`.
 - Add store support for recurring schedules and one-active-schedule invariant.
 - Add API create/update/pause/resume/cancel endpoints for recurring tasks.
+- Add web composer/detail support for creating and editing recurring schedules,
+  including execution mode selection, RRULE/timezone capture, and validation
+  feedback.
 - Extend `TemporalScheduler` to create, pause, resume, update, and cancel
   recurring Temporal Schedules.
 - Decide and implement the recurring run materialization boundary:
@@ -234,7 +263,8 @@ Scope:
 
 Exit criteria:
 
-- recurring tasks can be created and generate visible runs on schedule
+- recurring tasks can be created from the web UI and generate visible runs on
+  schedule
 - pause prevents future runs and resume does not backfill missed occurrences
 - recurring task-level status remains stable while run outcomes appear in run
   history/latest-run context
@@ -244,6 +274,20 @@ Exit criteria:
 
 Purpose: expose recurring work as ongoing commitments, separate from one-time
 kanban.
+
+Progress on 2026-04-26:
+
+- Added a derived store recurring todo read model that returns recurring tasks
+  only, with active schedules sorted by `next_run_at` before paused schedules
+  sorted by recent schedule update.
+- Included latest-run context in recurring todo items while keeping parent
+  recurring tasks in scheduled or paused task states.
+- Added `/api/v1/views/recurring-todo` with status, paused inclusion,
+  pagination, and latest outcome fields.
+- Added the web Recurring Todo route, primary navigation entry, grouped
+  scheduled/paused tables, task-detail linking, and pause/resume list actions.
+- Added repository, API, web unit, and Playwright smoke coverage, and refreshed
+  generated API route facts.
 
 Scope:
 
@@ -326,11 +370,13 @@ Exit criteria:
 
 ## Next Actions
 
-1. Decide whether the opt-in full-stack smoke should become a CI service test or
-   remain local-only until recurring behavior lands.
-2. Improve one-time kanban web behavior where MVP specs already call out gaps.
-3. Start M3 recurring lifecycle with core/store validation and the run
-   materialization boundary decision before changing Temporal Schedule behavior.
+1. Add recurring task creation/editing to the web composer and task detail
+   surfaces so the M3 recurring lifecycle is user-visible.
+2. Decide whether the opt-in full-stack smoke should become a CI service test or
+   remain local-only until recurring full-stack behavior lands.
+3. Start M5 calendar and occurrence override work with the store model/API
+   contract before adding the web agenda surface.
+4. Improve one-time kanban web behavior where MVP specs already call out gaps.
 
 ## Blockers
 
@@ -338,8 +384,6 @@ Exit criteria:
   service container strategy before these can become required checks.
 - Live Claude Code smoke coverage depends on a developer machine with the SDK
   installed, authenticated, and allowed to operate in the target workspace.
-- Recurring implementation needs a concrete decision on where product run rows
-  are materialized relative to Temporal Schedule firing.
 - Calendar recurrence projection needs a deterministic, timezone-aware recurrence
   implementation that matches `docs/domain-model.md` DST and missed-occurrence
   rules.

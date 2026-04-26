@@ -182,7 +182,13 @@ def _temporal_surface(generated_at: str) -> str:
             "starts `TaskRunWorkflow`.",
             "- The product `runs` row is created before Schedule creation and "
             "passed to the Workflow by `run_id`.",
-            "- Recurring Temporal Schedules are not implemented yet.",
+            "- Recurring API creation creates a Temporal Schedule whose action "
+            "starts `TaskRunWorkflow` without a pre-existing `run_id`.",
+            "- The first persistence Activity materializes each recurring "
+            "occurrence into a product `runs` row idempotently by "
+            "`(schedule_id, occurrence_key)`.",
+            "- Pause/resume/update/cancel commands mutate both PostgreSQL "
+            "schedule truth and the matching Temporal Schedule.",
             "",
         ]
     )

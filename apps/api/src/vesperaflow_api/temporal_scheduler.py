@@ -8,15 +8,21 @@ from temporalio.client import (
     Schedule,
     ScheduleActionStartWorkflow,
     ScheduleCalendarSpec,
+    ScheduleOverlapPolicy,
+    SchedulePolicy,
     ScheduleRange,
     ScheduleSpec,
+    ScheduleState,
+    ScheduleUpdate,
 )
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.service import RPCError, RPCStatusCode
 from vesperaflow_core import (
     ExecutionSnapshot,
     TaskRunInput,
+    parse_recurrence_rule,
     temporal_schedule_id,
+    utc_now,
     workflow_id_for_run,
 )
 from vesperaflow_store.models import Run, Task
@@ -42,8 +48,10 @@ class TemporalScheduler:
         *,
         task: Task,
         schedule: ProductSchedule,
-        run: Run,
+        run: Run | None,
     ) -> str:
+        if run is None:
+            raise ValueError("one-time Temporal schedule requires run")
         client = self._require_client()
         schedule_ref = temporal_schedule_id(schedule.schedule_id)
         await client.create_schedule(
@@ -57,12 +65,55 @@ class TemporalScheduler:
         *,
         task: Task,
         schedule: ProductSchedule,
-        run: Run,
+        run: Run | None,
     ) -> str:
         await self.delete_schedule(schedule.schedule_id)
         return await self.create_one_time_schedule(
             task=task, schedule=schedule, run=run
         )
+
+    async def create_recurring_schedule(
+        self,
+        *,
+        task: Task,
+        schedule: ProductSchedule,
+        run: Run | None = None,
+    ) -> str:
+        _ = run
+        client = self._require_client()
+        schedule_ref = temporal_schedule_id(schedule.schedule_id)
+        await client.create_schedule(
+            schedule_ref,
+            self._build_recurring_schedule(task=task, schedule=schedule),
+        )
+        return schedule_ref
+
+    async def replace_recurring_schedule(
+        self,
+        *,
+        task: Task,
+        schedule: ProductSchedule,
+    ) -> str:
+        client = self._require_client()
+        schedule_ref = temporal_schedule_id(schedule.schedule_id)
+        handle = client.get_schedule_handle(schedule_ref)
+        new_schedule = self._build_recurring_schedule(task=task, schedule=schedule)
+
+        async def updater(_: object) -> ScheduleUpdate:
+            return ScheduleUpdate(schedule=new_schedule)
+
+        await handle.update(updater)
+        return schedule_ref
+
+    async def pause_schedule(self, schedule_id: str) -> None:
+        client = self._require_client()
+        handle = client.get_schedule_handle(temporal_schedule_id(schedule_id))
+        await handle.pause(note="paused by VesperaFlow")
+
+    async def resume_schedule(self, schedule_id: str) -> None:
+        client = self._require_client()
+        handle = client.get_schedule_handle(temporal_schedule_id(schedule_id))
+        await handle.unpause(note="resumed by VesperaFlow")
 
     async def delete_schedule(self, schedule_id: str) -> None:
         client = self._require_client()
@@ -130,7 +181,88 @@ class TemporalScheduler:
             ),
         )
 
+    def _build_recurring_schedule(
+        self,
+        *,
+        task: Task,
+        schedule: ProductSchedule,
+    ) -> Schedule:
+        if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
+            raise ValueError("recurring schedule requires recurrence")
+        if task.target_working_directory is None:
+            raise ValueError("task requires target_working_directory")
+        planned_at = (schedule.next_run_at or utc_now()).astimezone(UTC)
+        workflow_input = TaskRunInput(
+            run_id=None,
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            planned_start_at=planned_at,
+            occurrence_key=None,
+            execution_snapshot=ExecutionSnapshot(
+                run_id=None,
+                task_id=task.task_id,
+                schedule_id=schedule.schedule_id,
+                executor=task.executor,
+                instruction_source=task.instruction_source,
+                planned_start_at=planned_at,
+                working_directory=str(
+                    Path(self._settings.run_workspace_root) / schedule.schedule_id
+                ),
+                target_working_directory=task.target_working_directory,
+            ),
+        )
+        return Schedule(
+            action=ScheduleActionStartWorkflow(
+                "TaskRunWorkflow",
+                args=[workflow_input],
+                id=_recurring_workflow_id_prefix(schedule.schedule_id),
+                task_queue=self._settings.task_queue,
+            ),
+            spec=ScheduleSpec(
+                cron_expressions=[
+                    _recurrence_rule_to_cron_expression(schedule.recurrence_rule)
+                ],
+                time_zone_name=schedule.recurrence_timezone,
+            ),
+            policy=SchedulePolicy(
+                overlap=ScheduleOverlapPolicy.SKIP,
+                catchup_window=timedelta(seconds=1),
+                pause_on_failure=False,
+            ),
+            state=ScheduleState(
+                paused=schedule.schedule_status.value == "paused",
+            ),
+        )
+
     def _require_client(self) -> Client:
         if self._client is None:
             raise RuntimeError("Temporal scheduler is not connected")
         return self._client
+
+
+def _recurrence_rule_to_cron_expression(recurrence_rule: str) -> str:
+    spec = parse_recurrence_rule(recurrence_rule)
+    if spec.seconds != (0,):
+        raise ValueError(
+            "recurrence_rule BYSECOND values other than 0 are not supported"
+        )
+    minutes = _cron_field(spec.minutes)
+    hours = _cron_field(spec.hours)
+    if spec.freq == "MINUTELY":
+        return "* * * * *"
+    if spec.freq == "HOURLY":
+        return f"{minutes} * * * *"
+    if spec.freq == "DAILY":
+        return f"{minutes} {hours} * * *"
+    weekdays = ",".join(str((weekday + 1) % 7) for weekday in spec.weekdays)
+    return f"{minutes} {hours} * * {weekdays}"
+
+
+def _recurring_workflow_id_prefix(schedule_id: str) -> str:
+    # Temporal Schedule appends a scheduled-time suffix to this workflow id by
+    # default, giving each recurring action a distinct workflow execution id.
+    return f"vesperaflow.occurrence.{schedule_id}"
+
+
+def _cron_field(values: tuple[int, ...]) -> str:
+    return ",".join(str(value) for value in values)

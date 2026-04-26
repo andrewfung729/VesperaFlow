@@ -60,7 +60,9 @@ class TaskUpdateRequest(BaseModel):
 
 class ScheduleUpdateRequest(BaseModel):
     version: int | None = None
-    planned_at: datetime
+    planned_at: datetime | None = None
+    recurrence_rule: str | None = None
+    recurrence_timezone: str | None = None
 
 
 class VersionedCommand(BaseModel):
@@ -118,6 +120,7 @@ class RunResponse(BaseModel):
     result_summary: str | None
     failure_reason: str | None
     external_execution_ref: str | None
+    occurrence_key: str | None
     created_at: datetime
     updated_at: datetime
 

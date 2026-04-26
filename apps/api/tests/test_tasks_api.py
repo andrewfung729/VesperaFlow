@@ -20,22 +20,45 @@ class FakeScheduler:
     def __init__(self) -> None:
         self.created: list[str] = []
         self.deleted: list[str] = []
+        self.paused: list[str] = []
+        self.resumed: list[str] = []
 
     async def create_one_time_schedule(
-        self, *, task: Task, schedule: ProductSchedule, run: Run
+        self, *, task: Task, schedule: ProductSchedule, run: Run | None
     ) -> str:
         _ = task, run
         self.created.append(schedule.schedule_id)
         return f"vesperaflow.schedule.{schedule.schedule_id}"
 
     async def replace_one_time_schedule(
-        self, *, task: Task, schedule: ProductSchedule, run: Run
+        self, *, task: Task, schedule: ProductSchedule, run: Run | None
     ) -> str:
         _ = task, run
         self.deleted.append(schedule.schedule_id)
         return await self.create_one_time_schedule(
             task=task, schedule=schedule, run=run
         )
+
+    async def create_recurring_schedule(
+        self, *, task: Task, schedule: ProductSchedule, run: Run | None = None
+    ) -> str:
+        _ = task, run
+        self.created.append(schedule.schedule_id)
+        return f"vesperaflow.schedule.{schedule.schedule_id}"
+
+    async def replace_recurring_schedule(
+        self, *, task: Task, schedule: ProductSchedule
+    ) -> str:
+        _ = task
+        self.deleted.append(schedule.schedule_id)
+        self.created.append(schedule.schedule_id)
+        return f"vesperaflow.schedule.{schedule.schedule_id}"
+
+    async def pause_schedule(self, schedule_id: str) -> None:
+        self.paused.append(schedule_id)
+
+    async def resume_schedule(self, schedule_id: str) -> None:
+        self.resumed.append(schedule_id)
 
     async def delete_schedule(self, schedule_id: str) -> None:
         self.deleted.append(schedule_id)
@@ -128,16 +151,131 @@ async def test_create_task_rejects_relative_target_directory(
 
 
 @pytest.mark.asyncio
-async def test_create_task_rejects_recurring_as_unsupported(
-    client: AsyncClient,
+async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_recurring_payload())
+
+    assert created.status_code == 201
+    data = cast(dict[str, object], created.json()["data"])
+    task = cast(dict[str, object], data["task"])
+    schedule = cast(dict[str, object], data["schedule"])
+    assert task["execution_mode"] == "recurring"
+    assert task["task_status"] == "scheduled"
+    assert data["run"] is None
+    assert schedule["schedule_type"] == "recurring_rule"
+    assert schedule["next_run_at"] is not None
+
+    updated = await client.patch(
+        f"/api/v1/tasks/{task['task_id']}/schedule",
+        json={
+            "version": schedule["version"],
+            "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=30",
+            "recurrence_timezone": "Asia/Hong_Kong",
+        },
+    )
+    assert updated.status_code == 200
+    updated_schedule = cast(dict[str, object], updated.json()["data"]["schedule"])
+    assert updated_schedule["recurrence_rule"] == (
+        "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=30"
+    )
+
+    paused = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/schedule/pause",
+        json={"version": updated_schedule["version"]},
+    )
+    assert paused.status_code == 200
+    paused_data = cast(dict[str, object], paused.json()["data"])
+    paused_task = cast(dict[str, object], paused_data["task"])
+    paused_schedule = cast(dict[str, object], paused_data["schedule"])
+    assert paused_task["task_status"] == "paused"
+    assert paused_schedule["schedule_status"] == "paused"
+    assert paused_schedule["next_run_at"] is None
+
+    resumed = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/schedule/resume",
+        json={"version": paused_schedule["version"]},
+    )
+    assert resumed.status_code == 200
+    resumed_schedule = cast(dict[str, object], resumed.json()["data"]["schedule"])
+    assert resumed.json()["data"]["task"]["task_status"] == "scheduled"
+    assert resumed_schedule["schedule_status"] == "active"
+    assert resumed_schedule["next_run_at"] is not None
+
+    canceled = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/schedule/cancel",
+        json={"version": resumed_schedule["version"]},
+    )
+    assert canceled.status_code == 200
+    assert canceled.json()["data"]["task"]["task_status"] == "canceled"
+    assert canceled.json()["data"]["schedule"]["schedule_status"] == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
+    api_context: ApiTestContext,
 ) -> None:
-    payload = _create_payload()
-    payload["execution_mode"] = "recurring"
+    client = api_context.client
+    active = await client.post("/api/v1/tasks", json=_recurring_payload("Active daily"))
+    paused = await client.post("/api/v1/tasks", json=_recurring_payload("Paused daily"))
+    one_time = await client.post("/api/v1/tasks", json=_create_payload("One-time"))
+    active_data = cast(dict[str, object], active.json()["data"])
+    paused_data = cast(dict[str, object], paused.json()["data"])
+    active_task = cast(dict[str, object], active_data["task"])
+    active_schedule = cast(dict[str, object], active_data["schedule"])
+    paused_task = cast(dict[str, object], paused_data["task"])
+    paused_schedule = cast(dict[str, object], paused_data["schedule"])
 
-    response = await client.post("/api/v1/tasks", json=payload)
+    paused_response = await client.post(
+        f"/api/v1/tasks/{paused_task['task_id']}/schedule/pause",
+        json={"version": paused_schedule["version"]},
+    )
+    assert paused_response.status_code == 200
+    assert one_time.status_code == 201
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "unsupported_operation"
+    planned_start_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            schedule = await repo.get_schedule(
+                session,
+                cast(str, active_schedule["schedule_id"]),
+            )
+            schedule.next_run_at = planned_start_at
+            materialized = await repo.materialize_run(
+                session,
+                payload_task_id=cast(str, active_task["task_id"]),
+                payload_schedule_id=cast(str, active_schedule["schedule_id"]),
+                payload_run_id=None,
+                planned_start_at=planned_start_at,
+                occurrence_key=None,
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            await repo.mark_run_queued(session, run_id=materialized.run_id)
+            await repo.mark_run_running(session, run_id=materialized.run_id)
+            await repo.mark_run_failed(
+                session,
+                run_id=materialized.run_id,
+                failure_reason="Executor failed",
+            )
+            schedule.next_run_at = planned_start_at
+
+    todo = await client.get("/api/v1/views/recurring-todo")
+    active_only = await client.get(
+        "/api/v1/views/recurring-todo",
+        params={"include_paused": False},
+    )
+
+    assert todo.status_code == 200
+    items = cast(list[dict[str, object]], todo.json()["data"])
+    assert todo.json()["meta"]["total"] == 2
+    assert [item["title"] for item in items] == ["Active daily", "Paused daily"]
+    assert items[0]["schedule_status"] == "active"
+    assert items[0]["task_status"] == "scheduled"
+    assert items[0]["latest_run_outcome"] == "failed"
+    assert items[0]["failure_reason"] == "Executor failed"
+    assert items[1]["schedule_status"] == "paused"
+    assert active_only.json()["meta"]["total"] == 1
+    assert active_only.json()["data"][0]["title"] == "Active daily"
 
 
 @pytest.mark.asyncio
@@ -338,7 +476,9 @@ async def test_template_default_target_directory_can_create_task(
 
 class _SchedulePayload(TypedDict):
     schedule_type: str
-    planned_at: str
+    planned_at: NotRequired[str]
+    recurrence_rule: NotRequired[str]
+    recurrence_timezone: NotRequired[str]
 
 
 class _CreatePayload(TypedDict):
@@ -362,6 +502,22 @@ def _create_payload(title: str = "Overnight research") -> _CreatePayload:
         "schedule": {
             "schedule_type": "single_run",
             "planned_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+        },
+    }
+
+
+def _recurring_payload(title: str = "Daily research") -> _CreatePayload:
+    return {
+        "title": title,
+        "instruction_source": "Find relevant updates.",
+        "target_working_directory": str(Path.cwd()),
+        "execution_mode": "recurring",
+        "executor": "debug_printer",
+        "template_id": None,
+        "schedule": {
+            "schedule_type": "recurring_rule",
+            "recurrence_rule": "RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            "recurrence_timezone": "Asia/Hong_Kong",
         },
     }
 

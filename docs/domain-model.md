@@ -143,6 +143,7 @@ Fields:
 - `result_summary` nullable
 - `failure_reason` nullable
 - `external_execution_ref` nullable
+- `occurrence_key` nullable, required for lazily materialized recurring runs
 - `created_at`
 - `updated_at`
 
@@ -150,6 +151,7 @@ Notes:
 
 - A one-time task typically results in one run.
 - A recurring task may generate many runs over time.
+- Recurring schedule-fired runs are idempotent by `(schedule_id, occurrence_key)`.
 - Runs are append-only historical records except for status updates during execution.
 
 ### 3.5 Occurrence Override
@@ -451,6 +453,7 @@ Does not own:
 - A canceled schedule must not produce new runs
 - A recurring task may have many historical runs but only one active schedule in MVP
 - A recurring task remains `scheduled` or `paused` at the task level even when its latest run has failed
+- A recurring Workflow must materialize or load the product run through an Activity before invoking an executor
 - Template edits affect only future tasks created from that template
 - A mutating write that observes a stale `version` must fail with a conflict and must not be partially applied
 

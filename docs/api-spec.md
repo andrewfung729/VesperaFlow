@@ -252,6 +252,7 @@ Templates may define `default_target_working_directory`. When present, creating 
   "result_summary": null,
   "failure_reason": null,
   "external_execution_ref": "wf_abc",
+  "occurrence_key": null,
   "created_at": "2026-04-24T23:30:00+08:00",
   "updated_at": "2026-04-24T23:31:00+08:00"
 }
@@ -460,7 +461,8 @@ Response:
 {
   "data": {
     "task": {},
-    "schedule": {}
+    "schedule": {},
+    "run": null
   }
 }
 ```
@@ -477,6 +479,7 @@ Validation:
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
 - `executor`, if provided, must be `claude_code` or `debug_printer`; if omitted the template default or install default is used
 - if the target working directory is invalid, the endpoint returns `422 validation_error`
+- recurring Temporal Schedule fires materialize a product run in the first Workflow Activity, keyed by `(schedule_id, occurrence_key)`
 - SDK import, authentication, and runtime configuration failures are reported by the Worker on run start
 
 ### 7.2 List Tasks
@@ -847,11 +850,21 @@ Response:
       "task_id": "task_456",
       "title": "Daily Digest",
       "recurrence_rule": "RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+      "recurrence_timezone": "Asia/Hong_Kong",
       "next_run_at": "2026-04-25T08:00:00+08:00",
       "schedule_status": "active",
-      "latest_run_outcome": "completed"
+      "task_status": "scheduled",
+      "schedule_version": 3,
+      "latest_run_id": "run_789",
+      "latest_run_outcome": "completed",
+      "latest_run_finished_at": "2026-04-24T08:02:00+08:00",
+      "result_summary": "Digest completed",
+      "failure_reason": null
     }
-  ]
+  ],
+  "meta": {
+    "total": 1
+  }
 }
 ```
 
@@ -859,6 +872,10 @@ Behavior:
 
 - returns recurring tasks only
 - keeps recurring items stable instead of moving across kanban columns
+- returns active items first by `next_run_at`, followed by paused items by
+  recent schedule update
+- exposes latest run outcome context without converting the parent recurring
+  task to failed or completed
 
 ## 14. Task Detail Endpoint
 

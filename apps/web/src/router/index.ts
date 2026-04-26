@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import HistoryView from '@/views/HistoryView.vue'
 import KanbanBoardView from '@/views/KanbanBoardView.vue'
+import RecurringTodoView from '@/views/RecurringTodoView.vue'
 import TaskComposerView from '@/views/TaskComposerView.vue'
 import TaskDetailView from '@/views/TaskDetailView.vue'
 import TemplatesView from '@/views/TemplatesView.vue'
@@ -25,6 +26,11 @@ export const routes: RouteRecordRaw[] = [
     path: '/templates',
     name: 'templates',
     component: TemplatesView,
+  },
+  {
+    path: '/recurring',
+    name: 'recurring-todo',
+    component: RecurringTodoView,
   },
   {
     path: '/history',

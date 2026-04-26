@@ -5,8 +5,10 @@ from vesperaflow_core import (
     ExecutionMode,
     RunStatus,
     ScheduleType,
+    next_occurrence_after,
     require_future_datetime,
     require_one_time_schedule_consistency,
+    require_recurring_schedule_consistency,
     require_run_transition,
     validate_occurrence_key,
 )
@@ -23,6 +25,31 @@ def test_one_time_schedule_consistency_rejects_recurring_mode() -> None:
             execution_mode=ExecutionMode.RECURRING,
             schedule_type=ScheduleType.SINGLE_RUN,
             planned_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+
+
+def test_recurring_schedule_consistency_accepts_supported_rrule() -> None:
+    require_recurring_schedule_consistency(
+        execution_mode=ExecutionMode.RECURRING,
+        schedule_type=ScheduleType.RECURRING_RULE,
+        recurrence_rule="RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30",
+        recurrence_timezone="Asia/Hong_Kong",
+    )
+    next_run = next_occurrence_after(
+        recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+        recurrence_timezone="UTC",
+        after=datetime(2026, 4, 26, 7, 59, tzinfo=UTC),
+    )
+    assert next_run == datetime(2026, 4, 26, 8, 0, tzinfo=UTC)
+
+
+def test_recurring_schedule_consistency_rejects_invalid_timezone() -> None:
+    with pytest.raises(ValueError, match="IANA"):
+        require_recurring_schedule_consistency(
+            execution_mode=ExecutionMode.RECURRING,
+            schedule_type=ScheduleType.RECURRING_RULE,
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Not/AZone",
         )
 
 

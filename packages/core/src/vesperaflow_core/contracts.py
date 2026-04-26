@@ -15,7 +15,7 @@ from .enums import ExecutorName, RunStatus
 class ExecutionSnapshot(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
-    run_id: str
+    run_id: str | None
     task_id: str
     schedule_id: str | None = None
     executor: ExecutorName
@@ -33,6 +33,14 @@ class TaskRunInput(BaseModel):
     schedule_id: str | None = None
     planned_start_at: datetime
     occurrence_key: str | None = None
+    execution_snapshot: ExecutionSnapshot
+
+
+class MaterializedRun(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    run_id: str
+    run_status: RunStatus
     execution_snapshot: ExecutionSnapshot
 
 

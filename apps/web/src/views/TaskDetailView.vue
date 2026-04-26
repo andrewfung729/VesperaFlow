@@ -2,9 +2,27 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { cancelTask, getTaskDetail, rescheduleTask, type TaskDetail } from '@/api'
+import {
+  cancelTask,
+  getTaskDetail,
+  pauseRecurringTask,
+  rescheduleTask,
+  resumeRecurringTask,
+  updateRecurringSchedule,
+  type TaskDetail,
+} from '@/api'
 import { formatDateTime, isFutureLocal, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
+import {
+  browserRecurrenceTimezone,
+  buildRecurrenceRule,
+  parseRecurrenceRule,
+  recurrencePreview,
+  recurrenceSummary,
+  type RecurrenceCadence,
+  type WeekdayCode,
+  weekdayOptions,
+} from '@/lib/recurrence'
 
 const props = defineProps<{
   taskId: string
@@ -15,12 +33,29 @@ const selectedDetail = ref<TaskDetail | null>(null)
 const isLoadingDetail = ref(false)
 const errorMessage = ref<string | null>(null)
 const rescheduleAt = ref('')
+const isEditingRecurrence = ref(false)
+const recurrenceCadence = ref<RecurrenceCadence>('daily')
+const recurrenceTime = ref('08:00')
+const recurrenceWeekdays = ref<WeekdayCode[]>(['MO'])
+const recurrenceTimezone = ref(browserRecurrenceTimezone())
+const isScheduleActionPending = ref(false)
 const selectedRunId = computed(() => {
   const value = route.query.runId
   return typeof value === 'string' ? value : null
 })
 const selectedRun = computed(() =>
   selectedDetail.value?.runs.find((run) => run.run_id === selectedRunId.value),
+)
+const isRecurringTask = computed(
+  () => selectedDetail.value?.task.execution_mode === 'recurring',
+)
+const recurrencePreviewText = computed(() =>
+  recurrencePreview(
+    recurrenceCadence.value,
+    recurrenceTime.value,
+    recurrenceWeekdays.value,
+    recurrenceTimezone.value,
+  ),
 )
 
 watch(
@@ -40,6 +75,10 @@ async function loadTaskDetail() {
     rescheduleAt.value = selectedDetail.value.schedule?.planned_at
       ? toDateTimeLocal(selectedDetail.value.schedule.planned_at)
       : ''
+    if (selectedDetail.value.schedule?.recurrence_rule) {
+      resetRecurrenceForm()
+    }
+    isEditingRecurrence.value = route.query.edit === 'recurrence'
   } catch (error) {
     selectedDetail.value = null
     rescheduleAt.value = ''
@@ -67,9 +106,66 @@ async function submitReschedule() {
   }
 }
 
+async function submitRecurrenceUpdate() {
+  if (!selectedDetail.value?.schedule) return
+  if (recurrenceCadence.value === 'weekly' && recurrenceWeekdays.value.length === 0) {
+    errorMessage.value = 'Choose at least one weekday.'
+    return
+  }
+  isScheduleActionPending.value = true
+  errorMessage.value = null
+  try {
+    await updateRecurringSchedule(
+      props.taskId,
+      selectedDetail.value.schedule.version,
+      buildRecurrenceRule(
+        recurrenceCadence.value,
+        recurrenceTime.value,
+        recurrenceWeekdays.value,
+      ),
+      recurrenceTimezone.value,
+    )
+    await loadTaskDetail()
+    isEditingRecurrence.value = false
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    isScheduleActionPending.value = false
+  }
+}
+
+async function submitPause() {
+  if (!selectedDetail.value?.schedule) return
+  isScheduleActionPending.value = true
+  errorMessage.value = null
+  try {
+    await pauseRecurringTask(props.taskId, selectedDetail.value.schedule.version)
+    await loadTaskDetail()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    isScheduleActionPending.value = false
+  }
+}
+
+async function submitResume() {
+  if (!selectedDetail.value?.schedule) return
+  isScheduleActionPending.value = true
+  errorMessage.value = null
+  try {
+    await resumeRecurringTask(props.taskId, selectedDetail.value.schedule.version)
+    await loadTaskDetail()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    isScheduleActionPending.value = false
+  }
+}
+
 async function submitCancel() {
   if (!selectedDetail.value?.schedule) return
-  const confirmed = window.confirm(`Cancel "${selectedDetail.value.task.title}"?`)
+  const action = isRecurringTask.value ? 'Cancel series' : 'Cancel'
+  const confirmed = window.confirm(`${action} "${selectedDetail.value.task.title}"?`)
   if (!confirmed) return
   try {
     await cancelTask(props.taskId, selectedDetail.value.schedule.version)
@@ -77,6 +173,27 @@ async function submitCancel() {
   } catch (error) {
     errorMessage.value = readableError(error)
   }
+}
+
+function toggleWeekday(day: WeekdayCode) {
+  if (recurrenceWeekdays.value.includes(day)) {
+    recurrenceWeekdays.value = recurrenceWeekdays.value.filter((value) => value !== day)
+    return
+  }
+  recurrenceWeekdays.value = [...recurrenceWeekdays.value, day].sort(
+    (left, right) =>
+      weekdayOptions.findIndex((option) => option.value === left) -
+      weekdayOptions.findIndex((option) => option.value === right),
+  )
+}
+
+function resetRecurrenceForm() {
+  const parsed = parseRecurrenceRule(selectedDetail.value?.schedule?.recurrence_rule)
+  recurrenceCadence.value = parsed.cadence
+  recurrenceTime.value = parsed.time
+  recurrenceWeekdays.value = parsed.weekdays
+  recurrenceTimezone.value =
+    selectedDetail.value?.schedule?.recurrence_timezone || browserRecurrenceTimezone()
 }
 </script>
 
@@ -97,7 +214,7 @@ async function submitCancel() {
             {{ selectedDetail.task.title }}
           </h2>
           <p class="m-0 text-sm text-slate-500">
-            {{ selectedDetail.task.task_status }} ·
+            {{ selectedDetail.task.execution_mode }} · {{ selectedDetail.task.task_status }} ·
             {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
           </p>
           <p class="m-0 text-sm text-slate-500">Executor: {{ selectedDetail.task.executor }}</p>
@@ -140,7 +257,14 @@ async function submitCancel() {
           <dl class="m-0 grid gap-1.5">
             <dt class="text-sm font-bold text-slate-500">Planned</dt>
             <dd class="m-0 mb-2.5 break-words">
-              {{ formatDateTime(selectedDetail.schedule?.planned_at ?? null) }}
+              {{
+                isRecurringTask
+                  ? recurrenceSummary(
+                      selectedDetail.schedule?.recurrence_rule,
+                      selectedDetail.schedule?.recurrence_timezone,
+                    )
+                  : formatDateTime(selectedDetail.schedule?.planned_at ?? null)
+              }}
             </dd>
             <dt class="text-sm font-bold text-slate-500">Schedule</dt>
             <dd class="m-0 mb-2.5 break-words">
@@ -162,27 +286,105 @@ async function submitCancel() {
               </dd>
             </template>
           </dl>
-          <label class="grid gap-2 font-semibold text-slate-700">
-            <span>Reschedule</span>
-            <input
-              v-model="rescheduleAt"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="datetime-local"
-            />
-          </label>
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
-            :disabled="!selectedDetail.schedule"
-            @click="submitReschedule"
-          >
-            Reschedule
-          </button>
+          <template v-if="!isRecurringTask">
+            <label class="grid gap-2 font-semibold text-slate-700">
+              <span>Reschedule</span>
+              <input
+                v-model="rescheduleAt"
+                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                type="datetime-local"
+              />
+            </label>
+            <button
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="!selectedDetail.schedule"
+              @click="submitReschedule"
+            >
+              Reschedule
+            </button>
+          </template>
+          <template v-else>
+            <button
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="!selectedDetail.schedule || isScheduleActionPending"
+              @click="isEditingRecurrence = !isEditingRecurrence"
+            >
+              {{ isEditingRecurrence ? 'Close Recurrence Editor' : 'Edit Recurrence' }}
+            </button>
+            <form
+              v-if="isEditingRecurrence"
+              class="grid gap-4 rounded-md border border-slate-200 bg-white p-4"
+              @submit.prevent="submitRecurrenceUpdate"
+            >
+              <label class="grid gap-2 font-semibold text-slate-700">
+                <span>Cadence</span>
+                <select
+                  v-model="recurrenceCadence"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </label>
+              <fieldset v-if="recurrenceCadence === 'weekly'" class="m-0 grid gap-2 border-0 p-0">
+                <legend class="mb-1 font-semibold text-slate-700">Weekdays</legend>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="day in weekdayOptions"
+                    :key="day.value"
+                    class="min-h-9 rounded-md border px-3 text-sm font-semibold transition"
+                    :class="
+                      recurrenceWeekdays.includes(day.value)
+                        ? 'border-teal-700 bg-teal-50 text-teal-800'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700'
+                    "
+                    type="button"
+                    @click="toggleWeekday(day.value)"
+                  >
+                    {{ day.label }}
+                  </button>
+                </div>
+              </fieldset>
+              <label class="grid gap-2 font-semibold text-slate-700">
+                <span>Run Time</span>
+                <input
+                  v-model="recurrenceTime"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                  type="time"
+                />
+              </label>
+              <p class="m-0 text-sm text-slate-500">{{ recurrencePreviewText }}</p>
+              <button
+                class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                :disabled="isScheduleActionPending"
+                type="submit"
+              >
+                {{ isScheduleActionPending ? 'Saving...' : 'Save Recurrence' }}
+              </button>
+            </form>
+            <button
+              v-if="selectedDetail.schedule?.schedule_status === 'active'"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="isScheduleActionPending"
+              @click="submitPause"
+            >
+              Pause
+            </button>
+            <button
+              v-if="selectedDetail.schedule?.schedule_status === 'paused'"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="isScheduleActionPending"
+              @click="submitResume"
+            >
+              Resume
+            </button>
+          </template>
           <button
             class="min-h-10 cursor-pointer rounded-md border border-red-300 bg-red-50 px-4 font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="!selectedDetail.schedule"
             @click="submitCancel"
           >
-            Cancel Task
+            {{ isRecurringTask ? 'Cancel Series' : 'Cancel Task' }}
           </button>
         </aside>
       </div>

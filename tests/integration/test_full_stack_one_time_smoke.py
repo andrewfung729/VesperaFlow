@@ -49,6 +49,7 @@ async def test_one_time_debug_printer_reaches_terminal_state(
     activities = TaskRunActivities(
         database_url=settings.database_url,
         executor=DebugPrinterExecutor(),
+        run_workspace_root=settings.run_workspace_root,
     )
 
     app = create_app()

@@ -138,10 +138,15 @@ class Schedule(Base):
 
 class Run(Base):
     __tablename__: str = "runs"
-    __table_args__: tuple[Index, ...] = (
+    __table_args__: tuple[Index | UniqueConstraint, ...] = (
         Index("ix_runs_task_id", "task_id"),
         Index("ix_runs_schedule_id", "schedule_id"),
         Index("ix_runs_history_status_finished_at", "run_status", "finished_at"),
+        UniqueConstraint(
+            "schedule_id",
+            "occurrence_key",
+            name="uq_runs_schedule_occurrence_key",
+        ),
     )
 
     run_id: Mapped[str] = mapped_column(String(48), primary_key=True)
@@ -156,6 +161,7 @@ class Run(Base):
     result_summary: Mapped[str | None] = mapped_column(Text)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     external_execution_ref: Mapped[str | None] = mapped_column(String(240))
+    occurrence_key: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

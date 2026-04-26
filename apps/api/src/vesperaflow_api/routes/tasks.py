@@ -33,15 +33,6 @@ async def create_task(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
-    if payload.execution_mode is not ExecutionMode.ONE_TIME:
-        raise RuntimeError("unsupported_operation: recurring tasks are not implemented")
-    if (
-        payload.schedule.schedule_type is not ScheduleType.SINGLE_RUN
-        or payload.schedule.planned_at is None
-    ):
-        raise ValueError(
-            "one-time tasks require schedule_type single_run and planned_at"
-        )
     async with session.begin():
         template = None
         if payload.template_id is not None:
@@ -59,19 +50,52 @@ async def create_task(
         target_working_directory = require_existing_absolute_directory(
             raw_target_working_directory
         )
-        bundle = await repo.create_one_time_task(
-            session,
-            title=payload.title,
-            instruction_source=payload.instruction_source,
-            target_working_directory=target_working_directory,
-            planned_at=payload.schedule.planned_at,
-            template_id=payload.template_id,
-            executor=payload.executor
+        executor = (
+            payload.executor
             or (template.default_executor if template else None)
-            or request.app.state.settings.default_executor,
+            or request.app.state.settings.default_executor
         )
+        if payload.execution_mode is ExecutionMode.ONE_TIME:
+            if (
+                payload.schedule.schedule_type is not ScheduleType.SINGLE_RUN
+                or payload.schedule.planned_at is None
+            ):
+                raise ValueError(
+                    "one-time tasks require schedule_type single_run and planned_at"
+                )
+            bundle = await repo.create_one_time_task(
+                session,
+                title=payload.title,
+                instruction_source=payload.instruction_source,
+                target_working_directory=target_working_directory,
+                planned_at=payload.schedule.planned_at,
+                template_id=payload.template_id,
+                executor=executor,
+            )
+            create_schedule = request.app.state.scheduler.create_one_time_schedule
+        else:
+            if (
+                payload.schedule.schedule_type is not ScheduleType.RECURRING_RULE
+                or payload.schedule.recurrence_rule is None
+                or payload.schedule.recurrence_timezone is None
+            ):
+                raise ValueError(
+                    "recurring tasks require schedule_type recurring_rule, "
+                    "recurrence_rule, and recurrence_timezone"
+                )
+            bundle = await repo.create_recurring_task(
+                session,
+                title=payload.title,
+                instruction_source=payload.instruction_source,
+                target_working_directory=target_working_directory,
+                recurrence_rule=payload.schedule.recurrence_rule,
+                recurrence_timezone=payload.schedule.recurrence_timezone,
+                template_id=payload.template_id,
+                executor=executor,
+            )
+            create_schedule = request.app.state.scheduler.create_recurring_schedule
         try:
-            schedule_ref = await request.app.state.scheduler.create_one_time_schedule(
+            schedule_ref = await create_schedule(
                 task=bundle.task,
                 schedule=bundle.schedule,
                 run=bundle.run,
@@ -169,22 +193,91 @@ async def update_schedule(
 ) -> DataEnvelope:
     version = observed_version(payload.version, if_match)
     async with session.begin():
-        bundle = await repo.reschedule_one_time_task(
-            session,
-            task_id=task_id,
-            version=version,
-            planned_at=payload.planned_at,
-        )
-        schedule_ref = await request.app.state.scheduler.replace_one_time_schedule(
-            task=bundle.task,
-            schedule=bundle.schedule,
-            run=bundle.run,
-        )
+        current_schedule = await repo.get_schedule_for_task(session, task_id)
+        if current_schedule.schedule_type is ScheduleType.SINGLE_RUN:
+            if payload.planned_at is None:
+                raise ValueError("one-time schedule updates require planned_at")
+            bundle = await repo.reschedule_one_time_task(
+                session,
+                task_id=task_id,
+                version=version,
+                planned_at=payload.planned_at,
+            )
+            schedule_ref = await request.app.state.scheduler.replace_one_time_schedule(
+                task=bundle.task,
+                schedule=bundle.schedule,
+                run=bundle.run,
+            )
+        else:
+            recurrence_rule = (
+                payload.recurrence_rule or current_schedule.recurrence_rule
+            )
+            recurrence_timezone = (
+                payload.recurrence_timezone or current_schedule.recurrence_timezone
+            )
+            if recurrence_rule is None or recurrence_timezone is None:
+                raise ValueError(
+                    "recurring schedule updates require recurrence_rule and "
+                    "recurrence_timezone"
+                )
+            bundle = await repo.update_recurring_task_schedule(
+                session,
+                task_id=task_id,
+                version=version,
+                recurrence_rule=recurrence_rule,
+                recurrence_timezone=recurrence_timezone,
+            )
+            schedule_ref = await request.app.state.scheduler.replace_recurring_schedule(
+                task=bundle.task,
+                schedule=bundle.schedule,
+            )
         await repo.set_schedule_external_ref(
             session,
             schedule_id=bundle.schedule.schedule_id,
             external_schedule_ref=schedule_ref,
         )
+    return DataEnvelope(
+        data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
+    )
+
+
+@router.post("/tasks/{task_id}/schedule/pause")
+async def pause_schedule(
+    task_id: str,
+    payload: VersionedCommand,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> DataEnvelope:
+    version = observed_version(payload.version, if_match)
+    async with session.begin():
+        bundle = await repo.pause_recurring_task(
+            session,
+            task_id=task_id,
+            version=version,
+        )
+        await request.app.state.scheduler.pause_schedule(bundle.schedule.schedule_id)
+    return DataEnvelope(
+        data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
+    )
+
+
+@router.post("/tasks/{task_id}/schedule/resume")
+async def resume_schedule(
+    task_id: str,
+    payload: VersionedCommand,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> DataEnvelope:
+    version = observed_version(payload.version, if_match)
+    async with session.begin():
+        bundle = await repo.resume_recurring_task(
+            session,
+            task_id=task_id,
+            version=version,
+        )
+        await request.app.state.scheduler.resume_schedule(bundle.schedule.schedule_id)
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )
@@ -200,11 +293,19 @@ async def cancel_schedule(
 ) -> DataEnvelope:
     version = observed_version(payload.version, if_match)
     async with session.begin():
-        bundle = await repo.cancel_one_time_task(
-            session,
-            task_id=task_id,
-            version=version,
-        )
+        current_schedule = await repo.get_schedule_for_task(session, task_id)
+        if current_schedule.schedule_type is ScheduleType.SINGLE_RUN:
+            bundle = await repo.cancel_one_time_task(
+                session,
+                task_id=task_id,
+                version=version,
+            )
+        else:
+            bundle = await repo.cancel_recurring_task(
+                session,
+                task_id=task_id,
+                version=version,
+            )
         await request.app.state.scheduler.delete_schedule(bundle.schedule.schedule_id)
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
