@@ -168,12 +168,14 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
   "description": "Reusable recurring research task",
   "instruction_source": "Summarize the top announcements...",
   "default_task_title": "Weekly Research",
+  "default_target_working_directory": "/Users/you/project",
   "default_execution_mode": "recurring",
   "default_schedule_config": {
     "schedule_type": "recurring_rule",
     "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
     "recurrence_timezone": "Asia/Hong_Kong"
   },
+  "default_executor": "debug_printer",
   "version": 1,
   "created_at": "2026-04-24T09:00:00+08:00",
   "updated_at": "2026-04-24T09:00:00+08:00",
@@ -211,6 +213,8 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex`, `opencode`, and CLI subprocess execution are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
 
 `target_working_directory` is the absolute existing directory where the executor performs user work. It is distinct from the per-run artifact workspace used by VesperaFlow to store summaries and transcripts.
+
+Templates may define `default_target_working_directory`. When present, creating or instantiating a task from that template may omit `target_working_directory`; the backend copies the template default onto the task. Callers can still provide a task-specific target directory to override the template default.
 
 ### 5.3 Schedule Object
 
@@ -287,12 +291,14 @@ Request:
   "description": "Reusable overnight research task",
   "instruction_source": "Research product launches...",
   "default_task_title": "Nightly Research",
+  "default_target_working_directory": "/Users/you/project",
   "default_execution_mode": "one_time",
   "default_schedule_config": {
     "schedule_type": "single_run",
     "planned_at": null,
     "recurrence_rule": null
-  }
+  },
+  "default_executor": "debug_printer"
 }
 ```
 
@@ -304,6 +310,7 @@ Validation:
 
 - `name` is required
 - `instruction_source` is required
+- `default_target_working_directory`, when provided, must be absolute and must refer to an existing directory on the API/Worker host
 - `default_execution_mode` must be `one_time` or `recurring`
 - if `default_schedule_config.schedule_type = recurring_rule`, `recurrence_rule` is required
 
@@ -387,6 +394,7 @@ Request:
 ```json
 {
   "title": "Tonight's Research Run",
+  "target_working_directory": "/Users/you/override-project",
   "execution_mode": "one_time",
   "schedule": {
     "schedule_type": "single_run",
@@ -399,6 +407,8 @@ Response:
 
 - `201 Created`
 - returns `task`, `schedule`
+
+`target_working_directory` is optional when the template has `default_target_working_directory`; otherwise it is required.
 
 ## 7. Task Endpoints
 
@@ -459,7 +469,7 @@ Validation:
 
 - `title` is required
 - `instruction_source` is required
-- `target_working_directory` is required, absolute, and must refer to an existing directory on the API/Worker host
+- `target_working_directory` is required unless a referenced template supplies `default_target_working_directory`; the resolved value must be absolute and must refer to an existing directory on the API/Worker host
 - `execution_mode` is required
 - one-time tasks must provide `planned_at` with a timezone offset in the future
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`

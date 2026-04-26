@@ -68,6 +68,43 @@ class Task(Base):
     )
 
 
+class Template(Base):
+    __tablename__: str = "templates"
+    __table_args__: tuple[Index, ...] = (
+        Index("ix_templates_archived_at_created_at", "archived_at", "created_at"),
+    )
+
+    template_id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    instruction_source: Mapped[str] = mapped_column(Text, nullable=False)
+    default_task_title: Mapped[str | None] = mapped_column(String(240))
+    default_target_working_directory: Mapped[str | None] = mapped_column(Text)
+    default_execution_mode: Mapped[ExecutionMode] = enum_column(ExecutionMode)
+    default_schedule_type: Mapped[ScheduleType] = enum_column(ScheduleType)
+    default_planned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    default_recurrence_rule: Mapped[str | None] = mapped_column(Text)
+    default_recurrence_timezone: Mapped[str | None] = mapped_column(String(128))
+    default_executor: Mapped[ExecutorName | None] = mapped_column(
+        Enum(
+            ExecutorName,
+            native_enum=False,
+            length=64,
+            values_callable=enum_values,
+        )
+    )
+    version: Mapped[int] = mapped_column(nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Schedule(Base):
     __tablename__: str = "schedules"
     __table_args__: tuple[Index | UniqueConstraint, ...] = (
@@ -104,6 +141,7 @@ class Run(Base):
     __table_args__: tuple[Index, ...] = (
         Index("ix_runs_task_id", "task_id"),
         Index("ix_runs_schedule_id", "schedule_id"),
+        Index("ix_runs_history_status_finished_at", "run_status", "finished_at"),
     )
 
     run_id: Mapped[str] = mapped_column(String(48), primary_key=True)

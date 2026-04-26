@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-04-25. Update this whenever a major area improves or
+_Last updated: 2026-04-26. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -21,20 +21,27 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small, dependency-light domain layer with tests. Keep Temporal-import safety explicit. |
-| `packages/store` | C | Models and repositories are covered, but generated schema docs are missing. |
-| `apps/api` | C | Vertical slice is tested with a fake scheduler; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene is covered, but replay and Temporal environment tests are not in place yet. |
-| `apps/web` | C | Vue surface has unit and Playwright scaffolding; UI behavior coverage is still shallow. |
+| `packages/core` | B | Small, dependency-light domain layer with tests, including template default validation. Keep Temporal-import safety explicit. |
+| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, and template archive/copy semantics, including default target directories, are tested. |
+| `apps/api` | C | Vertical slice, history, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene and a completed-path replay test are covered, but recurring schedule behavior is not in place yet. |
+| `apps/web` | C | Vue surface has composer, board, detail, history, and template route coverage; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
-| `docs` | B | Strong architecture and product docs; navigation and active-plan structure are now present. |
+| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, and a local full-stack runbook are now present. |
 
 ## Known Gaps
 
-- [ ] No generated DB schema, API route map, or dependency graph under `docs/generated/`.
-- [ ] Temporal replay tests are not yet implemented for Workflow evolution.
-- [ ] Integration tests requiring the full Postgres/Temporal stack are only scaffolded.
+- [ ] Generated DB schema, API route map, Temporal surface, and dependency graph
+      exist, but refresh is manual.
+- [ ] Temporal replay tests cover the completed one-time path, but not failed or
+      canceled representative histories.
+- [ ] Integration tests requiring the full Postgres/Temporal stack are opt-in and
+      not yet a CI gate.
 - [ ] Web E2E coverage is still smoke-level.
+- [ ] History is implemented for terminal runs, but recurring run context depends
+      on M3 materialization.
+- [ ] Templates are implemented for direct management and composer prefill; the
+      save-as-template shortcut from an existing task is not yet exposed.
 - [ ] No automated PR-opening cleanup loop yet; CI only detects the first set of drift patterns.
 - [ ] Package README coverage was added recently and should be kept current as ownership changes.
 - [ ] `docs/MVP_PROGRESS.md` now tracks MVP delivery state, but it is manually
@@ -60,3 +67,12 @@ Update this file when any of these change:
   status against the documented MVP.
 - 2026-04-25: Isolated Worker startup and executor factory imports so Workflow
   sandbox import paths do not load the Claude Agent SDK.
+- 2026-04-26: Added generated system fact snapshots, a local full-stack
+  one-time runbook, `TaskRunWorkflow` replay coverage, and an opt-in
+  Postgres/Temporal/API/Worker smoke test for `debug_printer`.
+- 2026-04-26: Added the M1 history read model across store/API/web, including
+  status and execution-mode filters, selected-run task detail linking, tests,
+  and refreshed generated facts.
+- 2026-04-26: Added the M2 template lifecycle across core/store/API/web,
+  including archive behavior, copy-on-instantiate semantics, composer prefill,
+  tests, and refreshed generated facts.

@@ -45,7 +45,7 @@ class ScheduleCreate(BaseModel):
 class TaskCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     instruction_source: str = Field(min_length=1)
-    target_working_directory: str = Field(min_length=1)
+    target_working_directory: str | None = Field(default=None, min_length=1)
     execution_mode: ExecutionMode
     template_id: str | None = None
     executor: ExecutorName | None = None
@@ -152,20 +152,6 @@ class TaskDetailResponse(BaseModel):
             else None,
             runs=[RunResponse.from_model(run) for run in detail.runs],
         )
-
-
-class KanbanCardResponse(BaseModel):
-    card_id: str
-    task_id: str
-    title: str
-    kanban_column: str
-    next_run_at: datetime | None
-    latest_run_status: RunStatus | None
-    result_summary: str | None
-
-
-class KanbanBoardResponse(BaseModel):
-    columns: dict[str, list[KanbanCardResponse]]
 
 
 def bundle_response(

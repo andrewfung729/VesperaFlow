@@ -21,6 +21,7 @@ from .validation import (
     require_future_datetime,
     require_one_time_schedule_consistency,
     require_run_transition,
+    require_template_schedule_defaults,
     require_timezone_aware,
 )
 
@@ -44,5 +45,6 @@ __all__ = [
     "require_future_datetime",
     "require_one_time_schedule_consistency",
     "require_run_transition",
+    "require_template_schedule_defaults",
     "require_timezone_aware",
 ]

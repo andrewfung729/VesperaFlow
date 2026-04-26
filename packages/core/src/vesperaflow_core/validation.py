@@ -39,6 +39,30 @@ def require_one_time_schedule_consistency(
     require_future_datetime(planned_at, field_name="planned_at", now=now)
 
 
+def require_template_schedule_defaults(
+    *,
+    execution_mode: ExecutionMode,
+    schedule_type: ScheduleType,
+    recurrence_rule: str | None,
+    recurrence_timezone: str | None,
+) -> None:
+    if execution_mode is ExecutionMode.ONE_TIME:
+        if schedule_type is not ScheduleType.SINGLE_RUN:
+            raise ValueError("one-time template defaults require a single-run schedule")
+        if recurrence_rule is not None or recurrence_timezone is not None:
+            raise ValueError("one-time template defaults cannot include recurrence")
+        return
+
+    if schedule_type is not ScheduleType.RECURRING_RULE:
+        raise ValueError(
+            "recurring template defaults require a recurring-rule schedule"
+        )
+    if not recurrence_rule:
+        raise ValueError("recurring template defaults require recurrence_rule")
+    if not recurrence_timezone:
+        raise ValueError("recurring template defaults require recurrence_timezone")
+
+
 _ALLOWED_RUN_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
     RunStatus.PLANNED: {RunStatus.QUEUED, RunStatus.CANCELED},
     RunStatus.QUEUED: {RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELED},

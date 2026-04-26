@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
-import { createTask, type ExecutorName } from '@/api'
+import { createTask, listTemplates, type ExecutorName, type TaskTemplate } from '@/api'
 import { defaultDateTimeLocal, isFutureLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 
 const router = useRouter()
+const route = useRoute()
 const executorOptions: Array<{ label: string; value: ExecutorName }> = [
   { label: 'Debug Printer', value: 'debug_printer' },
   { label: 'Claude Code', value: 'claude_code' },
@@ -17,10 +18,17 @@ const instructions = ref('')
 const targetWorkingDirectory = ref('')
 const executor = ref<ExecutorName>('debug_printer')
 const plannedAt = ref(defaultDateTimeLocal())
+const templates = ref<TaskTemplate[]>([])
+const selectedTemplateId = ref('')
 const isSaving = ref(false)
 const errorMessage = ref<string | null>(null)
 
 const timezoneLabel = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time'
+const selectedTemplate = computed(() => {
+  return (
+    templates.value.find((template) => template.template_id === selectedTemplateId.value) ?? null
+  )
+})
 const canSave = computed(
   () =>
     title.value.trim().length > 0 &&
@@ -28,6 +36,41 @@ const canSave = computed(
     targetWorkingDirectory.value.trim().startsWith('/') &&
     isFutureLocal(plannedAt.value),
 )
+
+onMounted(loadTemplates)
+
+watch(
+  () => route.query.templateId,
+  (templateId) => {
+    if (typeof templateId === 'string') {
+      selectedTemplateId.value = templateId
+      applySelectedTemplate()
+    }
+  },
+)
+
+async function loadTemplates() {
+  try {
+    const response = await listTemplates({ limit: 100 })
+    templates.value = response.data
+    const templateId = route.query.templateId
+    if (typeof templateId === 'string') {
+      selectedTemplateId.value = templateId
+      applySelectedTemplate()
+    }
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  }
+}
+
+function applySelectedTemplate() {
+  if (!selectedTemplate.value) return
+  title.value = selectedTemplate.value.default_task_title || selectedTemplate.value.name
+  instructions.value = selectedTemplate.value.instruction_source
+  targetWorkingDirectory.value =
+    selectedTemplate.value.default_target_working_directory || targetWorkingDirectory.value
+  executor.value = selectedTemplate.value.default_executor || executor.value
+}
 
 async function submitTask() {
   if (!canSave.value) {
@@ -44,11 +87,13 @@ async function submitTask() {
       target_working_directory: targetWorkingDirectory.value.trim(),
       executor: executor.value,
       planned_at: toIsoWithOffset(plannedAt.value),
+      template_id: selectedTemplateId.value || null,
     })
     title.value = ''
     instructions.value = ''
     targetWorkingDirectory.value = ''
     plannedAt.value = defaultDateTimeLocal()
+    selectedTemplateId.value = ''
     await router.push({ name: 'task-detail', params: { taskId: created.task.task_id } })
   } catch (error) {
     errorMessage.value = readableError(error)
@@ -75,6 +120,23 @@ async function submitTask() {
         </h2>
       </div>
       <form class="grid gap-5" @submit.prevent="submitTask">
+        <label v-if="templates.length > 0" class="grid gap-2 font-semibold text-slate-700">
+          <span>Template</span>
+          <select
+            v-model="selectedTemplateId"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            @change="applySelectedTemplate"
+          >
+            <option value="">Blank task</option>
+            <option
+              v-for="template in templates"
+              :key="template.template_id"
+              :value="template.template_id"
+            >
+              {{ template.name }}
+            </option>
+          </select>
+        </label>
         <label class="grid gap-2 font-semibold text-slate-700">
           <span>Title</span>
           <input

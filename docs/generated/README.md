@@ -1,14 +1,20 @@
 # Generated System Facts
 
-Store generated, agent-readable snapshots here when they exist. Each generated
-file should include:
+This directory stores generated, agent-readable snapshots. Regenerate the
+current snapshots from the repository root with:
+
+```bash
+uv run python scripts/generate_agent_facts.py
+```
+
+Each generated file includes:
 
 - the command used to regenerate it
 - the source system or files it was generated from
 - the generation date
 - any known limitations
 
-High-value future snapshots:
+Current snapshots:
 
 - `db-schema.md`: tables, columns, indexes, constraints, and relationships from
   the current database metadata.

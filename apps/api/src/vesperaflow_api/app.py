@@ -16,6 +16,8 @@ from vesperaflow_store.errors import (
 )
 
 from .routes.tasks import router as tasks_router
+from .routes.templates import router as templates_router
+from .routes.views import router as views_router
 from .schemas.tasks import ErrorEnvelope
 from .settings import get_settings
 from .temporal_scheduler import TemporalScheduler
@@ -46,6 +48,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(tasks_router, prefix="/api/v1")
+    app.include_router(templates_router, prefix="/api/v1")
+    app.include_router(views_router, prefix="/api/v1")
     app.add_exception_handler(StoreError, store_error_handler)
     app.add_exception_handler(ValueError, value_error_handler)
     app.add_exception_handler(RuntimeError, runtime_error_handler)

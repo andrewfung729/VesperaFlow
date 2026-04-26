@@ -1,0 +1,58 @@
+# Temporal Surface Snapshot
+
+- Generated: 2026-04-26
+- Regenerate: `uv run python scripts/generate_agent_facts.py`
+- Sources: `apps/api/src/vesperaflow_api/temporal_scheduler.py`, `apps/worker/src/vesperaflow_worker/main.py`, `apps/worker/src/vesperaflow_worker/workflows/`, `apps/worker/src/vesperaflow_worker/activities/`, `packages/core/src/vesperaflow_core/contracts.py`
+- Limitations: generated from importable application metadata, not a live deployment.
+
+- Default API task queue: `vesperaflow-default`
+- Default Worker task queue: `vesperaflow-default`
+- Default namespace: `default`
+- Workflow type: `TaskRunWorkflow`
+- Workflow class: `vesperaflow_worker.workflows.task_run.TaskRunWorkflow`
+- Schedule ID helper: `vesperaflow.schedule.sch_example`
+- Workflow ID helper: `vesperaflow.run.<run_id>`
+- Data converter: `temporalio.contrib.pydantic.pydantic_data_converter`
+
+## Activities
+
+- `materialize_run`
+- `mark_run_queued`
+- `mark_run_running`
+- `execute_agent_run`
+- `mark_run_completed`
+- `mark_run_failed`
+- `mark_run_canceled`
+- `complete_single_run_schedule`
+
+## Payload Models
+
+### `TaskRunInput`
+
+| Field | Type | Required |
+|---|---|---:|
+| `run_id` | `str | None` | no |
+| `task_id` | `str` | yes |
+| `schedule_id` | `str | None` | no |
+| `planned_start_at` | `datetime` | yes |
+| `occurrence_key` | `str | None` | no |
+| `execution_snapshot` | `ExecutionSnapshot` | yes |
+
+### `ExecutionSnapshot`
+
+| Field | Type | Required |
+|---|---|---:|
+| `run_id` | `str` | yes |
+| `task_id` | `str` | yes |
+| `schedule_id` | `str | None` | no |
+| `executor` | `ExecutorName` | yes |
+| `instruction_source` | `str` | yes |
+| `planned_start_at` | `datetime` | yes |
+| `working_directory` | `str` | yes |
+| `target_working_directory` | `str | None` | no |
+
+## Schedule Behavior
+
+- One-time API creation creates a Temporal Schedule whose action starts `TaskRunWorkflow`.
+- The product `runs` row is created before Schedule creation and passed to the Workflow by `run_id`.
+- Recurring Temporal Schedules are not implemented yet.

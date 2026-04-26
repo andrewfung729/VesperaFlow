@@ -57,6 +57,7 @@ Fields:
 - `description`
 - `instruction_source`
 - `default_task_title`
+- `default_target_working_directory` nullable string; when present, tasks created from the template use it as the default target directory unless the caller overrides it
 - `default_execution_mode`
 - `default_schedule_config`
 - `default_executor` nullable enum: `claude_code`, `debug_printer`; when null, tasks created from the template use the install-level default executor

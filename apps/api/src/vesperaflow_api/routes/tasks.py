@@ -1,18 +1,16 @@
 """Task and one-time board routes."""
 
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import ExecutionMode, ScheduleType, TaskStatus
 from vesperaflow_store import repositories as repo
+from vesperaflow_store.errors import InvalidStateTransitionError
 
 from ..dependencies import get_session
 from ..schemas.tasks import (
     DataEnvelope,
-    KanbanBoardResponse,
-    KanbanCardResponse,
     ListEnvelope,
     RunResponse,
     ScheduleResponse,
@@ -24,6 +22,7 @@ from ..schemas.tasks import (
     VersionedCommand,
     bundle_response,
 )
+from ._shared import observed_version, require_existing_absolute_directory
 
 router = APIRouter()
 
@@ -43,10 +42,23 @@ async def create_task(
         raise ValueError(
             "one-time tasks require schedule_type single_run and planned_at"
         )
-    target_working_directory = _require_existing_absolute_directory(
-        payload.target_working_directory
-    )
     async with session.begin():
+        template = None
+        if payload.template_id is not None:
+            template = await repo.get_template(session, payload.template_id)
+            if template.archived_at is not None:
+                raise InvalidStateTransitionError(
+                    "archived templates cannot create tasks"
+                )
+        raw_target_working_directory = (
+            payload.target_working_directory
+            or (template.default_target_working_directory if template else None)
+        )
+        if raw_target_working_directory is None:
+            raise ValueError("target_working_directory is required")
+        target_working_directory = require_existing_absolute_directory(
+            raw_target_working_directory
+        )
         bundle = await repo.create_one_time_task(
             session,
             title=payload.title,
@@ -54,7 +66,9 @@ async def create_task(
             target_working_directory=target_working_directory,
             planned_at=payload.schedule.planned_at,
             template_id=payload.template_id,
-            executor=payload.executor or request.app.state.settings.default_executor,
+            executor=payload.executor
+            or (template.default_executor if template else None)
+            or request.app.state.settings.default_executor,
         )
         try:
             schedule_ref = await request.app.state.scheduler.create_one_time_schedule(
@@ -124,7 +138,7 @@ async def update_task(
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
-    version = _observed_version(payload.version, if_match)
+    version = observed_version(payload.version, if_match)
     async with session.begin():
         task = await repo.update_task(
             session,
@@ -153,7 +167,7 @@ async def update_schedule(
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
-    version = _observed_version(payload.version, if_match)
+    version = observed_version(payload.version, if_match)
     async with session.begin():
         bundle = await repo.reschedule_one_time_task(
             session,
@@ -184,7 +198,7 @@ async def cancel_schedule(
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
-    version = _observed_version(payload.version, if_match)
+    version = observed_version(payload.version, if_match)
     async with session.begin():
         bundle = await repo.cancel_one_time_task(
             session,
@@ -207,53 +221,3 @@ async def list_runs(
         data=[RunResponse.from_model(run).model_dump() for run in runs],
         meta={"total": len(runs)},
     )
-
-
-@router.get("/views/kanban")
-async def get_kanban(
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> DataEnvelope:
-    board = await repo.get_one_time_kanban(session)
-    response = KanbanBoardResponse(
-        columns={
-            column: [
-                KanbanCardResponse(
-                    card_id=detail.task.task_id,
-                    task_id=detail.task.task_id,
-                    title=detail.task.title,
-                    kanban_column=column,
-                    next_run_at=detail.schedule.next_run_at
-                    if detail.schedule
-                    else None,
-                    latest_run_status=detail.latest_run.run_status
-                    if detail.latest_run
-                    else None,
-                    result_summary=detail.latest_run.result_summary
-                    if detail.latest_run
-                    else None,
-                )
-                for detail in details
-            ]
-            for column, details in board.items()
-        }
-    )
-    return DataEnvelope(data=response.model_dump())
-
-
-def _observed_version(body_version: int | None, if_match: str | None) -> int:
-    if body_version is not None:
-        return body_version
-    if if_match is None:
-        raise ValueError("version is required")
-    return int(if_match.strip('"'))
-
-
-def _require_existing_absolute_directory(value: str) -> str:
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        raise ValueError("target_working_directory must be an absolute path")
-    if not path.exists():
-        raise ValueError("target_working_directory does not exist")
-    if not path.is_dir():
-        raise ValueError("target_working_directory must be a directory")
-    return str(path.resolve())

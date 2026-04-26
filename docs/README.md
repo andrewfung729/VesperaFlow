@@ -19,6 +19,8 @@ this index to find the smallest document that answers the current question.
 - `temporal-architecture.md`: Workflow, Activity, Schedule, task queue, retry,
   idempotency, and replay policy.
 - `api-spec.md`: application-facing API contract.
+- `local-full-stack-runbook.md`: local Postgres, Temporal, API, Worker, and web
+  smoke path for one-time `debug_printer` execution.
 - `adr/`: accepted architecture decisions and rationale.
 
 ## ADR Index

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from vesperaflow_core import (
@@ -17,12 +17,13 @@ from vesperaflow_core import (
     derive_task_status,
     require_future_datetime,
     require_run_transition,
+    require_template_schedule_defaults,
     to_utc,
     utc_now,
 )
 
 from .errors import ConflictError, InvalidStateTransitionError, NotFoundError
-from .models import Run, Schedule, Task
+from .models import Run, Schedule, Task, Template
 
 
 def new_id(prefix: str) -> str:
@@ -42,6 +43,24 @@ class TaskDetail:
     schedule: Schedule | None
     latest_run: Run | None
     runs: list[Run]
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryItem:
+    run: Run
+    task: Task
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryPage:
+    items: list[HistoryItem]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class TemplatePage:
+    items: list[Template]
+    total: int
 
 
 async def create_one_time_task(
@@ -107,6 +126,220 @@ async def create_one_time_task(
     return TaskBundle(task=task, schedule=schedule, run=run)
 
 
+async def create_template(
+    session: AsyncSession,
+    *,
+    name: str,
+    description: str | None,
+    instruction_source: str,
+    default_task_title: str | None,
+    default_target_working_directory: str | None,
+    default_execution_mode: ExecutionMode,
+    default_schedule_type: ScheduleType,
+    default_planned_at: datetime | None = None,
+    default_recurrence_rule: str | None = None,
+    default_recurrence_timezone: str | None = None,
+    default_executor: ExecutorName | None = None,
+) -> Template:
+    _require_template_defaults(
+        default_execution_mode=default_execution_mode,
+        default_schedule_type=default_schedule_type,
+        default_recurrence_rule=default_recurrence_rule,
+        default_recurrence_timezone=default_recurrence_timezone,
+    )
+    now = utc_now()
+    template = Template(
+        template_id=new_id("tpl"),
+        name=name,
+        description=description,
+        instruction_source=instruction_source,
+        default_task_title=default_task_title,
+        default_target_working_directory=default_target_working_directory,
+        default_execution_mode=default_execution_mode,
+        default_schedule_type=default_schedule_type,
+        default_planned_at=to_utc(default_planned_at)
+        if default_planned_at
+        else None,
+        default_recurrence_rule=default_recurrence_rule,
+        default_recurrence_timezone=default_recurrence_timezone,
+        default_executor=default_executor,
+        version=1,
+        created_at=now,
+        updated_at=now,
+        archived_at=None,
+    )
+    session.add(template)
+    await session.flush()
+    return template
+
+
+async def get_template(session: AsyncSession, template_id: str) -> Template:
+    template = await session.get(Template, template_id)
+    if template is None:
+        raise NotFoundError(f"template not found: {template_id}")
+    return template
+
+
+async def list_templates(
+    session: AsyncSession,
+    *,
+    include_archived: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+) -> TemplatePage:
+    filters = []
+    if not include_archived:
+        filters.append(Template.archived_at.is_(None))
+
+    total_statement = select(func.count()).select_from(Template).where(*filters)
+    total = (await session.execute(total_statement)).scalar_one()
+    statement = (
+        select(Template)
+        .where(*filters)
+        .order_by(Template.created_at.desc(), Template.template_id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return TemplatePage(items=list(await session.scalars(statement)), total=total)
+
+
+async def update_template(
+    session: AsyncSession,
+    *,
+    template_id: str,
+    version: int,
+    name: str | None = None,
+    description: str | None = None,
+    set_description: bool = False,
+    instruction_source: str | None = None,
+    default_task_title: str | None = None,
+    set_default_task_title: bool = False,
+    default_target_working_directory: str | None = None,
+    set_default_target_working_directory: bool = False,
+    default_execution_mode: ExecutionMode | None = None,
+    default_schedule_type: ScheduleType | None = None,
+    default_planned_at: datetime | None = None,
+    set_default_planned_at: bool = False,
+    default_recurrence_rule: str | None = None,
+    set_default_recurrence_rule: bool = False,
+    default_recurrence_timezone: str | None = None,
+    set_default_recurrence_timezone: bool = False,
+    default_executor: ExecutorName | None = None,
+    set_default_executor: bool = False,
+) -> Template:
+    template = await get_template(session, template_id)
+    _require_version(template.version, version)
+    if template.archived_at is not None:
+        raise InvalidStateTransitionError("archived templates cannot be edited")
+
+    next_execution_mode = default_execution_mode or template.default_execution_mode
+    next_schedule_type = default_schedule_type or template.default_schedule_type
+    next_recurrence_rule = (
+        default_recurrence_rule
+        if set_default_recurrence_rule or default_recurrence_rule is not None
+        else template.default_recurrence_rule
+    )
+    next_recurrence_timezone = (
+        default_recurrence_timezone
+        if set_default_recurrence_timezone or default_recurrence_timezone is not None
+        else template.default_recurrence_timezone
+    )
+    _require_template_defaults(
+        default_execution_mode=next_execution_mode,
+        default_schedule_type=next_schedule_type,
+        default_recurrence_rule=next_recurrence_rule,
+        default_recurrence_timezone=next_recurrence_timezone,
+    )
+
+    if name is not None:
+        template.name = name
+    if set_description or description is not None:
+        template.description = description
+    if instruction_source is not None:
+        template.instruction_source = instruction_source
+    if set_default_task_title or default_task_title is not None:
+        template.default_task_title = default_task_title
+    if (
+        set_default_target_working_directory
+        or default_target_working_directory is not None
+    ):
+        template.default_target_working_directory = default_target_working_directory
+    if default_execution_mode is not None:
+        template.default_execution_mode = default_execution_mode
+    if default_schedule_type is not None:
+        template.default_schedule_type = default_schedule_type
+    if set_default_planned_at or default_planned_at is not None:
+        template.default_planned_at = (
+            to_utc(default_planned_at) if default_planned_at else None
+        )
+    if set_default_recurrence_rule or default_recurrence_rule is not None:
+        template.default_recurrence_rule = default_recurrence_rule
+    if set_default_recurrence_timezone or default_recurrence_timezone is not None:
+        template.default_recurrence_timezone = default_recurrence_timezone
+    if set_default_executor or default_executor is not None:
+        template.default_executor = default_executor
+
+    template.version += 1
+    template.updated_at = utc_now()
+    await session.flush()
+    return template
+
+
+async def archive_template(
+    session: AsyncSession,
+    *,
+    template_id: str,
+    version: int,
+) -> Template:
+    template = await get_template(session, template_id)
+    _require_version(template.version, version)
+    if template.archived_at is None:
+        now = utc_now()
+        template.archived_at = now
+        template.updated_at = now
+        template.version += 1
+    await session.flush()
+    return template
+
+
+async def instantiate_one_time_task_from_template(
+    session: AsyncSession,
+    *,
+    template_id: str,
+    target_working_directory: str | None,
+    planned_at: datetime | None,
+    install_default_executor: ExecutorName,
+    title: str | None = None,
+    instruction_source: str | None = None,
+    executor: ExecutorName | None = None,
+) -> TaskBundle:
+    template = await get_template(session, template_id)
+    if template.archived_at is not None:
+        raise InvalidStateTransitionError("archived templates cannot be instantiated")
+    if template.default_execution_mode is not ExecutionMode.ONE_TIME:
+        raise InvalidStateTransitionError(
+            "recurring task instantiation is not implemented"
+        )
+
+    resolved_planned_at = planned_at or template.default_planned_at
+    if resolved_planned_at is None:
+        raise ValueError("one-time template instantiation requires planned_at")
+    resolved_target_working_directory = (
+        target_working_directory or template.default_target_working_directory
+    )
+    if resolved_target_working_directory is None:
+        raise ValueError("template instantiation requires target_working_directory")
+    return await create_one_time_task(
+        session,
+        title=title or template.default_task_title or template.name,
+        instruction_source=instruction_source or template.instruction_source,
+        target_working_directory=resolved_target_working_directory,
+        planned_at=resolved_planned_at,
+        template_id=template.template_id,
+        executor=executor or template.default_executor or install_default_executor,
+    )
+
+
 async def set_schedule_external_ref(
     session: AsyncSession,
     *,
@@ -165,6 +398,51 @@ async def list_runs_for_task(session: AsyncSession, task_id: str) -> list[Run]:
         select(Run).where(Run.task_id == task_id).order_by(Run.created_at.desc())
     )
     return list(await session.scalars(statement))
+
+
+async def list_history(
+    session: AsyncSession,
+    *,
+    status: RunStatus | None = None,
+    execution_mode: ExecutionMode | None = None,
+    finished_from: datetime | None = None,
+    finished_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> HistoryPage:
+    history_statuses = {RunStatus.COMPLETED, RunStatus.FAILED}
+    if status is not None:
+        if status not in history_statuses:
+            return HistoryPage(items=[], total=0)
+        history_statuses = {status}
+
+    filters = [
+        Run.run_status.in_(history_statuses),
+        Run.finished_at.is_not(None),
+    ]
+    if execution_mode is not None:
+        filters.append(Task.execution_mode == execution_mode)
+    if finished_from is not None:
+        filters.append(Run.finished_at >= to_utc(finished_from))
+    if finished_to is not None:
+        filters.append(Run.finished_at <= to_utc(finished_to))
+
+    total_statement = select(func.count()).select_from(Run).join(Task).where(*filters)
+    total = (await session.execute(total_statement)).scalar_one()
+
+    statement = (
+        select(Run, Task)
+        .join(Task)
+        .where(*filters)
+        .order_by(Run.finished_at.desc(), Run.run_id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await session.execute(statement)).all()
+    return HistoryPage(
+        items=[HistoryItem(run=run, task=task) for run, task in rows],
+        total=total,
+    )
 
 
 async def get_task_detail(session: AsyncSession, task_id: str) -> TaskDetail:
@@ -460,3 +738,21 @@ async def _recompute_task_status(session: AsyncSession, task: Task) -> None:
 def _require_version(current: int, observed: int) -> None:
     if current != observed:
         raise ConflictError("resource version conflict")
+
+
+def _require_template_defaults(
+    *,
+    default_execution_mode: ExecutionMode,
+    default_schedule_type: ScheduleType,
+    default_recurrence_rule: str | None,
+    default_recurrence_timezone: str | None,
+) -> None:
+    try:
+        require_template_schedule_defaults(
+            execution_mode=default_execution_mode,
+            schedule_type=default_schedule_type,
+            recurrence_rule=default_recurrence_rule,
+            recurrence_timezone=default_recurrence_timezone,
+        )
+    except ValueError as exc:
+        raise InvalidStateTransitionError(str(exc)) from exc

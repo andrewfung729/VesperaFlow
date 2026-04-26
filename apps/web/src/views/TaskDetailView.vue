@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { cancelTask, getTaskDetail, rescheduleTask, type TaskDetail } from '@/api'
 import { formatDateTime, isFutureLocal, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
@@ -9,10 +10,18 @@ const props = defineProps<{
   taskId: string
 }>()
 
+const route = useRoute()
 const selectedDetail = ref<TaskDetail | null>(null)
 const isLoadingDetail = ref(false)
 const errorMessage = ref<string | null>(null)
 const rescheduleAt = ref('')
+const selectedRunId = computed(() => {
+  const value = route.query.runId
+  return typeof value === 'string' ? value : null
+})
+const selectedRun = computed(() =>
+  selectedDetail.value?.runs.find((run) => run.run_id === selectedRunId.value),
+)
 
 watch(
   () => props.taskId,
@@ -98,6 +107,32 @@ async function submitCancel() {
           <pre
             class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 [overflow-wrap:anywhere]"
           >{{ selectedDetail.task.instruction_source }}</pre>
+          <section class="mt-6">
+            <h3 class="m-0 mb-3 text-lg font-bold text-slate-950">Recent Runs</h3>
+            <div v-if="selectedDetail.runs.length > 0" class="grid gap-2">
+              <article
+                v-for="run in selectedDetail.runs"
+                :key="run.run_id"
+                class="rounded-md border p-3"
+                :class="
+                  selectedRunId === run.run_id
+                    ? 'border-teal-400 bg-teal-50'
+                    : 'border-slate-200 bg-white'
+                "
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <strong class="text-slate-800">{{ run.run_status }}</strong>
+                  <span class="text-sm text-slate-500">
+                    {{ formatDateTime(run.finished_at ?? run.actual_start_at ?? run.planned_start_at) }}
+                  </span>
+                </div>
+                <p class="mb-0 text-sm text-slate-600 [overflow-wrap:anywhere]">
+                  {{ run.result_summary ?? run.failure_reason ?? 'No run output yet' }}
+                </p>
+              </article>
+            </div>
+            <p v-else class="text-sm text-slate-500">No runs recorded.</p>
+          </section>
         </div>
         <aside
           class="grid content-start gap-4 border-t border-slate-200 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
@@ -119,6 +154,13 @@ async function submitCancel() {
                 'Pending'
               }}
             </dd>
+            <template v-if="selectedRun">
+              <dt class="text-sm font-bold text-slate-500">Selected Run</dt>
+              <dd class="m-0 mb-2.5 break-words">
+                {{ selectedRun.run_status }} ·
+                {{ selectedRun.result_summary ?? selectedRun.failure_reason ?? 'No summary' }}
+              </dd>
+            </template>
           </dl>
           <label class="grid gap-2 font-semibold text-slate-700">
             <span>Reschedule</span>

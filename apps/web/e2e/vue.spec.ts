@@ -6,5 +6,21 @@ test('visits the app root url', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('h1')).toHaveText('Planned AI Work')
   await expect(page.getByRole('link', { name: 'Composer' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Templates' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'History' })).toBeVisible()
   await expect(page).toHaveURL(/\/compose$/)
+})
+
+test('renders the history route shell', async ({ page }) => {
+  await page.goto('/history')
+  await expect(page.getByRole('heading', { name: 'Run History' })).toBeVisible()
+  await expect(page.getByLabel('Status')).toBeVisible()
+  await expect(page.getByLabel('Mode')).toBeVisible()
+})
+
+test('renders the templates route shell', async ({ page }) => {
+  await page.goto('/templates')
+  await expect(page.getByRole('heading', { name: 'Task Templates' })).toBeVisible()
+  await expect(page.getByLabel('Name')).toBeVisible()
+  await expect(page.getByLabel('Instructions')).toBeVisible()
 })
