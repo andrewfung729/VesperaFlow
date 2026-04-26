@@ -4,8 +4,9 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
-from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from vesperaflow_core import ExecutionSnapshot, ExecutorName, RunStatus
@@ -19,6 +20,7 @@ from vesperaflow_worker.executors.claude_code import ClaudeCodeExecutor
 from vesperaflow_worker.executors.debug import DebugPrinterExecutor
 from vesperaflow_worker.executors.factory import build_executor
 from vesperaflow_worker.executors.router import ExecutorRouter
+from vesperaflow_worker.settings import DEFAULT_CLAUDE_ENV, WorkerSettings
 
 
 def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
@@ -52,7 +54,10 @@ def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
         text=True,
     )
 
-    loaded = json.loads(check.stdout.strip().splitlines()[-1])
+    loaded = cast(
+        dict[str, bool],
+        json.loads(check.stdout.strip().splitlines()[-1]),
+    )
 
     assert loaded == {"root_loaded": False, "workflow_loaded": False}
 
@@ -100,6 +105,106 @@ def test_executor_factory_builds_claude_code_without_function_body_import() -> N
     assert "from .claude_code import" not in source
 
 
+def test_executor_factory_passes_claude_env() -> None:
+    executor = build_executor(
+        "claude_code",
+        claude_env={
+            "ANTHROPIC_API_KEY": "sk-test",
+            "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
+            "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+        },
+    )
+
+    assert isinstance(executor, ClaudeCodeExecutor)
+    assert executor.env == {
+        "ANTHROPIC_API_KEY": "sk-test",
+        "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    }
+
+
+def test_worker_settings_builds_claude_executor_env() -> None:
+    settings = WorkerSettings.model_validate(
+        {
+            "ANTHROPIC_API_KEY": "sk-test",
+            "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
+            "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+            "claude_env": {"ANTHROPIC_BASE_URL": "https://override.example.com/v1"},
+        }
+    )
+
+    env = settings.claude_executor_env()
+
+    assert env == {
+        **DEFAULT_CLAUDE_ENV,
+        "ANTHROPIC_API_KEY": "sk-test",
+        "ANTHROPIC_BASE_URL": "https://override.example.com/v1",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    }
+
+
+def test_worker_settings_reads_claude_passthrough_from_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "ANTHROPIC_API_KEY=sk-dotenv",
+                "ANTHROPIC_BASE_URL=https://dotenv-proxy.example.com/v1",
+                "ANTHROPIC_MODEL=claude-sonnet-4-5",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+    settings = WorkerSettings()
+
+    env = settings.claude_executor_env()
+
+    assert env == {
+        **DEFAULT_CLAUDE_ENV,
+        "ANTHROPIC_API_KEY": "sk-dotenv",
+        "ANTHROPIC_BASE_URL": "https://dotenv-proxy.example.com/v1",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    }
+
+
+def test_worker_settings_process_env_overrides_dotenv_passthrough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / ".env").write_text(
+        "ANTHROPIC_BASE_URL=https://dotenv.example.com/v1",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://process.example.com/v1")
+    settings = WorkerSettings()
+
+    env = settings.claude_executor_env()
+
+    assert env["ANTHROPIC_BASE_URL"] == "https://process.example.com/v1"
+
+
+def test_worker_settings_allows_explicit_claude_env_to_override_defaults() -> None:
+    settings = WorkerSettings(
+        claude_env={
+            "DISABLE_TELEMETRY": "0",
+            "CLAUDE_CODE_NO_FLICKER": "0",
+        },
+    )
+
+    env = settings.claude_executor_env()
+
+    assert env["DISABLE_TELEMETRY"] == "0"
+    assert env["DISABLE_ERROR_REPORTING"] == "1"
+    assert env["CLAUDE_CODE_NO_FLICKER"] == "0"
+
+
 @pytest.mark.asyncio
 async def test_executor_router_rejects_unknown_executor(
     snapshot: ExecutionSnapshot,
@@ -127,7 +232,14 @@ async def test_claude_code_executor_runs_sdk_and_writes_artifact(
         ],
         monkeypatch=monkeypatch,
     )
-    executor = ClaudeCodeExecutor(max_turns=3, max_budget_usd=0.25)
+    executor = ClaudeCodeExecutor(
+        max_turns=3,
+        env={
+            "ANTHROPIC_API_KEY": "sk-test",
+            "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
+            "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+        },
+    )
     run_dir = tmp_path / "run"
     target_dir = tmp_path / "target"
     target_dir.mkdir()
@@ -145,11 +257,17 @@ async def test_claude_code_executor_runs_sdk_and_writes_artifact(
     assert outcome.result_summary == "Done from Claude"
     assert outcome.result_artifact_ref is not None
     assert Path(outcome.result_artifact_ref).read_text() == "Working..."
-    assert sdk.options.kwargs["cwd"] == str(target_dir)
-    assert sdk.options.kwargs["permission_mode"] == "bypassPermissions"
-    assert sdk.options.kwargs["setting_sources"] == ["user", "project", "local"]
-    assert sdk.options.kwargs["max_turns"] == 3
-    assert sdk.options.kwargs["max_budget_usd"] == 0.25
+    options = sdk.options
+    assert options is not None
+    assert options.kwargs["cwd"] == str(target_dir)
+    assert options.kwargs["permission_mode"] == "bypassPermissions"
+    assert options.kwargs["setting_sources"] == ["user", "project", "local"]
+    assert options.kwargs["max_turns"] == 3
+    assert options.kwargs["env"] == {
+        "ANTHROPIC_API_KEY": "sk-test",
+        "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    }
     assert sdk.clients[0].prompt == "Do work"
 
 
@@ -177,7 +295,7 @@ async def test_claude_code_executor_maps_auth_process_error(
         pass
 
     monkeypatch.setattr(claude_code_module, "ProcessError", ProcessError)
-    _fake_sdk(
+    _ = _fake_sdk(
         [],
         monkeypatch=monkeypatch,
         enter_error=ProcessError("login required"),
@@ -232,12 +350,12 @@ def snapshot() -> ExecutionSnapshot:
 
 class TextBlock:
     def __init__(self, text: str) -> None:
-        self.text = text
+        self.text: str = text
 
 
 class AssistantMessage:
     def __init__(self, content: list[TextBlock]) -> None:
-        self.content = content
+        self.content: list[TextBlock] = content
 
 
 class ResultMessage:
@@ -248,18 +366,24 @@ class ResultMessage:
         is_error: bool = False,
         subtype: str = "success",
     ) -> None:
-        self.result = result
-        self.is_error = is_error
-        self.subtype = subtype
-        self.session_id = "session_123"
-        self.num_turns = 1
-        self.total_cost_usd = 0.01
-        self.stop_reason = None
+        self.result: str | None = result
+        self.is_error: bool = is_error
+        self.subtype: str = subtype
+        self.session_id: str = "session_123"
+        self.num_turns: int = 1
+        self.total_cost_usd: float = 0.01
+        self.stop_reason: str | None = None
 
 
 class FakeClaudeAgentOptions:
     def __init__(self, **kwargs: object) -> None:
-        self.kwargs = kwargs
+        self.kwargs: dict[str, object] = kwargs
+
+
+class FakeSDKHarness:
+    def __init__(self) -> None:
+        self.clients: list[FakeClaudeSDKClient] = []
+        self.options: FakeClaudeAgentOptions | None = None
 
 
 class FakeClaudeSDKClient:
@@ -272,12 +396,12 @@ class FakeClaudeSDKClient:
         enter_error: Exception | None,
         cancel_on_receive: bool,
     ) -> None:
-        self.options = options
-        self._messages = messages
-        self._enter_error = enter_error
-        self._cancel_on_receive = cancel_on_receive
+        self.options: FakeClaudeAgentOptions = options
+        self._messages: list[object] = messages
+        self._enter_error: Exception | None = enter_error
+        self._cancel_on_receive: bool = cancel_on_receive
         self.prompt: str | None = None
-        self.interrupted = False
+        self.interrupted: bool = False
         clients.append(self)
 
     async def __aenter__(self) -> "FakeClaudeSDKClient":
@@ -291,7 +415,7 @@ class FakeClaudeSDKClient:
     async def query(self, prompt: str) -> None:
         self.prompt = prompt
 
-    async def receive_response(self):
+    async def receive_response(self) -> AsyncIterator[object]:
         if self._cancel_on_receive:
             raise asyncio.CancelledError
         for message in self._messages:
@@ -307,25 +431,31 @@ def _fake_sdk(
     monkeypatch: pytest.MonkeyPatch,
     enter_error: Exception | None = None,
     cancel_on_receive: bool = False,
-) -> SimpleNamespace:
-    clients: list[FakeClaudeSDKClient] = []
+) -> FakeSDKHarness:
+    sdk = FakeSDKHarness()
 
     def client_factory(options: FakeClaudeAgentOptions) -> FakeClaudeSDKClient:
         return FakeClaudeSDKClient(
             options=options,
             messages=messages,
-            clients=clients,
+            clients=sdk.clients,
             enter_error=enter_error,
             cancel_on_receive=cancel_on_receive,
         )
-
-    sdk = SimpleNamespace(clients=clients, options=None)
 
     class CapturingOptions(FakeClaudeAgentOptions):
         def __init__(self, **kwargs: object) -> None:
             super().__init__(**kwargs)
             sdk.options = self
 
-    monkeypatch.setattr(claude_code_module, "ClaudeAgentOptions", CapturingOptions)
-    monkeypatch.setattr(claude_code_module, "ClaudeSDKClient", client_factory)
+    monkeypatch.setattr(
+        claude_code_module,
+        "ClaudeAgentOptions",
+        CapturingOptions,
+    )
+    monkeypatch.setattr(
+        claude_code_module,
+        "ClaudeSDKClient",
+        client_factory,
+    )
     return sdk

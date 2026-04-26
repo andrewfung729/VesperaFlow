@@ -32,8 +32,8 @@ MVP security posture:
 - authentication and authorization are intentionally out of scope; the API assumes a single local user
 - the domain model reserves a clean extension point for a future `user_id` association on every user-owned aggregate
 - VesperaFlow does not manage LLM provider credentials; the supported executor SDK authenticates itself against its upstream provider through its own mechanism, for example an expected environment variable or runtime config file
-- VesperaFlow must not read, copy, transmit, or log executor credential material, even when SDK-based integration places it directly in reach of the same Python process
-- executor credentials are never serialized into Workflow inputs, Activity inputs, Activity return values, or Workflow history, because VesperaFlow does not pass them in the first place
+- Worker startup may pass explicitly allowed executor environment variables into the SDK invocation, but VesperaFlow must not log, persist, transmit externally, or serialize that credential material
+- executor credentials are never serialized into Workflow inputs, Activity inputs, Activity return values, or Workflow history
 - structured logs must not include full task instructions or full executor output at default log levels; summary-level fields are sufficient
 - PostgreSQL is assumed to run on trusted local storage; at-rest encryption is a deployment decision, not an MVP feature
 - credential rotation for an executor is a user-side operation on the SDK; VesperaFlow requires no code changes and no Worker restart beyond what the executor itself requires

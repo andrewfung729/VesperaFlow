@@ -36,7 +36,7 @@ async def run_worker() -> None:
         executor=build_executor(
             settings.executor_adapter,
             claude_max_turns=settings.claude_max_turns,
-            claude_max_budget_usd=settings.claude_max_budget_usd,
+            claude_env=settings.claude_executor_env(),
         ),
         run_workspace_root=settings.run_workspace_root,
     )

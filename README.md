@@ -31,6 +31,7 @@ Install Python dependencies through the workspace:
 
 ```bash
 uv sync
+cp .env.example .env
 ```
 
 Install web dependencies:

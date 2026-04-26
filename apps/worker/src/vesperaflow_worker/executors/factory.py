@@ -1,5 +1,7 @@
 """Executor adapter factory."""
 
+from collections.abc import Mapping
+
 from .base import ExecutorAdapter, ExecutorUnavailableError
 from .claude_code import ClaudeCodeExecutor
 from .debug import DebugPrinterExecutor
@@ -10,11 +12,11 @@ def build_executor(
     adapter_name: str,
     *,
     claude_max_turns: int = 20,
-    claude_max_budget_usd: float | None = None,
+    claude_env: Mapping[str, str] | None = None,
 ) -> ExecutorAdapter:
     claude_code = ClaudeCodeExecutor(
         max_turns=claude_max_turns,
-        max_budget_usd=claude_max_budget_usd,
+        env=dict(claude_env) if claude_env is not None else None,
     )
     if adapter_name in {"auto", "router"}:
         return ExecutorRouter(

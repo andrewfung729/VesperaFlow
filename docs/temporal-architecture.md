@@ -233,8 +233,9 @@ SDK integration rules:
 
 Secrets handling rules for Executor Activities:
 
-- VesperaFlow does not pass LLM provider credentials to the executor; the executor SDK is expected to be authenticated independently by the user before invocation
-- the Worker process environment is the minimum necessary for the SDK to locate its credential source; VesperaFlow must not read, copy, or log those credentials
+- VesperaFlow does not store or manage LLM provider credentials; the executor SDK is expected to be authenticated independently by the user before invocation
+- the Worker may pass explicit Claude SDK environment settings, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`, into the executor SDK's process environment; it must not pass the full Worker environment
+- the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
 - rotating an executor's provider credential is a user-side operation that does not require rewriting any existing Workflow history

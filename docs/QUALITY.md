@@ -83,3 +83,5 @@ Update this file when any of these change:
 - 2026-04-26: Added the M4 recurring todo read model across store/API/web,
   including active/paused ordering, latest-run context, pause/resume list
   actions, tests, and refreshed generated API facts.
+- 2026-04-26: Added allowlisted Claude Agent SDK environment passthrough in the
+  Worker while keeping credentials out of Temporal payloads and logs.

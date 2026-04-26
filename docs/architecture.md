@@ -785,7 +785,7 @@ MVP security posture:
 
 - authentication and authorization are intentionally out of scope for the single-local-user MVP, but the domain model must preserve a clean extension point for a future `user_id` association
 - VesperaFlow does not hold or manage LLM provider credentials; the supported executor SDK is authenticated by the user through its own configuration, for example the SDK's expected environment variable or runtime config file
-- VesperaFlow must not copy, read, or log executor credentials even if they are discoverable in the Worker process environment; the SDK reads them directly from the environment when invoked
+- Worker startup may pass an explicit allowlist of executor environment variables into the SDK invocation, but these values must not be logged, persisted, serialized into Temporal payloads, or expanded to the full Worker process environment
 - task `instruction_source` and executor output may contain sensitive content; they must not be serialized into Temporal Workflow input payloads beyond what is strictly required, and structured logs must not emit full instruction or output bodies at default log levels
 - PostgreSQL is assumed to be on trusted local storage for MVP; at-rest encryption is a deployment concern tracked in `docs/adr/004-security-posture.md`
 

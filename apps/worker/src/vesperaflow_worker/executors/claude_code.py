@@ -6,7 +6,7 @@ import logging
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import override
+from typing import cast, override
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
@@ -32,10 +32,10 @@ DEFAULT_SUMMARY_MAX_CHARS = 4000
 @dataclass(slots=True)
 class ClaudeCodeExecutor(ExecutorAdapter):
     max_turns: int = 20
-    max_budget_usd: float | None = None
     permission_mode: PermissionMode = "bypassPermissions"
     setting_sources: tuple[SettingSource, ...] = CLAUDE_SETTING_SOURCES
     summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS
+    env: dict[str, str] | None = None
 
     @override
     async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
@@ -54,13 +54,21 @@ class ClaudeCodeExecutor(ExecutorAdapter):
         client: ClaudeSDKClient | None = None
 
         try:
-            options = ClaudeAgentOptions(
-                cwd=str(workspace),
-                permission_mode=self.permission_mode,
-                setting_sources=list(self.setting_sources),
-                max_turns=self.max_turns,
-                max_budget_usd=self.max_budget_usd,
-            )
+            if self.env:
+                options = ClaudeAgentOptions(
+                    cwd=str(workspace),
+                    permission_mode=self.permission_mode,
+                    setting_sources=list(self.setting_sources),
+                    max_turns=self.max_turns,
+                    env=dict(self.env),
+                )
+            else:
+                options = ClaudeAgentOptions(
+                    cwd=str(workspace),
+                    permission_mode=self.permission_mode,
+                    setting_sources=list(self.setting_sources),
+                    max_turns=self.max_turns,
+                )
             sdk = ClaudeSDKClient(options=options)
             client = sdk
             async with sdk:
@@ -187,7 +195,7 @@ def _extract_text_blocks(message: object) -> list[str]:
     if not isinstance(content, list):
         return []
     text_blocks: list[str] = []
-    for block in content:
+    for block in cast("list[object]", content):
         text = getattr(block, "text", None)
         if isinstance(text, str):
             text_blocks.append(text)

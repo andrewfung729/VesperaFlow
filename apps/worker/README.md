@@ -45,7 +45,15 @@ Environment variables use the `VESPERAFLOW_` prefix:
 - `VESPERAFLOW_EXECUTOR_ADAPTER`: `auto`, `router`, `debug_printer`, or
   `claude_code`.
 - `VESPERAFLOW_CLAUDE_MAX_TURNS`: max Claude Agent SDK turns per run.
-- `VESPERAFLOW_CLAUDE_MAX_BUDGET_USD`: optional SDK budget guardrail.
+- `VESPERAFLOW_CLAUDE_ENV`: optional JSON object of explicit SDK env values.
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`: optional
+  Claude SDK env values loaded from the process environment or root `.env`.
+
+The Worker also adds Claude Code subprocess defaults for disabling telemetry,
+error reporting, feedback prompts, autoupdates, nonessential traffic, and
+flicker, and for enabling the LSP tool and experimental agent teams. Override
+those flags, or the `ANTHROPIC_*` values, with `VESPERAFLOW_CLAUDE_ENV` if
+needed. These values are never written to Temporal payloads or logs.
 
 Claude Code runs with `permission_mode="bypassPermissions"` and loads
 `user`, `project`, and `local` setting sources. It writes full executor output
