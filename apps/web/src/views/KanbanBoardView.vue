@@ -16,15 +16,10 @@ const isLoadingBoard = ref(false)
 const errorMessage = ref<string | null>(null)
 const includeCanceled = ref(false)
 
-const visibleColumns = computed(() =>
-  includeCanceled.value ? allColumns : defaultColumns,
-)
+const visibleColumns = computed(() => (includeCanceled.value ? allColumns : defaultColumns))
 
 const totalCards = computed(() =>
-  Object.values(board.value.columns).reduce(
-    (sum, cards) => sum + cards.length,
-    0,
-  ),
+  Object.values(board.value.columns).reduce((sum, cards) => sum + cards.length, 0),
 )
 
 onMounted(() => {
@@ -91,7 +86,9 @@ function emptyColumns(): KanbanBoard['columns'] {
         v-if="isLoadingBoard"
         class="flex items-center justify-center py-16 text-sm text-slate-500"
       >
-        <span class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-teal-600"></span>
+        <span
+          class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-teal-600"
+        ></span>
         Loading board…
       </div>
 
@@ -100,15 +97,10 @@ function emptyColumns(): KanbanBoard['columns'] {
         class="rounded-md border border-dashed border-slate-300 bg-slate-50 py-16 text-center"
       >
         <p class="text-lg font-semibold text-slate-700">No one-time tasks yet</p>
-        <p class="mt-1 text-sm text-slate-500">
-          Create a task from the composer to see it here.
-        </p>
+        <p class="mt-1 text-sm text-slate-500">Create a task from the composer to see it here.</p>
       </div>
 
-      <div
-        v-else
-        class="grid grid-cols-[repeat(5,minmax(180px,1fr))] gap-3.5 overflow-x-auto"
-      >
+      <div v-else class="grid grid-cols-[repeat(5,minmax(180px,1fr))] gap-3.5 overflow-x-auto">
         <section
           v-for="column in visibleColumns"
           :key="column"

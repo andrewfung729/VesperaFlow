@@ -31,9 +31,7 @@ const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref<string | null>(null)
 
-const canSave = computed(
-  () => name.value.trim().length > 0 && instructions.value.trim().length > 0,
-)
+const canSave = computed(() => name.value.trim().length > 0 && instructions.value.trim().length > 0)
 
 onMounted(loadTemplates)
 
@@ -85,8 +83,7 @@ async function saveTemplate() {
         description: description.value.trim() || null,
         instruction_source: instructions.value.trim(),
         default_task_title: defaultTaskTitle.value.trim() || null,
-        default_target_working_directory:
-          defaultTargetWorkingDirectory.value.trim() || null,
+        default_target_working_directory: defaultTargetWorkingDirectory.value.trim() || null,
         default_executor: defaultExecutor.value || null,
       })
     } else {
@@ -95,8 +92,7 @@ async function saveTemplate() {
         description: description.value.trim() || null,
         instruction_source: instructions.value.trim(),
         default_task_title: defaultTaskTitle.value.trim() || null,
-        default_target_working_directory:
-          defaultTargetWorkingDirectory.value.trim() || null,
+        default_target_working_directory: defaultTargetWorkingDirectory.value.trim() || null,
         default_executor: defaultExecutor.value || null,
       })
     }
@@ -139,9 +135,7 @@ async function useTemplate(template: TaskTemplate) {
     <section>
       <div class="mb-6">
         <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Templates</p>
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
-          Task Templates
-        </h2>
+        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">Task Templates</h2>
       </div>
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">

@@ -36,14 +36,12 @@ PermissionMode = Literal[
 SettingSource = Literal["user", "project", "local"]
 
 CLAUDE_SETTING_SOURCES: tuple[SettingSource, ...] = ("user", "project", "local")
-DEFAULT_SUMMARY_MAX_CHARS = 4000
 
 
 @dataclass(slots=True)
 class ClaudeCodeExecutor(ExecutorAdapter):
     permission_mode: PermissionMode = "bypassPermissions"
     setting_sources: tuple[SettingSource, ...] = CLAUDE_SETTING_SOURCES
-    summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS
     env: dict[str, str] | None = None
 
     @override
@@ -113,7 +111,7 @@ class ClaudeCodeExecutor(ExecutorAdapter):
         summary = _result_summary(result_message, "".join(assistant_text))
         return ExecutorOutcome(
             terminal_status=RunStatus.COMPLETED,
-            result_summary=_truncate(summary, self.summary_max_chars),
+            result_summary=summary,
             result_artifact_ref=artifact_ref,
             terminal_code="claude_code_completed",
         )
@@ -221,14 +219,6 @@ def _result_summary(result_message: object | None, fallback: str) -> str:
     if fallback.strip():
         return fallback
     return "Claude Code completed without a text summary."
-
-
-def _truncate(value: str, max_chars: int) -> str:
-    if len(value) <= max_chars:
-        return value
-    if max_chars <= 3:
-        return value[:max_chars]
-    return f"{value[: max_chars - 3]}..."
 
 
 def _write_claude_artifacts(

@@ -10,8 +10,10 @@ import {
   resumeRecurringTask,
   runOneTimeTaskNow,
   updateRecurringSchedule,
+  updateTask,
   type TaskDetail,
 } from '@/api'
+import MarkdownReader from '@/components/MarkdownReader.vue'
 import { formatDateTime, isFutureLocal, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 import {
@@ -40,6 +42,9 @@ const recurrenceTime = ref('08:00')
 const recurrenceWeekdays = ref<WeekdayCode[]>(['MO'])
 const recurrenceTimezone = ref(browserRecurrenceTimezone())
 const isScheduleActionPending = ref(false)
+const isEditingTask = ref(false)
+const editTitle = ref('')
+const editInstructions = ref('')
 const selectedRunId = computed(() => {
   const value = route.query.runId
   return typeof value === 'string' ? value : null
@@ -51,9 +56,13 @@ const selectedOccurrenceAt = computed(() => {
 const selectedRun = computed(() =>
   selectedDetail.value?.runs.find((run) => run.run_id === selectedRunId.value),
 )
-const isRecurringTask = computed(
-  () => selectedDetail.value?.task.execution_mode === 'recurring',
-)
+const isRecurringTask = computed(() => selectedDetail.value?.task.execution_mode === 'recurring')
+const isTaskEditable = computed(() => {
+  const status = selectedDetail.value?.task.task_status
+  return (
+    status !== undefined && status !== 'archived' && status !== 'running' && status !== 'completed'
+  )
+})
 const recurrencePreviewText = computed(() =>
   recurrencePreview(
     recurrenceCadence.value,
@@ -111,6 +120,40 @@ async function submitReschedule() {
   }
 }
 
+function startEditTask() {
+  if (!selectedDetail.value) return
+  editTitle.value = selectedDetail.value.task.title
+  editInstructions.value = selectedDetail.value.task.instruction_source
+  isEditingTask.value = true
+}
+
+function cancelEditTask() {
+  isEditingTask.value = false
+  editTitle.value = ''
+  editInstructions.value = ''
+}
+
+async function submitTaskUpdate() {
+  if (!selectedDetail.value) return
+  const title = editTitle.value.trim()
+  const instructionSource = editInstructions.value.trim()
+  if (title.length === 0 || instructionSource.length === 0) {
+    errorMessage.value = 'Title and instructions are required.'
+    return
+  }
+  try {
+    await updateTask(props.taskId, {
+      version: selectedDetail.value.task.version,
+      title,
+      instruction_source: instructionSource,
+    })
+    isEditingTask.value = false
+    await loadTaskDetail()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  }
+}
+
 async function submitRecurrenceUpdate() {
   if (!selectedDetail.value?.schedule) return
   if (recurrenceCadence.value === 'weekly' && recurrenceWeekdays.value.length === 0) {
@@ -123,11 +166,7 @@ async function submitRecurrenceUpdate() {
     await updateRecurringSchedule(
       props.taskId,
       selectedDetail.value.schedule.version,
-      buildRecurrenceRule(
-        recurrenceCadence.value,
-        recurrenceTime.value,
-        recurrenceWeekdays.value,
-      ),
+      buildRecurrenceRule(recurrenceCadence.value, recurrenceTime.value, recurrenceWeekdays.value),
       recurrenceTimezone.value,
     )
     await loadTaskDetail()
@@ -169,9 +208,7 @@ async function submitResume() {
 
 async function submitRunNow() {
   if (!selectedDetail.value?.task) return
-  const confirmed = window.confirm(
-    `Run "${selectedDetail.value.task.title}" immediately?`,
-  )
+  const confirmed = window.confirm(`Run "${selectedDetail.value.task.title}" immediately?`)
   if (!confirmed) return
   try {
     await runOneTimeTaskNow(props.taskId)
@@ -226,23 +263,69 @@ function resetRecurrenceForm() {
     </div>
 
     <section class="max-w-7xl">
-      <div v-if="selectedDetail" class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+      <div
+        v-if="selectedDetail"
+        class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]"
+      >
         <div>
           <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Task Detail</p>
-          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
-            {{ selectedDetail.task.title }}
-          </h2>
-          <p class="m-0 text-sm text-slate-500">
-            {{ selectedDetail.task.execution_mode }} · {{ selectedDetail.task.task_status }} ·
-            {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
-          </p>
-          <p class="m-0 text-sm text-slate-500">Executor: {{ selectedDetail.task.executor }}</p>
-          <p class="m-0 text-sm text-slate-500">
-            Target: {{ selectedDetail.task.target_working_directory ?? 'none' }}
-          </p>
-          <pre
-            class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 wrap-anywhere"
-          >{{ selectedDetail.task.instruction_source }}</pre>
+          <template v-if="isEditingTask">
+            <label class="grid gap-2 font-semibold text-slate-700">
+              <span>Title</span>
+              <input
+                v-model="editTitle"
+                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                type="text"
+              />
+            </label>
+            <label class="mt-4 grid gap-2 font-semibold text-slate-700">
+              <span>Instructions</span>
+              <textarea
+                v-model="editInstructions"
+                class="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                rows="9"
+              />
+            </label>
+            <div class="mt-4 flex flex-wrap gap-3">
+              <button
+                class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                :disabled="!editTitle.trim() || !editInstructions.trim()"
+                @click="submitTaskUpdate"
+              >
+                Save Changes
+              </button>
+              <button
+                class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+                @click="cancelEditTask"
+              >
+                Cancel
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
+              {{ selectedDetail.task.title }}
+            </h2>
+            <p class="m-0 text-sm text-slate-500">
+              {{ selectedDetail.task.execution_mode }} · {{ selectedDetail.task.task_status }} ·
+              {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
+            </p>
+            <p class="m-0 text-sm text-slate-500">Executor: {{ selectedDetail.task.executor }}</p>
+            <p class="m-0 text-sm text-slate-500">
+              Target: {{ selectedDetail.task.target_working_directory ?? 'none' }}
+            </p>
+            <pre
+              class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 wrap-anywhere"
+              >{{ selectedDetail.task.instruction_source }}</pre
+            >
+            <button
+              v-if="isTaskEditable"
+              class="mt-4 min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+              @click="startEditTask"
+            >
+              Edit Task
+            </button>
+          </template>
           <section class="mt-6">
             <h3 class="m-0 mb-3 text-lg font-bold text-slate-950">Recent Runs</h3>
             <div v-if="selectedDetail.runs.length > 0" class="grid gap-2">
@@ -259,12 +342,15 @@ function resetRecurrenceForm() {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <strong class="text-slate-800">{{ run.run_status }}</strong>
                   <span class="text-sm text-slate-500">
-                    {{ formatDateTime(run.finished_at ?? run.actual_start_at ?? run.planned_start_at) }}
+                    {{
+                      formatDateTime(run.finished_at ?? run.actual_start_at ?? run.planned_start_at)
+                    }}
                   </span>
                 </div>
-                <p class="mb-0 text-sm text-slate-600 wrap-anywhere">
-                  {{ run.result_summary ?? run.failure_reason ?? 'No run output yet' }}
-                </p>
+                <MarkdownReader
+                  :content="run.result_summary ?? run.failure_reason"
+                  class="wrap-anywhere"
+                />
               </article>
             </div>
             <p v-else class="text-sm text-slate-500">No runs recorded.</p>
@@ -290,7 +376,7 @@ function resetRecurrenceForm() {
               {{ selectedDetail.schedule?.schedule_status ?? 'none' }}
             </dd>
             <dt class="text-sm font-bold text-slate-500">Latest Result</dt>
-            <dd class="m-0 mb-2.5 wrap-break-word">
+            <dd class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 line-clamp-3">
               {{
                 selectedDetail.latest_run?.result_summary ??
                 selectedDetail.latest_run?.failure_reason ??
@@ -299,7 +385,7 @@ function resetRecurrenceForm() {
             </dd>
             <template v-if="selectedRun">
               <dt class="text-sm font-bold text-slate-500">Selected Run</dt>
-              <dd class="m-0 mb-2.5 wrap-break-word">
+              <dd class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 line-clamp-3">
                 {{ selectedRun.run_status }} ·
                 {{ selectedRun.result_summary ?? selectedRun.failure_reason ?? 'No summary' }}
               </dd>

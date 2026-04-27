@@ -35,8 +35,7 @@ describe('App', () => {
         .value,
     ).toBe('Template Task')
     expect(
-      (wrapper.find('input[placeholder="/Users/you/project"]').element as HTMLInputElement)
-        .value,
+      (wrapper.find('input[placeholder="/Users/you/project"]').element as HTMLInputElement).value,
     ).toBe('/tmp')
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe(
       'Template instructions',
@@ -212,9 +211,7 @@ describe('App', () => {
     )
     if (!createCall) throw new Error('Expected task create request')
     const body = JSON.parse(String(createCall[1]?.body))
-    expect(body.schedule.recurrence_rule).toBe(
-      'RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=9;BYMINUTE=15',
-    )
+    expect(body.schedule.recurrence_rule).toBe('RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=9;BYMINUTE=15')
   })
 
   it('checks Claude Code availability before creating a Claude task', async () => {
@@ -315,6 +312,88 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Save Recurrence')
   })
 
+  it('edits a one-time task from task detail', async () => {
+    const fetchMock = stubFetch()
+    const { wrapper } = await mountAppAt('/tasks/task-1')
+
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'Edit Task')
+    if (!editButton) throw new Error('Expected Edit Task button to render')
+    await editButton.trigger('click')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input[type="text"]')
+    if (!titleInput.exists()) throw new Error('Expected title input to render')
+    await titleInput.setValue('Updated One-Time Task')
+
+    const textarea = wrapper.find('textarea')
+    if (!textarea.exists()) throw new Error('Expected textarea to render')
+    await textarea.setValue('Updated instructions.')
+
+    const saveButton = wrapper.findAll('button').find((button) => button.text() === 'Save Changes')
+    if (!saveButton) throw new Error('Expected Save Changes button to render')
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          version: 1,
+          title: 'Updated One-Time Task',
+          instruction_source: 'Updated instructions.',
+        }),
+      }),
+    )
+    expect(wrapper.text()).toContain('Updated One-Time Task')
+  })
+
+  it('edits a recurring task from task detail', async () => {
+    const fetchMock = stubFetch()
+    const { wrapper } = await mountAppAt('/tasks/task-recurring-1')
+
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'Edit Task')
+    if (!editButton) throw new Error('Expected Edit Task button to render')
+    await editButton.trigger('click')
+    await flushPromises()
+
+    const titleInput = wrapper.find('input[type="text"]')
+    if (!titleInput.exists()) throw new Error('Expected title input to render')
+    await titleInput.setValue('Updated Recurring Task')
+
+    const textarea = wrapper.find('textarea')
+    if (!textarea.exists()) throw new Error('Expected textarea to render')
+    await textarea.setValue('Updated recurring instructions.')
+
+    const saveButton = wrapper.findAll('button').find((button) => button.text() === 'Save Changes')
+    if (!saveButton) throw new Error('Expected Save Changes button to render')
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-recurring-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          version: 1,
+          title: 'Updated Recurring Task',
+          instruction_source: 'Updated recurring instructions.',
+        }),
+      }),
+    )
+    expect(wrapper.text()).toContain('Updated Recurring Task')
+  })
+
+  it('hides edit button for completed one-time tasks', async () => {
+    stubFetch()
+    const { wrapper } = await mountAppAt('/tasks/task-completed')
+
+    expect(wrapper.text()).toContain('Completed Task')
+    expect(wrapper.text()).toContain('completed')
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'Edit Task')
+    expect(editButton).toBeUndefined()
+  })
+
   it('updates a recurring schedule from task detail', async () => {
     const fetchMock = stubFetch()
     const { wrapper } = await mountAppAt('/tasks/task-recurring-1?edit=recurrence')
@@ -361,6 +440,11 @@ interface StubFetchOptions {
 }
 
 function stubFetch(options: StubFetchOptions = {}) {
+  let task1Title = 'Detailed Task'
+  let task1Instruction = 'Run this later.'
+  let taskRecurring1Title = 'Active Recurring'
+  let taskRecurring1Instruction = 'Run this on a recurring schedule.'
+
   const historyItems = options.historyItems ?? [
     {
       history_item_id: 'hist_run-1',
@@ -531,6 +615,50 @@ function stubFetch(options: StubFetchOptions = {}) {
       })
     }
 
+    if (url.endsWith('/tasks/task-1') && method === 'PATCH') {
+      const requestBody = JSON.parse(String(init?.body))
+      task1Title = requestBody.title ?? task1Title
+      task1Instruction = requestBody.instruction_source ?? task1Instruction
+      return jsonResponse({
+        task: {
+          task_id: 'task-1',
+          title: task1Title,
+          instruction_source: task1Instruction,
+          target_working_directory: '/tmp',
+          execution_mode: 'one_time',
+          task_status: 'scheduled',
+          template_id: null,
+          executor: 'debug_printer',
+          version: 2,
+          created_at: '2026-04-25T09:00:00+08:00',
+          updated_at: '2026-04-25T09:00:00+08:00',
+          archived_at: null,
+        },
+      })
+    }
+
+    if (url.endsWith('/tasks/task-recurring-1') && method === 'PATCH') {
+      const requestBody = JSON.parse(String(init?.body))
+      taskRecurring1Title = requestBody.title ?? taskRecurring1Title
+      taskRecurring1Instruction = requestBody.instruction_source ?? taskRecurring1Instruction
+      return jsonResponse({
+        task: {
+          task_id: 'task-recurring-1',
+          title: taskRecurring1Title,
+          instruction_source: taskRecurring1Instruction,
+          target_working_directory: '/tmp',
+          execution_mode: 'recurring',
+          task_status: 'scheduled',
+          template_id: null,
+          executor: 'debug_printer',
+          version: 2,
+          created_at: '2026-04-25T09:00:00+08:00',
+          updated_at: '2026-04-25T09:00:00+08:00',
+          archived_at: null,
+        },
+      })
+    }
+
     if (
       url.endsWith('/tasks/task-recurring-1/detail') ||
       url.endsWith('/tasks/task-recurring-created/detail')
@@ -538,8 +666,13 @@ function stubFetch(options: StubFetchOptions = {}) {
       const taskId = url.endsWith('/tasks/task-recurring-created/detail')
         ? 'task-recurring-created'
         : 'task-recurring-1'
+      const title = taskId === 'task-recurring-1' ? taskRecurring1Title : 'Active Recurring'
+      const instruction =
+        taskId === 'task-recurring-1'
+          ? taskRecurring1Instruction
+          : 'Run this on a recurring schedule.'
       return jsonResponse({
-        task: recurringTaskResponse(taskId, 'Active Recurring'),
+        task: { ...recurringTaskResponse(taskId, title), instruction_source: instruction },
         schedule: recurringScheduleResponse(taskId),
         latest_run: null,
         runs: [],
@@ -550,8 +683,8 @@ function stubFetch(options: StubFetchOptions = {}) {
       return jsonResponse({
         task: {
           task_id: 'task-1',
-          title: 'Detailed Task',
-          instruction_source: 'Run this later.',
+          title: task1Title,
+          instruction_source: task1Instruction,
           target_working_directory: '/tmp',
           execution_mode: 'one_time',
           task_status: 'scheduled',
@@ -594,6 +727,60 @@ function stubFetch(options: StubFetchOptions = {}) {
             finished_at: '2026-04-25T11:00:00+08:00',
             result_summary: null,
             failure_reason: 'Executor failed',
+            occurrence_key: null,
+          },
+        ],
+      })
+    }
+
+    if (url.endsWith('/tasks/task-completed/detail')) {
+      return jsonResponse({
+        task: {
+          task_id: 'task-completed',
+          title: 'Completed Task',
+          instruction_source: 'Already done.',
+          target_working_directory: '/tmp',
+          execution_mode: 'one_time',
+          task_status: 'completed',
+          template_id: null,
+          executor: 'debug_printer',
+          version: 1,
+          created_at: '2026-04-25T09:00:00+08:00',
+          updated_at: '2026-04-25T09:00:00+08:00',
+          archived_at: null,
+        },
+        schedule: {
+          schedule_id: 'schedule-completed',
+          task_id: 'task-completed',
+          schedule_type: 'single_run',
+          schedule_status: 'completed',
+          planned_at: '2026-04-25T10:00:00+08:00',
+          next_run_at: null,
+          version: 1,
+        },
+        latest_run: {
+          run_id: 'run-completed',
+          task_id: 'task-completed',
+          schedule_id: 'schedule-completed',
+          run_status: 'completed',
+          planned_start_at: '2026-04-25T10:00:00+08:00',
+          actual_start_at: '2026-04-25T10:01:00+08:00',
+          finished_at: '2026-04-25T11:00:00+08:00',
+          result_summary: 'Done',
+          failure_reason: null,
+          occurrence_key: null,
+        },
+        runs: [
+          {
+            run_id: 'run-completed',
+            task_id: 'task-completed',
+            schedule_id: 'schedule-completed',
+            run_status: 'completed',
+            planned_start_at: '2026-04-25T10:00:00+08:00',
+            actual_start_at: '2026-04-25T10:01:00+08:00',
+            finished_at: '2026-04-25T11:00:00+08:00',
+            result_summary: 'Done',
+            failure_reason: null,
             occurrence_key: null,
           },
         ],

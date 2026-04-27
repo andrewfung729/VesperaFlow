@@ -233,9 +233,7 @@ export async function preflightExecutor(params: {
   return request<ExecutorPreflightResult>(`/executors/preflight?${search}`)
 }
 
-export async function getKanban(
-  includeCanceled: boolean = false,
-): Promise<KanbanBoard> {
+export async function getKanban(includeCanceled: boolean = false): Promise<KanbanBoard> {
   const params = new URLSearchParams()
   if (includeCanceled) {
     params.append('include_canceled', 'true')
@@ -248,14 +246,16 @@ export async function getTaskDetail(taskId: string): Promise<TaskDetail> {
   return request<TaskDetail>(`/tasks/${taskId}/detail`)
 }
 
-export async function getHistory(params: {
-  status?: HistoryItem['run_status'] | ''
-  execution_mode?: ExecutionMode | ''
-  from?: string
-  to?: string
-  limit?: number
-  offset?: number
-} = {}): Promise<ListEnvelope<HistoryItem>> {
+export async function getHistory(
+  params: {
+    status?: HistoryItem['run_status'] | ''
+    execution_mode?: ExecutionMode | ''
+    from?: string
+    to?: string
+    limit?: number
+    offset?: number
+  } = {},
+): Promise<ListEnvelope<HistoryItem>> {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') {
@@ -266,12 +266,14 @@ export async function getHistory(params: {
   return requestList<HistoryItem>(`/views/history${suffix}`)
 }
 
-export async function getRecurringTodo(params: {
-  status?: RecurringTodoItem['schedule_status'] | ''
-  include_paused?: boolean
-  limit?: number
-  offset?: number
-} = {}): Promise<ListEnvelope<RecurringTodoItem>> {
+export async function getRecurringTodo(
+  params: {
+    status?: RecurringTodoItem['schedule_status'] | ''
+    include_paused?: boolean
+    limit?: number
+    offset?: number
+  } = {},
+): Promise<ListEnvelope<RecurringTodoItem>> {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') {
@@ -367,6 +369,20 @@ export async function createTemplate(payload: {
   })
 }
 
+export async function updateTask(
+  taskId: string,
+  payload: {
+    version: number
+    title?: string
+    instruction_source?: string
+  },
+): Promise<Task> {
+  return request<Task>(`/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function updateTemplate(
   templateId: string,
   payload: {
@@ -385,10 +401,7 @@ export async function updateTemplate(
   })
 }
 
-export async function archiveTemplate(
-  templateId: string,
-  version: number,
-): Promise<TaskTemplate> {
+export async function archiveTemplate(templateId: string, version: number): Promise<TaskTemplate> {
   return request<TaskTemplate>(`/templates/${templateId}/archive`, {
     method: 'POST',
     body: JSON.stringify({ version }),
@@ -429,20 +442,14 @@ export async function cancelTask(taskId: string, version: number): Promise<TaskB
   })
 }
 
-export async function pauseRecurringTask(
-  taskId: string,
-  version: number,
-): Promise<TaskBundle> {
+export async function pauseRecurringTask(taskId: string, version: number): Promise<TaskBundle> {
   return request<TaskBundle>(`/tasks/${taskId}/schedule/pause`, {
     method: 'POST',
     body: JSON.stringify({ version }),
   })
 }
 
-export async function resumeRecurringTask(
-  taskId: string,
-  version: number,
-): Promise<TaskBundle> {
+export async function resumeRecurringTask(taskId: string, version: number): Promise<TaskBundle> {
   return request<TaskBundle>(`/tasks/${taskId}/schedule/resume`, {
     method: 'POST',
     body: JSON.stringify({ version }),

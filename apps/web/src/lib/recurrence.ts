@@ -76,9 +76,7 @@ export function recurrencePreview(
     return `Runs daily at ${time} (${timezone})`
   }
   const days = weekdays.map((day) => weekdayLabels[day] ?? day).join(', ')
-  return days
-    ? `Runs weekly on ${days} at ${time} (${timezone})`
-    : 'Choose at least one weekday.'
+  return days ? `Runs weekly on ${days} at ${time} (${timezone})` : 'Choose at least one weekday.'
 }
 
 function parseRuleParts(rule: string | null | undefined): Record<string, string> {

@@ -14,6 +14,7 @@ import {
   resumeRecurringTask,
   updateOccurrence,
   updateRecurringSchedule,
+  updateTask,
   updateTemplate,
 } from '../api'
 
@@ -256,6 +257,52 @@ describe('api', () => {
           version: 4,
           original_occurrence_at: '2026-04-28T00:00:00+00:00',
           scope: 'this_occurrence_only',
+        }),
+      }),
+    )
+  })
+
+  it('sends task update requests', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              task_id: 'task-1',
+              title: 'Updated Task',
+              instruction_source: 'Updated instructions.',
+              target_working_directory: '/tmp',
+              execution_mode: 'one_time',
+              task_status: 'scheduled',
+              template_id: null,
+              executor: 'debug_printer',
+              version: 2,
+              created_at: '2026-04-25T09:00:00+08:00',
+              updated_at: '2026-04-25T09:00:00+08:00',
+              archived_at: null,
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await updateTask('task-1', {
+      version: 1,
+      title: 'Updated Task',
+      instruction_source: 'Updated instructions.',
+    })
+
+    expect(result.title).toBe('Updated Task')
+    expect(result.instruction_source).toBe('Updated instructions.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          version: 1,
+          title: 'Updated Task',
+          instruction_source: 'Updated instructions.',
         }),
       }),
     )

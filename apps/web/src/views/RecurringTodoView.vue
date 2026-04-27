@@ -23,9 +23,7 @@ const errorMessage = ref<string | null>(null)
 const scheduledItems = computed(() =>
   items.value.filter((item) => item.schedule_status === 'active'),
 )
-const pausedItems = computed(() =>
-  items.value.filter((item) => item.schedule_status === 'paused'),
-)
+const pausedItems = computed(() => items.value.filter((item) => item.schedule_status === 'paused'))
 
 onMounted(() => {
   void refreshTodo()
@@ -111,12 +109,8 @@ function latestOutcome(item: RecurringTodoItem): string {
     <section class="max-w-7xl">
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">
-            Recurring Todo
-          </p>
-          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
-            Recurring Tasks
-          </h2>
+          <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Recurring Todo</p>
+          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">Recurring Tasks</h2>
           <p class="m-0 text-sm text-slate-500">{{ total }} ongoing tasks</p>
         </div>
         <button

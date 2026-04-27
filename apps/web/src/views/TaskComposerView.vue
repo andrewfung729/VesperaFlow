@@ -70,9 +70,7 @@ const canSave = computed(
     title.value.trim().length > 0 &&
     instructions.value.trim().length > 0 &&
     targetWorkingDirectory.value.trim().startsWith('/') &&
-    (executionMode.value === 'one_time'
-      ? isFutureLocal(plannedAt.value)
-      : recurrenceIsValid.value),
+    (executionMode.value === 'one_time' ? isFutureLocal(plannedAt.value) : recurrenceIsValid.value),
 )
 const executorStatusText = computed(() => {
   if (executor.value === 'debug_printer') return 'Debug printer is available.'

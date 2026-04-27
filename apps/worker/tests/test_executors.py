@@ -268,6 +268,34 @@ async def test_claude_code_executor_runs_sdk_and_writes_artifact(
 
 
 @pytest.mark.asyncio
+async def test_claude_code_executor_does_not_truncate_long_result(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    long_result = "A" * 8000
+    _ = _fake_sdk(
+        [ResultMessage(result=long_result)],
+        monkeypatch=monkeypatch,
+    )
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = ClaudeCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.result_summary == long_result
+
+
+@pytest.mark.asyncio
 async def test_claude_code_executor_rejects_invalid_workspace(
     snapshot: ExecutionSnapshot,
 ) -> None:

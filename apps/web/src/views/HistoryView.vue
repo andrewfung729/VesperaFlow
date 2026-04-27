@@ -105,10 +105,7 @@ async function openHistoryItem(item: HistoryItem) {
       >
         Loading history...
       </div>
-      <div
-        v-else-if="items.length === 0"
-        class="rounded-md border border-slate-200 bg-white p-7"
-      >
+      <div v-else-if="items.length === 0" class="rounded-md border border-slate-200 bg-white p-7">
         <h3 class="m-0 text-lg font-bold text-slate-950">No completed or failed runs</h3>
         <p class="mb-0 text-slate-600">Terminal task runs will appear here.</p>
       </div>
@@ -124,11 +121,7 @@ async function openHistoryItem(item: HistoryItem) {
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="item in items"
-              :key="item.history_item_id"
-              class="border-t border-slate-200"
-            >
+            <tr v-for="item in items" :key="item.history_item_id" class="border-t border-slate-200">
               <td class="px-4 py-3">
                 <button
                   class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 [overflow-wrap:anywhere] hover:text-teal-900"
@@ -146,8 +139,10 @@ async function openHistoryItem(item: HistoryItem) {
               <td class="px-4 py-3 text-slate-600">
                 {{ formatDateTime(item.finished_at) }}
               </td>
-              <td class="px-4 py-3 text-slate-600 [overflow-wrap:anywhere]">
-                {{ item.result_summary ?? item.failure_reason ?? 'No summary' }}
+              <td class="px-4 py-3 max-w-xs text-slate-600">
+                <div class="line-clamp-2 wrap-anywhere">
+                  {{ item.result_summary ?? item.failure_reason ?? 'No summary' }}
+                </div>
               </td>
             </tr>
           </tbody>
