@@ -71,6 +71,11 @@ class FakeScheduler:
         self.deleted.append(schedule.schedule_id)
         return f"vesperaflow.run.{run.run_id}"
 
+    async def run_recurring_now(
+        self, *, task: Task, schedule: ProductSchedule, run: Run
+    ) -> str:
+        _ = task, schedule, run
+        return f"vesperaflow.run.{run.run_id}"
 
     async def start_one_time_workflow(
         self, *, task: Task, schedule: ProductSchedule, run: Run
@@ -136,14 +141,18 @@ async def test_run_now_one_time_task(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_now_rejects_non_one_time_task(client: AsyncClient) -> None:
+async def test_run_now_recurring_task(client: AsyncClient) -> None:
     created = await client.post("/api/v1/tasks", json=_recurring_payload())
     assert created.status_code == 201
-    task_id: str = created.json()["data"]["task"]["task_id"]
+    data: dict[str, Any] = created.json()["data"]
+    task_id: str = data["task"]["task_id"]
 
     response = await client.post(f"/api/v1/tasks/{task_id}/run-now")
 
-    assert response.status_code == 409
+    assert response.status_code == 200
+    run: dict[str, Any] = response.json()["data"]
+    assert run["run_status"] == "planned"
+    assert run["occurrence_key"] is not None
 
 
 @pytest.mark.asyncio

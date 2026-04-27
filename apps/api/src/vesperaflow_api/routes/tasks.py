@@ -389,25 +389,45 @@ async def cancel_occurrence(
 
 
 @router.post("/tasks/{task_id}/run-now")
-async def run_one_time_now(
+async def run_task_now(
     task_id: str,
     scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
     async with session.begin():
-        bundle = await repo.run_one_time_now(session, task_id=task_id)
-        if bundle.run is None:
-            raise ValueError("run-now requires an existing run")
-        try:
-            workflow_ref = await scheduler.run_one_time_now(
-                task=bundle.task,
-                schedule=bundle.schedule,
-                run=bundle.run,
+        task = await repo.get_task(session, task_id)
+        if task.execution_mode == ExecutionMode.ONE_TIME:
+            bundle = await repo.run_one_time_now(session, task_id=task_id)
+            if bundle.run is None:
+                raise ValueError("run-now requires an existing run")
+            try:
+                workflow_ref = await scheduler.run_one_time_now(
+                    task=bundle.task,
+                    schedule=bundle.schedule,
+                    run=bundle.run,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "execution_unavailable: Temporal workflow start failed"
+                ) from exc
+        elif task.execution_mode == ExecutionMode.RECURRING:
+            bundle = await repo.run_recurring_now(session, task_id=task_id)
+            if bundle.run is None:
+                raise ValueError("run-now requires an existing run")
+            try:
+                workflow_ref = await scheduler.run_recurring_now(
+                    task=bundle.task,
+                    schedule=bundle.schedule,
+                    run=bundle.run,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "execution_unavailable: Temporal workflow start failed"
+                ) from exc
+        else:
+            raise InvalidStateTransitionError(
+                "run-now is only supported for one-time and recurring tasks"
             )
-        except Exception as exc:
-            raise RuntimeError(
-                "execution_unavailable: Temporal workflow start failed"
-            ) from exc
         _ = await repo.set_schedule_external_ref(
             session,
             schedule_id=bundle.schedule.schedule_id,

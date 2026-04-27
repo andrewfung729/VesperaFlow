@@ -940,6 +940,56 @@ async def run_one_time_now(
     return TaskBundle(task=task, schedule=schedule, run=run)
 
 
+async def run_recurring_now(
+    session: AsyncSession,
+    *,
+    task_id: str,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    if task.execution_mode is not ExecutionMode.RECURRING:
+        raise InvalidStateTransitionError("only recurring tasks can be run now")
+    if schedule.schedule_status is not ScheduleStatus.ACTIVE:
+        raise InvalidStateTransitionError("only active schedules can be run now")
+
+    now = utc_now()
+    occurrence_key = occurrence_key_for_datetime(now)
+    existing = await _get_run_for_occurrence(
+        session,
+        schedule_id=schedule.schedule_id,
+        occurrence_key=occurrence_key,
+    )
+    if existing is not None:
+        run = existing
+    else:
+        run = Run(
+            run_id=new_id("run"),
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            run_status=RunStatus.PLANNED,
+            planned_start_at=now,
+            actual_start_at=None,
+            finished_at=None,
+            result_summary=None,
+            failure_reason=None,
+            external_execution_ref=None,
+            occurrence_key=occurrence_key,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(run)
+
+    run.planned_start_at = now
+    run.updated_at = now
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(
+        task=task,
+        schedule=schedule,
+        run=run,
+    )
+
+
 async def update_recurring_task_schedule(
     session: AsyncSession,
     *,

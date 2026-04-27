@@ -5,7 +5,7 @@ from typing import cast
 
 from temporalio import workflow
 from vesperaflow_core.contracts import ExecutorOutcome, MaterializedRun, TaskRunInput
-from vesperaflow_core.enums import RunStatus
+from vesperaflow_core.enums import RunStatus, ScheduleType
 from vesperaflow_core.temporal_ids import occurrence_key_for_datetime
 
 
@@ -116,7 +116,11 @@ class TaskRunWorkflow:
                 start_to_close_timeout=timedelta(seconds=30),
             )
 
-        if original_run_id is not None and payload.schedule_id is not None:
+        if (
+            original_run_id is not None
+            and payload.schedule_id is not None
+            and payload.schedule_type is ScheduleType.SINGLE_RUN
+        ):
             await workflow.execute_activity(
                 "complete_single_run_schedule",
                 payload.schedule_id,

@@ -8,7 +8,7 @@ import {
   pauseRecurringTask,
   rescheduleTask,
   resumeRecurringTask,
-  runOneTimeTaskNow,
+  runTaskNow,
   updateRecurringSchedule,
   updateTask,
   type TaskDetail,
@@ -211,7 +211,7 @@ async function submitRunNow() {
   const confirmed = window.confirm(`Run "${selectedDetail.value.task.title}" immediately?`)
   if (!confirmed) return
   try {
-    await runOneTimeTaskNow(props.taskId)
+    await runTaskNow(props.taskId)
     await loadTaskDetail()
   } catch (error) {
     errorMessage.value = readableError(error)
@@ -397,17 +397,19 @@ function resetRecurrenceForm() {
               </dd>
             </template>
           </dl>
+          <button
+            v-if="
+              selectedDetail.schedule?.schedule_status === 'active' &&
+              (isRecurringTask ||
+                (selectedDetail.task.task_status === 'scheduled' &&
+                  selectedDetail.latest_run?.run_status === 'planned'))
+            "
+            class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+            @click="submitRunNow"
+          >
+            Run Now
+          </button>
           <template v-if="!isRecurringTask">
-            <button
-              v-if="
-                selectedDetail.task.task_status === 'scheduled' &&
-                selectedDetail.latest_run?.run_status === 'planned'
-              "
-              class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-              @click="submitRunNow"
-            >
-              Run Now
-            </button>
             <label class="grid gap-2 font-semibold text-slate-700">
               <span>Reschedule</span>
               <input

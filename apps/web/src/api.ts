@@ -456,7 +456,7 @@ export async function resumeRecurringTask(taskId: string, version: number): Prom
   })
 }
 
-export async function runOneTimeTaskNow(taskId: string): Promise<Run> {
+export async function runTaskNow(taskId: string): Promise<Run> {
   return request<Run>(`/tasks/${taskId}/run-now`, {
     method: 'POST',
     body: JSON.stringify({}),

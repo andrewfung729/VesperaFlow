@@ -19,6 +19,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.service import RPCError, RPCStatusCode
 from vesperaflow_core import (
     ExecutionSnapshot,
+    ScheduleType,
     TaskRunInput,
     parse_recurrence_rule,
     temporal_schedule_id,
@@ -129,6 +130,44 @@ class TemporalScheduler:
             run=run,
         )
 
+    async def run_recurring_now(
+        self,
+        *,
+        task: Task,
+        schedule: ProductSchedule,
+        run: Run,
+    ) -> str:
+        client = self._require_client()
+        workflow_id = workflow_id_for_run(run.run_id)
+        planned_at = utc_now()
+        workflow_input = TaskRunInput(
+            run_id=run.run_id,
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            planned_start_at=planned_at,
+            occurrence_key=run.occurrence_key,
+            schedule_type=ScheduleType.RECURRING_RULE,
+            execution_snapshot=ExecutionSnapshot(
+                run_id=run.run_id,
+                task_id=task.task_id,
+                schedule_id=schedule.schedule_id,
+                executor=task.executor,
+                instruction_source=task.instruction_source,
+                planned_start_at=planned_at,
+                working_directory=str(
+                    Path(self._settings.run_workspace_root) / run.run_id
+                ),
+                target_working_directory=task.target_working_directory,
+            ),
+        )
+        handle = await client.start_workflow(
+            "TaskRunWorkflow",
+            args=[workflow_input],
+            id=workflow_id,
+            task_queue=self._settings.task_queue,
+        )
+        return handle.id
+
     async def start_one_time_workflow(
         self,
         *,
@@ -196,6 +235,7 @@ class TemporalScheduler:
             schedule_id=schedule.schedule_id,
             planned_start_at=planned_at,
             occurrence_key=None,
+            schedule_type=ScheduleType.SINGLE_RUN,
             execution_snapshot=ExecutionSnapshot(
                 run_id=run.run_id,
                 task_id=task.task_id,
@@ -249,6 +289,7 @@ class TemporalScheduler:
             schedule_id=schedule.schedule_id,
             planned_start_at=planned_at,
             occurrence_key=None,
+            schedule_type=ScheduleType.RECURRING_RULE,
             execution_snapshot=ExecutionSnapshot(
                 run_id=None,
                 task_id=task.task_id,

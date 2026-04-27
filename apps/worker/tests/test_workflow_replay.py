@@ -11,6 +11,7 @@ from vesperaflow_core import (
     ExecutorOutcome,
     MaterializedRun,
     RunStatus,
+    ScheduleType,
     TaskRunInput,
 )
 from vesperaflow_worker.main import _pydantic_sandbox_runner
@@ -148,6 +149,7 @@ def _task_run_input(planned_at: datetime) -> TaskRunInput:
         schedule_id="sch_replay",
         planned_start_at=planned_at,
         occurrence_key=None,
+        schedule_type=ScheduleType.SINGLE_RUN,
         execution_snapshot=ExecutionSnapshot(
             run_id="run_replay",
             task_id="task_replay",
@@ -168,6 +170,7 @@ def _recurring_task_run_input(planned_at: datetime) -> TaskRunInput:
         schedule_id="sch_recurring_replay",
         planned_start_at=planned_at,
         occurrence_key=None,
+        schedule_type=ScheduleType.RECURRING_RULE,
         execution_snapshot=ExecutionSnapshot(
             run_id=None,
             task_id="task_recurring_replay",

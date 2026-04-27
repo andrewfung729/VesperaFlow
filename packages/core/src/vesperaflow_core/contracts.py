@@ -9,7 +9,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import ExecutorName, ExecutorPreflightStatus, RunStatus
+from .enums import ExecutorName, ExecutorPreflightStatus, RunStatus, ScheduleType
 
 
 class ExecutionSnapshot(BaseModel):
@@ -33,6 +33,7 @@ class TaskRunInput(BaseModel):
     schedule_id: str | None = None
     planned_start_at: datetime
     occurrence_key: str | None = None
+    schedule_type: ScheduleType | None = None
     execution_snapshot: ExecutionSnapshot
 
 

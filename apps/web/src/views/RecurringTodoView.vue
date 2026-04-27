@@ -6,6 +6,7 @@ import {
   getRecurringTodo,
   pauseRecurringTask,
   resumeRecurringTask,
+  runTaskNow,
   type RecurringTodoItem,
 } from '@/api'
 import { formatDateTime } from '@/lib/dateTime'
@@ -79,6 +80,21 @@ async function resumeItem(item: RecurringTodoItem) {
   errorMessage.value = null
   try {
     await resumeRecurringTask(item.task_id, item.schedule_version)
+    await refreshTodo()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    actionTaskId.value = null
+  }
+}
+
+async function runNowItem(item: RecurringTodoItem) {
+  actionTaskId.value = item.task_id
+  errorMessage.value = null
+  try {
+    const confirmed = window.confirm(`Run "${item.title}" immediately?`)
+    if (!confirmed) return
+    await runTaskNow(item.task_id)
     await refreshTodo()
   } catch (error) {
     errorMessage.value = readableError(error)
@@ -179,6 +195,14 @@ function latestOutcome(item: RecurringTodoItem): string {
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">
+                      <button
+                        class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        type="button"
+                        :disabled="actionTaskId === item.task_id"
+                        @click="runNowItem(item)"
+                      >
+                        Run Now
+                      </button>
                       <button
                         class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                         type="button"
