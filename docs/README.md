@@ -9,8 +9,7 @@ this index to find the smallest document that answers the current question.
 - `functional-spec.md`: detailed product behavior and flows.
 - `ux-spec.md`: UI information architecture, interaction rules, labels.
 - `glossary.md`: shared vocabulary across product, API, Temporal, and UI.
-- `MVP_PROGRESS.md`: current implementation progress, MVP gaps, and next build
-  order.
+- `MVP_PROGRESS.md`: MVP implementation status and known gaps.
 
 ## Architecture
 

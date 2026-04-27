@@ -1,4 +1,7 @@
-# Plan: MVP Completion — M6 Release Hardening
+# Completed Plan: MVP Completion — M6 Release Hardening
+
+Status: completed
+Completed: 2026-04-27
 
 ## Goal
 
@@ -25,9 +28,7 @@ The expected user-visible outcome is:
 M0 through M5 are complete and archived in
 `docs/plans/completed/2026-04-26-mvp-m0-m5.md`.
 
-M6 is nearly complete. The remaining work before closing this active plan:
-
-- active plan closure and final doc refresh
+M6 is complete. This plan was closed on 2026-04-27 after all exit criteria passed.
 
 ## Decisions
 

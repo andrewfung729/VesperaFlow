@@ -28,14 +28,11 @@ Status meanings:
 
 ## Current Summary
 
-VesperaFlow is not yet a complete MVP, but it now has one-time tasks, history,
-templates, recurring lifecycle commands, recurring todo, calendar visibility,
-and occurrence overrides wired through the owning layers. The remaining
-release-critical gap is live Claude Code confidence and release hardening.
-
-The largest MVP gap is full Claude Code executor invocation. The repo now has
-API workspace preflight and runtime executor classifications, but a recorded
-authenticated full-stack Claude Code smoke run is still pending.
+VesperaFlow MVP is functionally complete. One-time tasks, history, templates,
+recurring lifecycle commands, recurring todo, calendar visibility, and
+occurrence overrides are wired through the owning layers. Claude Code executor
+preflight, runtime classification, and authenticated live smoke have been
+verified on the local stack.
 
 ## Feature Progress
 
@@ -50,7 +47,7 @@ authenticated full-stack Claude Code smoke run is still pending.
 | One-time kanban view | Done | `/api/v1/views/kanban` supports an `include_canceled` query parameter (default `false`) aligned with UX rules; `KanbanBoardView.vue` has a "Show canceled" toggle, loading spinner, global empty state, and per-column empty states. Web/API tests cover the default hidden-canceled and explicit shown-canceled paths. | Future hardening can add drag-and-drop or more advanced filtering, but the MVP kanban lifecycle is wired. |
 | Recurring todo view | Done | Store read model lists recurring tasks only, with active schedules sorted by `next_run_at` before paused schedules sorted by recent update; `/api/v1/views/recurring-todo` exposes latest-run context; the web route groups scheduled and paused items, links to task detail, and supports pause/resume from the list. Repository, API, web unit, and Playwright smoke coverage exist. | Future hardening can add richer recurrence copy. |
 | History view for run review | Done | Store history query, `/api/v1/views/history`, and `HistoryView.vue` list completed/failed runs in reverse finished order, filter by outcome and execution mode, and link items back to task detail with selected run context. Repository, API, web unit, and Playwright smoke coverage exist. | Recurring runs will appear through the same read model once M3 materializes them. |
-| Executor integration | Partial | Worker workflow, activities, executor router, debug printer, Claude Agent SDK invocation, API workspace preflight endpoint, and composer preflight UX exist; Claude output artifacts and auth, misconfiguration, workspace, and execution failure classifications are covered with mocked Worker/API/web tests. | Run and record an authenticated live Claude Code smoke path. Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
+| Executor integration | Done | Worker workflow, activities, executor router, debug printer, Claude Agent SDK invocation, API workspace preflight endpoint, and composer preflight UX exist; Claude output artifacts and auth, misconfiguration, workspace, and execution failure classifications are covered with mocked Worker/API/web tests. Authenticated live Claude Code smoke was manually verified on the local stack. | Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
 | Temporal production hardening | Partial | One-time and recurring Temporal Schedule client paths exist; repo check enforces Temporal as sole scheduler; `TaskRunWorkflow` has replay coverage for completed, failed, canceled, and pre-execution-canceled paths. | Add rollout/versioning discipline. Live recurring full-stack smoke was manually verified on the local stack. |
 
 ## Layer Readiness
@@ -61,24 +58,21 @@ authenticated full-stack Claude Code smoke run is still pending.
 | Core domain package | Partial | Shared enums, contracts, IDs, recurrence validation, occurrence-key helpers, occurrence edit enums, status derivation, and template default validation exist. |
 | Store | Partial | Task, schedule, run, template, and occurrence override tables exist, including target working directory, terminal-run history index, recurring run `occurrence_key` idempotency, template archive support, copy-on-instantiate repository coverage, calendar projection, and scoped occurrence overrides. |
 | API | Partial | One-time and recurring task lifecycle endpoints, occurrence update/cancel endpoints, schedule/run/detail, kanban with optional canceled visibility, history, recurring todo, calendar, executor preflight, and template CRUD/archive/instantiate endpoints exist. |
-| Worker | Partial | TaskRunWorkflow, activities, debug printer, Claude Agent SDK executor, recurring materialization, and import-hygiene/replay coverage exist; live executor integration tests are not complete. |
+| Worker | Partial | TaskRunWorkflow, activities, debug printer, Claude Agent SDK executor, recurring materialization, and import-hygiene/replay coverage exist; authenticated live Claude Code and recurring smoke were manually verified on the local stack. |
 | Web | Partial | Composer, one-time board with canceled toggle and empty states, task detail, history, recurring todo, calendar agenda, template management, template target-directory prefill, executor selection, executor preflight visibility, and target directory capture exist. |
-| Verification | Partial | Unit/API/web smoke checks exist; generated facts are present; replay coverage exists for `TaskRunWorkflow`; opt-in full-stack one-time smoke exists for local Postgres/Temporal/API/Worker; Playwright now covers the MVP navigation path with mocked API data. | Full-stack smoke is not required in default CI yet, and a recorded live Claude Code smoke is still missing. |
+| Verification | Partial | Unit/API/web smoke checks exist; generated facts are present; replay coverage exists for `TaskRunWorkflow`; opt-in full-stack one-time smoke exists for local Postgres/Temporal/API/Worker; Playwright covers the MVP navigation path with mocked API data. | Full-stack smoke is intentionally opt-in and local-only; it is not a required CI gate for MVP. |
 
 ## Recommended Build Order
 
-1. Harden the one-time vertical slice end to end: local stack runbook, full
-   Temporal/Postgres/Worker integration test, debug-printer success path, and
-   failure visibility.
-2. Run and record the documented live Claude Code smoke on a developer machine
-   with authenticated local credentials.
+MVP is complete. Future work beyond MVP should be planned in new active plans.
 
 ## Current Blockers And Risks
 
 - The MVP scope in docs is broader than the implemented product surface; new
   agents should not assume every specified endpoint or view exists.
-- Claude Agent SDK execution and runtime classification are implemented, but
-  live authenticated coverage is still missing from automated verification.
+- Claude Agent SDK execution, runtime classification, and authenticated live
+  smoke are implemented and manually verified; they are not yet in automated
+  CI coverage.
 - Calendar and occurrence override semantics are implemented in the
   store/API/worker/web layers, and the end-to-end recurring path was manually
   verified on the local stack.
