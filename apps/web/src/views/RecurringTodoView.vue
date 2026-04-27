@@ -176,7 +176,7 @@ function latestOutcome(item: RecurringTodoItem): string {
                 >
                   <td class="px-4 py-3">
                     <button
-                      class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 [overflow-wrap:anywhere] hover:text-teal-900"
+                      class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 wrap-anywhere hover:text-teal-900"
                       @click="openTask(item)"
                     >
                       {{ item.title }}
@@ -184,14 +184,16 @@ function latestOutcome(item: RecurringTodoItem): string {
                   </td>
                   <td class="px-4 py-3 text-slate-600">{{ recurrenceSummary(item) }}</td>
                   <td class="px-4 py-3 text-slate-600">{{ formatDateTime(item.next_run_at) }}</td>
-                  <td class="px-4 py-3 text-slate-600">
+                  <td class="px-4 py-3 max-w-xs text-slate-600">
                     <span
                       v-if="item.latest_run_outcome === 'failed'"
-                      class="inline-flex rounded-md bg-red-50 px-2 py-1 font-semibold text-red-700"
+                      class="mb-1 inline-flex rounded-md bg-red-50 px-2 py-1 font-semibold text-red-700"
                     >
                       Failed
                     </span>
-                    <span class="[overflow-wrap:anywhere]">{{ latestOutcome(item) }}</span>
+                    <div class="line-clamp-2 wrap-anywhere">
+                      {{ latestOutcome(item) }}
+                    </div>
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">
@@ -247,15 +249,23 @@ function latestOutcome(item: RecurringTodoItem): string {
                 >
                   <td class="px-4 py-3">
                     <button
-                      class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 [overflow-wrap:anywhere] hover:text-teal-900"
+                      class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 wrap-anywhere hover:text-teal-900"
                       @click="openTask(item)"
                     >
                       {{ item.title }}
                     </button>
                   </td>
                   <td class="px-4 py-3 text-slate-600">{{ recurrenceSummary(item) }}</td>
-                  <td class="px-4 py-3 text-slate-600 [overflow-wrap:anywhere]">
-                    {{ latestOutcome(item) }}
+                  <td class="px-4 py-3 max-w-xs text-slate-600">
+                    <span
+                      v-if="item.latest_run_outcome === 'failed'"
+                      class="mb-1 inline-flex rounded-md bg-red-50 px-2 py-1 font-semibold text-red-700"
+                    >
+                      Failed
+                    </span>
+                    <div class="line-clamp-2 wrap-anywhere">
+                      {{ latestOutcome(item) }}
+                    </div>
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">

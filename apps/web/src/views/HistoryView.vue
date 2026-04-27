@@ -124,7 +124,7 @@ async function openHistoryItem(item: HistoryItem) {
             <tr v-for="item in items" :key="item.history_item_id" class="border-t border-slate-200">
               <td class="px-4 py-3">
                 <button
-                  class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 [overflow-wrap:anywhere] hover:text-teal-900"
+                  class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 wrap-anywhere hover:text-teal-900"
                   @click="openHistoryItem(item)"
                 >
                   {{ item.title }}
