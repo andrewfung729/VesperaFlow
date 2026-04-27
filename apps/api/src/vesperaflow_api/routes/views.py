@@ -24,8 +24,11 @@ router = APIRouter()
 @router.get("/views/kanban")
 async def get_kanban(
     session: Annotated[AsyncSession, Depends(get_session)],
+    include_canceled: bool = False,
 ) -> DataEnvelope:
-    board = await repo.get_one_time_kanban(session)
+    board = await repo.get_one_time_kanban(
+        session, include_canceled=include_canceled
+    )
     response = KanbanBoardResponse(
         columns={
             column: [

@@ -433,12 +433,25 @@ async def test_cancel_task_updates_kanban(client: AsyncClient) -> None:
         f"/api/v1/tasks/{cast(str, task['task_id'])}/schedule/cancel",
         json={"version": cast(str, schedule["version"])},
     )
-    board = await client.get("/api/v1/views/kanban")
 
+    # Default view hides canceled tasks per UX rules.
+    board_default = await client.get("/api/v1/views/kanban")
     assert canceled.status_code == 200
-    assert board.status_code == 200
-    columns = cast(dict[str, object], board.json()["data"]["columns"])
-    assert len(cast(list[object], columns["canceled"])) == 1
+    assert board_default.status_code == 200
+    columns_default = cast(
+        dict[str, object], board_default.json()["data"]["columns"]
+    )
+    assert "canceled" not in columns_default
+
+    # Explicitly requesting canceled tasks shows them.
+    board_with_canceled = await client.get(
+        "/api/v1/views/kanban?include_canceled=true"
+    )
+    assert board_with_canceled.status_code == 200
+    columns_with_canceled = cast(
+        dict[str, object], board_with_canceled.json()["data"]["columns"]
+    )
+    assert len(cast(list[object], columns_with_canceled["canceled"])) == 1
 
 
 @pytest.mark.asyncio

@@ -43,8 +43,83 @@ async def test_task_run_workflow_replays_recurring_materialized_history() -> Non
     assert result.replay_failure is None
 
 
+@pytest.mark.asyncio
+async def test_task_run_workflow_replays_failed_history() -> None:
+    history = await _build_history(
+        outcome=ExecutorOutcome(
+            terminal_status=RunStatus.FAILED,
+            failure_reason="Simulated failure",
+        ),
+    )
+
+    result = await Replayer(
+        workflows=[TaskRunWorkflow],
+        workflow_runner=_pydantic_sandbox_runner,
+        data_converter=pydantic_data_converter,
+    ).replay_workflow(history)
+
+    assert result.replay_failure is None
+
+
+@pytest.mark.asyncio
+async def test_task_run_workflow_replays_canceled_history() -> None:
+    history = await _build_history(
+        outcome=ExecutorOutcome(
+            terminal_status=RunStatus.CANCELED,
+            failure_reason="Simulated cancellation",
+        ),
+    )
+
+    result = await Replayer(
+        workflows=[TaskRunWorkflow],
+        workflow_runner=_pydantic_sandbox_runner,
+        data_converter=pydantic_data_converter,
+    ).replay_workflow(history)
+
+    assert result.replay_failure is None
+
+
+@pytest.mark.asyncio
+async def test_task_run_workflow_replays_pre_execution_canceled_history() -> None:
+    history = await _build_history(
+        materialized_status=RunStatus.CANCELED,
+    )
+
+    result = await Replayer(
+        workflows=[TaskRunWorkflow],
+        workflow_runner=_pydantic_sandbox_runner,
+        data_converter=pydantic_data_converter,
+    ).replay_workflow(history)
+
+    assert result.replay_failure is None
+
+
 async def _completed_debug_printer_history(recurring: bool = False):
+    return await _build_history(recurring=recurring)
+
+
+async def _build_history(
+    *,
+    recurring: bool = False,
+    materialized_status: RunStatus = RunStatus.PLANNED,
+    outcome: ExecutorOutcome | None = None,
+):
     task_run_input_factory = _recurring_task_run_input if recurring else _task_run_input
+
+    activities = [
+        _make_materialize_run(materialized_status),
+        mark_run_queued,
+        mark_run_running,
+        mark_run_completed,
+        mark_run_failed,
+        mark_run_canceled,
+        complete_single_run_schedule,
+    ]
+    if outcome is not None:
+        activities.append(_make_execute_agent_run(outcome))
+    else:
+        activities.append(execute_agent_run)
+
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
     ) as environment:
@@ -52,16 +127,7 @@ async def _completed_debug_printer_history(recurring: bool = False):
             environment.client,
             task_queue="vesperaflow-replay-test",
             workflows=[TaskRunWorkflow],
-            activities=[
-                materialize_run,
-                mark_run_queued,
-                mark_run_running,
-                execute_agent_run,
-                mark_run_completed,
-                mark_run_failed,
-                mark_run_canceled,
-                complete_single_run_schedule,
-            ],
+            activities=activities,
             workflow_runner=_pydantic_sandbox_runner,
         ):
             planned_at = datetime.now(UTC)
@@ -115,31 +181,42 @@ def _recurring_task_run_input(planned_at: datetime) -> TaskRunInput:
     )
 
 
-@activity.defn(name="materialize_run")
-async def materialize_run(
-    payload: TaskRunInput,
-    _: str | None = None,
-    __: datetime | None = None,
-) -> str | MaterializedRun:
-    if isinstance(payload, dict):
-        payload = TaskRunInput.model_validate(payload)
-    if payload.run_id is not None:
-        return RunStatus.PLANNED.value
-    planned_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
-    return MaterializedRun(
-        run_id="run_recurring_replay",
-        run_status=RunStatus.PLANNED,
-        execution_snapshot=ExecutionSnapshot(
-            run_id="run_recurring_replay",
-            task_id=payload.task_id,
-            schedule_id=payload.schedule_id,
-            executor=ExecutorName.DEBUG_PRINTER,
-            instruction_source=payload.execution_snapshot.instruction_source,
-            planned_start_at=planned_at,
-            working_directory="/tmp/vesperaflow-runs/run_recurring_replay",
-            target_working_directory="/tmp",
-        ),
-    )
+def _make_materialize_run(status: RunStatus, run_id: str = "run_recurring_replay"):
+    async def fn(
+        payload: TaskRunInput,
+        _: str | None = None,
+        __: datetime | None = None,
+    ) -> str | MaterializedRun:
+        if isinstance(payload, dict):
+            payload = TaskRunInput.model_validate(payload)
+        if payload.run_id is not None:
+            return status.value
+        planned_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
+        return MaterializedRun(
+            run_id=run_id,
+            run_status=status,
+            execution_snapshot=ExecutionSnapshot(
+                run_id=run_id,
+                task_id=payload.task_id,
+                schedule_id=payload.schedule_id,
+                executor=ExecutorName.DEBUG_PRINTER,
+                instruction_source=payload.execution_snapshot.instruction_source,
+                planned_start_at=planned_at,
+                working_directory="/tmp/vesperaflow-runs/run_recurring_replay",
+                target_working_directory="/tmp",
+            ),
+        )
+
+    return activity.defn(name="materialize_run")(fn)
+
+
+def _make_execute_agent_run(outcome: ExecutorOutcome):
+    async def fn(payload: TaskRunInput) -> ExecutorOutcome:
+        if isinstance(payload, dict):
+            TaskRunInput.model_validate(payload)
+        return outcome
+
+    return activity.defn(name="execute_agent_run")(fn)
 
 
 @activity.defn(name="mark_run_queued")

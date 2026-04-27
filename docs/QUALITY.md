@@ -33,10 +33,10 @@ Update this file when any of these change:
 
 - [ ] Generated DB schema, API route map, Temporal surface, and dependency graph
       exist, but refresh is manual.
-- [ ] Temporal replay tests cover completed one-time and recurring materialized
-      paths, but not failed or canceled representative histories.
-- [ ] Integration tests requiring the full Postgres/Temporal stack are opt-in and
-      not yet a CI gate.
+- [x] Temporal replay tests cover completed, failed, canceled, and
+      pre-execution-canceled representative histories.
+- [x] Integration tests requiring the full Postgres/Temporal stack are opt-in and
+      local-only; they will not become a required CI gate for MVP.
 - [ ] Web E2E coverage includes the MVP navigation path, but remains smoke-level.
 - [ ] Calendar, history, and recurring todo latest-run/context paths are
       implemented for materialized recurring runs, but live recurring stack

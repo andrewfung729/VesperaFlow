@@ -1,17 +1,31 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { getKanban, type KanbanBoard } from '@/api'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 
-const columns = ['upcoming', 'running', 'completed', 'failed', 'canceled'] as const
+const defaultColumns = ['upcoming', 'running', 'completed', 'failed'] as const
+const allColumns = [...defaultColumns, 'canceled'] as const
+
 const router = useRouter()
 
 const board = ref<KanbanBoard>({ columns: emptyColumns() })
 const isLoadingBoard = ref(false)
 const errorMessage = ref<string | null>(null)
+const includeCanceled = ref(false)
+
+const visibleColumns = computed(() =>
+  includeCanceled.value ? allColumns : defaultColumns,
+)
+
+const totalCards = computed(() =>
+  Object.values(board.value.columns).reduce(
+    (sum, cards) => sum + cards.length,
+    0,
+  ),
+)
 
 onMounted(() => {
   void refreshBoard()
@@ -21,7 +35,7 @@ async function refreshBoard() {
   isLoadingBoard.value = true
   errorMessage.value = null
   try {
-    board.value = await getKanban()
+    board.value = await getKanban(includeCanceled.value)
   } catch (error) {
     errorMessage.value = readableError(error)
   } finally {
@@ -34,7 +48,7 @@ async function openTask(taskId: string) {
 }
 
 function emptyColumns(): KanbanBoard['columns'] {
-  return Object.fromEntries(columns.map((column) => [column, []]))
+  return Object.fromEntries(allColumns.map((column) => [column, []]))
 }
 </script>
 
@@ -53,17 +67,50 @@ function emptyColumns(): KanbanBoard['columns'] {
           <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Board</p>
           <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">One-Time Tasks</h2>
         </div>
-        <button
-          class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
-          :disabled="isLoadingBoard"
-          @click="refreshBoard"
-        >
-          Refresh
-        </button>
+        <div class="flex items-center gap-3">
+          <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              v-model="includeCanceled"
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+              @change="refreshBoard"
+            />
+            Show canceled
+          </label>
+          <button
+            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            :disabled="isLoadingBoard"
+            @click="refreshBoard"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
-      <div class="grid grid-cols-[repeat(5,minmax(180px,1fr))] gap-3.5 overflow-x-auto">
+
+      <div
+        v-if="isLoadingBoard"
+        class="flex items-center justify-center py-16 text-sm text-slate-500"
+      >
+        <span class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-teal-600"></span>
+        Loading board…
+      </div>
+
+      <div
+        v-else-if="totalCards === 0"
+        class="rounded-md border border-dashed border-slate-300 bg-slate-50 py-16 text-center"
+      >
+        <p class="text-lg font-semibold text-slate-700">No one-time tasks yet</p>
+        <p class="mt-1 text-sm text-slate-500">
+          Create a task from the composer to see it here.
+        </p>
+      </div>
+
+      <div
+        v-else
+        class="grid grid-cols-[repeat(5,minmax(180px,1fr))] gap-3.5 overflow-x-auto"
+      >
         <section
-          v-for="column in columns"
+          v-for="column in visibleColumns"
           :key="column"
           class="min-h-96 rounded-md border border-slate-200 bg-slate-200/70 p-3"
         >

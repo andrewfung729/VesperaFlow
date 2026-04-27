@@ -233,8 +233,15 @@ export async function preflightExecutor(params: {
   return request<ExecutorPreflightResult>(`/executors/preflight?${search}`)
 }
 
-export async function getKanban(): Promise<KanbanBoard> {
-  return request<KanbanBoard>('/views/kanban')
+export async function getKanban(
+  includeCanceled: boolean = false,
+): Promise<KanbanBoard> {
+  const params = new URLSearchParams()
+  if (includeCanceled) {
+    params.append('include_canceled', 'true')
+  }
+  const query = params.toString()
+  return request<KanbanBoard>(`/views/kanban${query ? `?${query}` : ''}`)
 }
 
 export async function getTaskDetail(taskId: string): Promise<TaskDetail> {

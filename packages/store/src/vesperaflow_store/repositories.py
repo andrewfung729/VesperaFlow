@@ -1229,7 +1229,11 @@ async def complete_single_run_schedule(
     return schedule
 
 
-async def get_one_time_kanban(session: AsyncSession) -> dict[str, list[TaskDetail]]:
+async def get_one_time_kanban(
+    session: AsyncSession,
+    *,
+    include_canceled: bool = True,
+) -> dict[str, list[TaskDetail]]:
     statement = (
         select(Task)
         .where(Task.execution_mode == ExecutionMode.ONE_TIME)
@@ -1237,14 +1241,17 @@ async def get_one_time_kanban(session: AsyncSession) -> dict[str, list[TaskDetai
         .order_by(Task.created_at.desc())
     )
     tasks = list(await session.scalars(statement))
-    board = {
+    board: dict[str, list[TaskDetail]] = {
         "upcoming": [],
         "running": [],
         "completed": [],
         "failed": [],
-        "canceled": [],
     }
+    if include_canceled:
+        board["canceled"] = []
     for task in tasks:
+        if not include_canceled and task.task_status is TaskStatus.CANCELED:
+            continue
         schedule = task.schedules[0] if task.schedules else None
         latest_run = sorted(task.runs, key=lambda run: run.created_at, reverse=True)
         detail = TaskDetail(
