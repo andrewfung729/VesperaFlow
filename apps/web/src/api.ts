@@ -449,6 +449,13 @@ export async function resumeRecurringTask(
   })
 }
 
+export async function runOneTimeTaskNow(taskId: string): Promise<Run> {
+  return request<Run>(`/tasks/${taskId}/run-now`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
 async function requestList<T>(path: string, init: RequestInit = {}): Promise<ListEnvelope<T>> {
   const response = await rawRequest(path, init)
   return response as ListEnvelope<T>

@@ -115,6 +115,57 @@ class TemporalScheduler:
         handle = client.get_schedule_handle(temporal_schedule_id(schedule_id))
         await handle.unpause(note="resumed by VesperaFlow")
 
+    async def run_one_time_now(
+        self,
+        *,
+        task: Task,
+        schedule: ProductSchedule,
+        run: Run,
+    ) -> str:
+        await self.delete_schedule(schedule.schedule_id)
+        return await self.start_one_time_workflow(
+            task=task,
+            schedule=schedule,
+            run=run,
+        )
+
+    async def start_one_time_workflow(
+        self,
+        *,
+        task: Task,
+        schedule: ProductSchedule,
+        run: Run,
+    ) -> str:
+        client = self._require_client()
+        workflow_id = workflow_id_for_run(run.run_id)
+        planned_at = utc_now()
+        workflow_input = TaskRunInput(
+            run_id=run.run_id,
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            planned_start_at=planned_at,
+            occurrence_key=None,
+            execution_snapshot=ExecutionSnapshot(
+                run_id=run.run_id,
+                task_id=task.task_id,
+                schedule_id=schedule.schedule_id,
+                executor=task.executor,
+                instruction_source=task.instruction_source,
+                planned_start_at=planned_at,
+                working_directory=str(
+                    Path(self._settings.run_workspace_root) / run.run_id
+                ),
+                target_working_directory=task.target_working_directory,
+            ),
+        )
+        handle = await client.start_workflow(
+            "TaskRunWorkflow",
+            args=[workflow_input],
+            id=workflow_id,
+            task_queue=self._settings.task_queue,
+        )
+        return handle.id
+
     async def delete_schedule(self, schedule_id: str) -> None:
         client = self._require_client()
         handle = client.get_schedule_handle(temporal_schedule_id(schedule_id))

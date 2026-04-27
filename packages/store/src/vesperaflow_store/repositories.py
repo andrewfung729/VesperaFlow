@@ -913,6 +913,33 @@ async def cancel_one_time_task(
     return TaskBundle(task=task, schedule=schedule, run=run)
 
 
+async def run_one_time_now(
+    session: AsyncSession,
+    *,
+    task_id: str,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    if task.execution_mode is not ExecutionMode.ONE_TIME:
+        raise InvalidStateTransitionError("only one-time tasks can be run now")
+    if schedule.schedule_status is not ScheduleStatus.ACTIVE:
+        raise InvalidStateTransitionError("only active schedules can be run now")
+    run = await get_latest_run(session, task_id)
+    if run is None or run.run_status is not RunStatus.PLANNED:
+        raise InvalidStateTransitionError("only planned runs can be run now")
+
+    now = utc_now()
+    schedule.schedule_status = ScheduleStatus.COMPLETED
+    schedule.next_run_at = None
+    schedule.version += 1
+    schedule.updated_at = now
+    run.planned_start_at = now
+    run.updated_at = now
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=run)
+
+
 async def update_recurring_task_schedule(
     session: AsyncSession,
     *,

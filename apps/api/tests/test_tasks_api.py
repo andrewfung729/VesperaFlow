@@ -64,6 +64,20 @@ class FakeScheduler:
     async def delete_schedule(self, schedule_id: str) -> None:
         self.deleted.append(schedule_id)
 
+    async def run_one_time_now(
+        self, *, task: Task, schedule: ProductSchedule, run: Run
+    ) -> str:
+        _ = task, run
+        self.deleted.append(schedule.schedule_id)
+        return f"vesperaflow.run.{run.run_id}"
+
+
+    async def start_one_time_workflow(
+        self, *, task: Task, schedule: ProductSchedule, run: Run
+    ) -> str:
+        _ = task, schedule
+        return f"vesperaflow.run.{run.run_id}"
+
 
 @dataclass(frozen=True, slots=True)
 class ApiTestContext:
@@ -105,6 +119,48 @@ async def test_create_task_success(client: AsyncClient) -> None:
     assert schedule["external_schedule_ref"].startswith("vesperaflow.schedule.")
     run: dict[str, Any] = body["run"]
     assert run["run_status"] == "planned"
+
+
+@pytest.mark.asyncio
+async def test_run_now_one_time_task(client: AsyncClient) -> None:
+    created = await client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    data: dict[str, Any] = created.json()["data"]
+    task_id: str = data["task"]["task_id"]
+
+    response = await client.post(f"/api/v1/tasks/{task_id}/run-now")
+
+    assert response.status_code == 200
+    run: dict[str, Any] = response.json()["data"]
+    assert run["run_status"] == "planned"
+
+
+@pytest.mark.asyncio
+async def test_run_now_rejects_non_one_time_task(client: AsyncClient) -> None:
+    created = await client.post("/api/v1/tasks", json=_recurring_payload())
+    assert created.status_code == 201
+    task_id: str = created.json()["data"]["task"]["task_id"]
+
+    response = await client.post(f"/api/v1/tasks/{task_id}/run-now")
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_run_now_rejects_already_started_run(api_context: ApiTestContext) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    task_id: str = created.json()["data"]["task"]["task_id"]
+    run_id: str = created.json()["data"]["run"]["run_id"]
+
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            await repo.mark_run_queued(session, run_id=run_id)
+
+    response = await client.post(f"/api/v1/tasks/{task_id}/run-now")
+
+    assert response.status_code == 409
 
 
 @pytest.mark.asyncio

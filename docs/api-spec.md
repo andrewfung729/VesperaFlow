@@ -590,6 +590,31 @@ Purpose:
 
 - create a new task from an existing task definition
 
+### 7.7 Run One-Time Task Now
+
+`POST /api/v1/tasks/{task_id}/run-now`
+
+Purpose:
+
+- trigger a planned one-time task immediately instead of waiting for its scheduled time
+
+Response:
+
+- `200 OK` with `Run Object`
+
+Validation:
+
+- task must be `one_time`
+- schedule must be `active`
+- latest run must be `planned`
+
+Behavior:
+
+- deletes the future Temporal Schedule to prevent duplicate execution
+- starts `TaskRunWorkflow` directly via the Temporal Client
+- the workflow skips its sleep timer because `planned_start_at` is set to the current time
+- on success the run transitions through `queued` → `running` → terminal state as normal
+
 ## 8. Schedule Endpoints
 
 ### 8.1 Get Schedule

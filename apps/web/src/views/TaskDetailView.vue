@@ -8,6 +8,7 @@ import {
   pauseRecurringTask,
   rescheduleTask,
   resumeRecurringTask,
+  runOneTimeTaskNow,
   updateRecurringSchedule,
   type TaskDetail,
 } from '@/api'
@@ -166,6 +167,20 @@ async function submitResume() {
   }
 }
 
+async function submitRunNow() {
+  if (!selectedDetail.value?.task) return
+  const confirmed = window.confirm(
+    `Run "${selectedDetail.value.task.title}" immediately?`,
+  )
+  if (!confirmed) return
+  try {
+    await runOneTimeTaskNow(props.taskId)
+    await loadTaskDetail()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  }
+}
+
 async function submitCancel() {
   if (!selectedDetail.value?.schedule) return
   const action = isRecurringTask.value ? 'Cancel series' : 'Cancel'
@@ -297,6 +312,16 @@ function resetRecurrenceForm() {
             </template>
           </dl>
           <template v-if="!isRecurringTask">
+            <button
+              v-if="
+                selectedDetail.task.task_status === 'scheduled' &&
+                selectedDetail.latest_run?.run_status === 'planned'
+              "
+              class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+              @click="submitRunNow"
+            >
+              Run Now
+            </button>
             <label class="grid gap-2 font-semibold text-slate-700">
               <span>Reschedule</span>
               <input
