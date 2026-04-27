@@ -41,7 +41,6 @@ DEFAULT_SUMMARY_MAX_CHARS = 4000
 
 @dataclass(slots=True)
 class ClaudeCodeExecutor(ExecutorAdapter):
-    max_turns: int = 20
     permission_mode: PermissionMode = "bypassPermissions"
     setting_sources: tuple[SettingSource, ...] = CLAUDE_SETTING_SOURCES
     summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS
@@ -125,7 +124,6 @@ class ClaudeCodeExecutor(ExecutorAdapter):
                 cwd=str(workspace),
                 permission_mode=self.permission_mode,
                 setting_sources=list(self.setting_sources),
-                max_turns=self.max_turns,
                 env=dict(self.env),
             )
         else:
@@ -133,7 +131,6 @@ class ClaudeCodeExecutor(ExecutorAdapter):
                 cwd=str(workspace),
                 permission_mode=self.permission_mode,
                 setting_sources=list(self.setting_sources),
-                max_turns=self.max_turns,
             )
         return ClaudeSDKClient(options=options)
 

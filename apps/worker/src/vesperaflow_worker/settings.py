@@ -33,7 +33,6 @@ class WorkerSettings(BaseSettings):
     task_queue: str = "vesperaflow-default"
     run_workspace_root: str = "/tmp/vesperaflow-runs"
     executor_adapter: str = "auto"
-    claude_max_turns: int = 20
     claude_env: dict[str, str] = Field(default_factory=dict, repr=False)
     anthropic_api_key: str | None = Field(
         default=None,

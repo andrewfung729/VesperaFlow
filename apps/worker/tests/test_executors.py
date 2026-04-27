@@ -231,7 +231,6 @@ async def test_claude_code_executor_runs_sdk_and_writes_artifact(
         monkeypatch=monkeypatch,
     )
     executor = ClaudeCodeExecutor(
-        max_turns=3,
         env={
             "ANTHROPIC_API_KEY": "sk-test",
             "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
@@ -260,7 +259,6 @@ async def test_claude_code_executor_runs_sdk_and_writes_artifact(
     assert options.kwargs["cwd"] == str(target_dir)
     assert options.kwargs["permission_mode"] == "bypassPermissions"
     assert options.kwargs["setting_sources"] == ["user", "project", "local"]
-    assert options.kwargs["max_turns"] == 3
     assert options.kwargs["env"] == {
         "ANTHROPIC_API_KEY": "sk-test",
         "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",

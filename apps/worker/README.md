@@ -44,7 +44,6 @@ Environment variables use the `VESPERAFLOW_` prefix:
 
 - `VESPERAFLOW_EXECUTOR_ADAPTER`: `auto`, `router`, `debug_printer`, or
   `claude_code`.
-- `VESPERAFLOW_CLAUDE_MAX_TURNS`: max Claude Agent SDK turns per run.
 - `VESPERAFLOW_CLAUDE_ENV`: optional JSON object of explicit SDK env values.
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`: optional
   Claude SDK env values loaded from the process environment or root `.env`.

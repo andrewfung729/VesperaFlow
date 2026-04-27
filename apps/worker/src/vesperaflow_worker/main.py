@@ -35,7 +35,6 @@ async def run_worker() -> None:
         database_url=settings.database_url,
         executor=build_executor(
             settings.executor_adapter,
-            claude_max_turns=settings.claude_max_turns,
             claude_env=settings.claude_executor_env(),
         ),
         run_workspace_root=settings.run_workspace_root,

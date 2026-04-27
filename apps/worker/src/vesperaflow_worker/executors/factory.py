@@ -11,11 +11,9 @@ from .router import ExecutorRouter
 def build_executor(
     adapter_name: str,
     *,
-    claude_max_turns: int = 20,
     claude_env: Mapping[str, str] | None = None,
 ) -> ExecutorAdapter:
     claude_code = ClaudeCodeExecutor(
-        max_turns=claude_max_turns,
         env=dict(claude_env) if claude_env is not None else None,
     )
     if adapter_name in {"auto", "router"}:
