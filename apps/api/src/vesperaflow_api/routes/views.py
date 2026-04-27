@@ -11,6 +11,7 @@ from vesperaflow_store import repositories as repo
 from ..dependencies import get_session
 from ..schemas.tasks import DataEnvelope, ListEnvelope
 from ..schemas.views import (
+    CalendarItemResponse,
     HistoryItemResponse,
     KanbanBoardResponse,
     KanbanCardResponse,
@@ -82,6 +83,32 @@ async def get_history(
             for item in history.items
         ],
         meta={"total": history.total},
+    )
+
+
+@router.get("/views/calendar")
+async def get_calendar(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    window_from: Annotated[datetime, Query(alias="from")],
+    window_to: Annotated[datetime, Query(alias="to")],
+    include_completed: bool = False,
+    limit: Annotated[int, Query(ge=1, le=500)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ListEnvelope:
+    calendar = await repo.list_calendar_items(
+        session,
+        window_from=window_from,
+        window_to=window_to,
+        include_completed=include_completed,
+        limit=limit,
+        offset=offset,
+    )
+    return ListEnvelope(
+        data=[
+            CalendarItemResponse.from_item(item).model_dump()
+            for item in calendar.items
+        ],
+        meta={"total": calendar.total},
     )
 
 

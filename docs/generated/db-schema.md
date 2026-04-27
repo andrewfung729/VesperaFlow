@@ -1,9 +1,30 @@
 # Database Schema Snapshot
 
-- Generated: 2026-04-26
+- Generated: 2026-04-27
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `packages/store/src/vesperaflow_store/models.py`, `packages/store/alembic/versions/`
 - Limitations: generated from importable application metadata, not a live deployment.
+
+## `occurrence_overrides`
+
+| Column | Type | Nullable | Default |
+|---|---|---:|---|
+| `occurrence_override_id` | `VARCHAR(48)` | no | `` |
+| `task_id` | `VARCHAR(48)` | no | `` |
+| `schedule_id` | `VARCHAR(48)` | no | `` |
+| `original_occurrence_at` | `DATETIME` | no | `` |
+| `override_occurrence_at` | `DATETIME` | yes | `` |
+| `override_instruction_delta` | `TEXT` | yes | `` |
+| `override_status` | `VARCHAR(64)` | no | `` |
+| `created_at` | `DATETIME` | no | `` |
+| `updated_at` | `DATETIME` | no | `` |
+
+- Primary key: `occurrence_override_id`
+- Unique constraint `uq_occurrence_overrides_schedule_original`: `schedule_id`, `original_occurrence_at`
+- Foreign key: `schedule_id` -> `schedules.schedule_id`
+- Foreign key: `task_id` -> `tasks.task_id`
+- Index `ix_occurrence_overrides_schedule_id`: `schedule_id`
+- Index `ix_occurrence_overrides_task_id`: `task_id`
 
 ## `runs`
 

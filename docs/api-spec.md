@@ -655,8 +655,11 @@ Request:
 {
   "original_occurrence_at": "2026-04-29T09:00:00+08:00",
   "scope": "this_occurrence_only",
+  "version": 3,
   "planned_at": "2026-04-29T11:00:00+08:00",
-  "instruction_source": null
+  "instruction_source": null,
+  "recurrence_rule": null,
+  "recurrence_timezone": null
 }
 ```
 
@@ -668,7 +671,7 @@ Allowed scope values:
 Behavior:
 
 - `this_occurrence_only` creates or updates an `OccurrenceOverride`; `planned_at`, `instruction_source`, or both may be provided
-- `this_and_future` updates the parent recurring definition for future occurrences only
+- `this_and_future` updates the parent recurring definition for future occurrences only; callers may provide `recurrence_rule`, `recurrence_timezone`, `instruction_source`, or a combination
 
 Validation:
 
@@ -677,6 +680,10 @@ Validation:
 - `scope` is required
 - at least one editable field must be provided
 - if `scope = this_occurrence_only`, the targeted occurrence must be future or not yet started
+- single-occurrence `planned_at` overrides must not be earlier than
+  `original_occurrence_at`; moving an occurrence earlier than the recurring
+  Temporal Schedule fire time is deferred until a future Temporal schedule
+  mutation design
 
 Error cases:
 
@@ -697,7 +704,8 @@ Request:
 ```json
 {
   "original_occurrence_at": "2026-04-29T09:00:00+08:00",
-  "scope": "this_occurrence_only"
+  "scope": "this_occurrence_only",
+  "version": 3
 }
 ```
 
@@ -770,8 +778,10 @@ Response:
       "title": "Overnight Research",
       "execution_mode": "one_time",
       "occurrence_at": "2026-04-24T23:30:00+08:00",
+      "original_occurrence_at": null,
       "state": "scheduled",
-      "is_occurrence_override": false
+      "is_occurrence_override": false,
+      "schedule_version": 1
     }
   ]
 }

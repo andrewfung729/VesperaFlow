@@ -54,6 +54,9 @@ class TaskRunWorkflow:
             )
         if current_status == RunStatus.CANCELED.value:
             return
+        workflow_now = workflow.now()
+        if execution_payload.planned_start_at > workflow_now:
+            await workflow.sleep(execution_payload.planned_start_at - workflow_now)
 
         await workflow.execute_activity(
             "mark_run_queued",

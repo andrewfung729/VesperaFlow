@@ -314,6 +314,129 @@ async def test_recurring_todo_lists_active_then_paused_with_latest_outcome(
 
 
 @pytest.mark.asyncio
+async def test_calendar_projects_one_time_and_active_recurring_items(
+    session: AsyncSession,
+) -> None:
+    occurrence_at = datetime(2026, 4, 28, 0, 0, tzinfo=UTC)
+    async with session.begin():
+        one_time = await repo.create_one_time_task(
+            session,
+            title="One-time calendar task",
+            instruction_source="Run once",
+            target_working_directory="/tmp",
+            planned_at=occurrence_at,
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        recurring = await repo.create_recurring_task(
+            session,
+            title="Daily calendar task",
+            instruction_source="Run daily",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        paused = await repo.create_recurring_task(
+            session,
+            title="Paused calendar task",
+            instruction_source="Do not show",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        canceled = await repo.create_one_time_task(
+            session,
+            title="Canceled calendar task",
+            instruction_source="Do not show",
+            target_working_directory="/tmp",
+            planned_at=occurrence_at,
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        await repo.pause_recurring_task(
+            session,
+            task_id=paused.task.task_id,
+            version=paused.schedule.version,
+        )
+        await repo.cancel_one_time_task(
+            session,
+            task_id=canceled.task.task_id,
+            version=canceled.schedule.version,
+        )
+
+    calendar = await repo.list_calendar_items(
+        session,
+        window_from=occurrence_at - timedelta(minutes=1),
+        window_to=occurrence_at + timedelta(minutes=1),
+    )
+
+    assert calendar.total == 2
+    assert [item.task.title for item in calendar.items] == [
+        "Daily calendar task",
+        "One-time calendar task",
+    ]
+    assert {item.task.task_id for item in calendar.items} == {
+        one_time.task.task_id,
+        recurring.task.task_id,
+    }
+
+
+@pytest.mark.asyncio
+async def test_occurrence_override_moves_and_cancels_single_occurrence(
+    session: AsyncSession,
+) -> None:
+    original_at = datetime(2026, 4, 28, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2026, 4, 28, 2, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily override task",
+            instruction_source="Original instructions",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        override = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            planned_at=moved_at,
+            instruction_source="Override instructions",
+        )
+        task_id = bundle.task.task_id
+        schedule_version = bundle.schedule.version
+
+    calendar = await repo.list_calendar_items(
+        session,
+        window_from=original_at - timedelta(minutes=1),
+        window_to=moved_at + timedelta(minutes=1),
+    )
+    assert calendar.total == 1
+    assert calendar.items[0].occurrence_at == moved_at
+    assert calendar.items[0].occurrence_override is not None
+    assert override.override_instruction_delta == "Override instructions"
+    await session.rollback()
+
+    async with session.begin():
+        canceled = await repo.cancel_occurrence(
+            session,
+            task_id=task_id,
+            version=schedule_version,
+            original_occurrence_at=original_at,
+        )
+
+    assert canceled.override_status.value == "canceled"
+    calendar_after_cancel = await repo.list_calendar_items(
+        session,
+        window_from=original_at - timedelta(minutes=1),
+        window_to=moved_at + timedelta(minutes=1),
+    )
+    assert calendar_after_cancel.total == 0
+
+
+@pytest.mark.asyncio
 async def test_history_lists_completed_and_failed_runs_in_reverse_finished_order(
     session: AsyncSession,
 ) -> None:

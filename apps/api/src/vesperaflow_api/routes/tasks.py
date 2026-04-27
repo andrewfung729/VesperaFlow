@@ -4,14 +4,23 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from vesperaflow_core import ExecutionMode, ScheduleType, TaskStatus
+from vesperaflow_core import (
+    ExecutionMode,
+    OccurrenceEditScope,
+    ScheduleType,
+    TaskStatus,
+)
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
+from vesperaflow_store.models import OccurrenceOverride
 
 from ..dependencies import get_session
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
+    OccurrenceCancelRequest,
+    OccurrenceOverrideResponse,
+    OccurrenceUpdateRequest,
     RunResponse,
     ScheduleResponse,
     ScheduleUpdateRequest,
@@ -309,6 +318,71 @@ async def cancel_schedule(
         await request.app.state.scheduler.delete_schedule(bundle.schedule.schedule_id)
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
+    )
+
+
+@router.post("/tasks/{task_id}/occurrences/update")
+async def update_occurrence(
+    task_id: str,
+    payload: OccurrenceUpdateRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> DataEnvelope:
+    version = observed_version(payload.version, if_match)
+    async with session.begin():
+        result = await repo.update_recurring_occurrence_scope(
+            session,
+            task_id=task_id,
+            version=version,
+            original_occurrence_at=payload.original_occurrence_at,
+            scope=payload.scope,
+            planned_at=payload.planned_at,
+            instruction_source=payload.instruction_source,
+            recurrence_rule=payload.recurrence_rule,
+            recurrence_timezone=payload.recurrence_timezone,
+        )
+        if isinstance(result, OccurrenceOverride):
+            data = OccurrenceOverrideResponse.from_model(result).model_dump()
+        else:
+            schedule_ref = await request.app.state.scheduler.replace_recurring_schedule(
+                task=result.task,
+                schedule=result.schedule,
+            )
+            await repo.set_schedule_external_ref(
+                session,
+                schedule_id=result.schedule.schedule_id,
+                external_schedule_ref=schedule_ref,
+            )
+            data = bundle_response(
+                result.task,
+                result.schedule,
+                result.run,
+            ).model_dump()
+    return DataEnvelope(data=data)
+
+
+@router.post("/tasks/{task_id}/occurrences/cancel")
+async def cancel_occurrence(
+    task_id: str,
+    payload: OccurrenceCancelRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> DataEnvelope:
+    if payload.scope is not OccurrenceEditScope.THIS_OCCURRENCE_ONLY:
+        raise InvalidStateTransitionError(
+            "only this_occurrence_only cancel is supported for occurrences"
+        )
+    version = observed_version(payload.version, if_match)
+    async with session.begin():
+        override = await repo.cancel_occurrence(
+            session,
+            task_id=task_id,
+            version=version,
+            original_occurrence_at=payload.original_occurrence_at,
+        )
+    return DataEnvelope(
+        data=OccurrenceOverrideResponse.from_model(override).model_dump()
     )
 
 

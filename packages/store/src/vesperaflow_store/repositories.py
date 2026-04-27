@@ -1,7 +1,7 @@
 """Repository functions used by the API and Temporal activities."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +13,8 @@ from vesperaflow_core import (
     ExecutionSnapshot,
     ExecutorName,
     MaterializedRun,
+    OccurrenceEditScope,
+    OccurrenceOverrideStatus,
     RunStatus,
     ScheduleStatus,
     ScheduleType,
@@ -29,7 +31,7 @@ from vesperaflow_core import (
 )
 
 from .errors import ConflictError, InvalidStateTransitionError, NotFoundError
-from .models import Run, Schedule, Task, Template
+from .models import OccurrenceOverride, Run, Schedule, Task, Template
 
 
 def new_id(prefix: str) -> str:
@@ -73,6 +75,22 @@ class RecurringTodoItem:
 @dataclass(frozen=True, slots=True)
 class RecurringTodoPage:
     items: list[RecurringTodoItem]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarItem:
+    task: Task
+    schedule: Schedule
+    occurrence_at: datetime
+    state: TaskStatus
+    original_occurrence_at: datetime | None
+    occurrence_override: OccurrenceOverride | None
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarPage:
+    items: list[CalendarItem]
     total: int
 
 
@@ -573,6 +591,214 @@ async def list_recurring_todo(
     )
 
 
+async def list_calendar_items(
+    session: AsyncSession,
+    *,
+    window_from: datetime,
+    window_to: datetime,
+    include_completed: bool = False,
+    limit: int = 500,
+    offset: int = 0,
+) -> CalendarPage:
+    window_start = to_utc(window_from)
+    window_end = to_utc(window_to)
+    if window_start >= window_end:
+        raise ValueError("calendar from must be before to")
+
+    items: list[CalendarItem] = []
+    items.extend(
+        await _one_time_calendar_items(
+            session,
+            window_start=window_start,
+            window_end=window_end,
+            include_completed=include_completed,
+        )
+    )
+    items.extend(
+        await _recurring_calendar_items(
+            session,
+            window_start=window_start,
+            window_end=window_end,
+        )
+    )
+    items.sort(
+        key=lambda item: (
+            item.occurrence_at,
+            item.task.title.lower(),
+            item.task.task_id,
+        )
+    )
+    return CalendarPage(items=items[offset : offset + limit], total=len(items))
+
+
+async def upsert_occurrence_override(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+    original_occurrence_at: datetime,
+    planned_at: datetime | None = None,
+    instruction_source: str | None = None,
+) -> OccurrenceOverride:
+    task, schedule = await _get_active_recurring_task_and_schedule(
+        session,
+        task_id=task_id,
+        version=version,
+        action="edited",
+    )
+    original_at_utc = to_utc(original_occurrence_at)
+    _require_projected_occurrence(schedule, original_at_utc)
+    await _require_occurrence_not_started(
+        session,
+        schedule_id=schedule.schedule_id,
+        original_occurrence_at=original_at_utc,
+    )
+    if planned_at is None and instruction_source is None:
+        raise ValueError("occurrence update requires planned_at or instruction_source")
+
+    override_at_utc = to_utc(planned_at) if planned_at is not None else None
+    if override_at_utc is not None:
+        require_future_datetime(override_at_utc, field_name="planned_at")
+        if override_at_utc < original_at_utc:
+            raise ValueError("planned_at cannot be earlier than original_occurrence_at")
+
+    override = await _get_occurrence_override(
+        session,
+        schedule_id=schedule.schedule_id,
+        original_occurrence_at=original_at_utc,
+    )
+    now = utc_now()
+    if override is None:
+        override = OccurrenceOverride(
+            occurrence_override_id=new_id("ovr"),
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            original_occurrence_at=original_at_utc,
+            override_occurrence_at=override_at_utc,
+            override_instruction_delta=instruction_source,
+            override_status=OccurrenceOverrideStatus.ACTIVE,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(override)
+    else:
+        if planned_at is not None:
+            override.override_occurrence_at = override_at_utc
+        if instruction_source is not None:
+            override.override_instruction_delta = instruction_source
+        override.override_status = OccurrenceOverrideStatus.ACTIVE
+        override.updated_at = now
+    schedule.version += 1
+    schedule.updated_at = now
+    task.version += 1
+    task.updated_at = now
+    await session.flush()
+    return override
+
+
+async def cancel_occurrence(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+    original_occurrence_at: datetime,
+) -> OccurrenceOverride:
+    task, schedule = await _get_active_recurring_task_and_schedule(
+        session,
+        task_id=task_id,
+        version=version,
+        action="canceled",
+    )
+    original_at_utc = to_utc(original_occurrence_at)
+    _require_projected_occurrence(schedule, original_at_utc)
+    await _require_occurrence_not_started(
+        session,
+        schedule_id=schedule.schedule_id,
+        original_occurrence_at=original_at_utc,
+    )
+    override = await _get_occurrence_override(
+        session,
+        schedule_id=schedule.schedule_id,
+        original_occurrence_at=original_at_utc,
+    )
+    now = utc_now()
+    if override is None:
+        override = OccurrenceOverride(
+            occurrence_override_id=new_id("ovr"),
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            original_occurrence_at=original_at_utc,
+            override_occurrence_at=None,
+            override_instruction_delta=None,
+            override_status=OccurrenceOverrideStatus.CANCELED,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(override)
+    else:
+        override.override_status = OccurrenceOverrideStatus.CANCELED
+        override.updated_at = now
+    schedule.version += 1
+    schedule.updated_at = now
+    task.version += 1
+    task.updated_at = now
+    await session.flush()
+    return override
+
+
+async def update_recurring_occurrence_scope(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+    original_occurrence_at: datetime,
+    scope: OccurrenceEditScope,
+    planned_at: datetime | None = None,
+    instruction_source: str | None = None,
+    recurrence_rule: str | None = None,
+    recurrence_timezone: str | None = None,
+) -> TaskBundle | OccurrenceOverride:
+    if scope is OccurrenceEditScope.THIS_OCCURRENCE_ONLY:
+        return await upsert_occurrence_override(
+            session,
+            task_id=task_id,
+            version=version,
+            original_occurrence_at=original_occurrence_at,
+            planned_at=planned_at,
+            instruction_source=instruction_source,
+        )
+    if scope is not OccurrenceEditScope.THIS_AND_FUTURE:
+        raise InvalidStateTransitionError("unsupported recurring occurrence scope")
+
+    current_schedule = await get_schedule_for_task(session, task_id)
+    _require_projected_occurrence(current_schedule, to_utc(original_occurrence_at))
+    if (
+        recurrence_rule is None
+        and recurrence_timezone is None
+        and instruction_source is None
+    ):
+        raise ValueError(
+            "this_and_future requires recurrence_rule, recurrence_timezone, "
+            "or instruction_source"
+        )
+    if instruction_source is not None:
+        await update_task(
+            session,
+            task_id=task_id,
+            version=(await get_task(session, task_id)).version,
+            instruction_source=instruction_source,
+        )
+    return await update_recurring_task_schedule(
+        session,
+        task_id=task_id,
+        version=version,
+        recurrence_rule=recurrence_rule or current_schedule.recurrence_rule or "",
+        recurrence_timezone=(
+            recurrence_timezone or current_schedule.recurrence_timezone or ""
+        ),
+    )
+
+
 async def get_task_detail(session: AsyncSession, task_id: str) -> TaskDetail:
     task = await get_task(session, task_id)
     schedule = await get_schedule_for_task(session, task_id)
@@ -836,6 +1062,7 @@ async def materialize_run(
         raise InvalidStateTransitionError("only recurring schedules materialize runs")
     if occurrence_key is None:
         occurrence_key = occurrence_key_for_datetime(planned_start_at)
+    planned_start_at_utc = to_utc(planned_start_at)
     existing = await _get_run_for_occurrence(
         session,
         schedule_id=schedule.schedule_id,
@@ -850,29 +1077,50 @@ async def materialize_run(
         )
 
     now = utc_now()
+    override = await _get_occurrence_override(
+        session,
+        schedule_id=schedule.schedule_id,
+        original_occurrence_at=planned_start_at_utc,
+    )
     run_status = (
         RunStatus.PLANNED
-        if schedule.schedule_status is ScheduleStatus.ACTIVE
+        if (
+            schedule.schedule_status is ScheduleStatus.ACTIVE
+            and (
+                override is None
+                or override.override_status is OccurrenceOverrideStatus.ACTIVE
+            )
+        )
         else RunStatus.CANCELED
+    )
+    effective_planned_start_at = (
+        override.override_occurrence_at
+        if override is not None and override.override_occurrence_at is not None
+        else planned_start_at_utc
+    )
+    effective_instruction = (
+        override.override_instruction_delta
+        if override is not None and override.override_instruction_delta is not None
+        else task.instruction_source
     )
     run = Run(
         run_id=new_id("run"),
         task_id=task.task_id,
         schedule_id=schedule.schedule_id,
         run_status=run_status,
-        planned_start_at=to_utc(planned_start_at),
+        planned_start_at=effective_planned_start_at,
         actual_start_at=None,
         finished_at=now if run_status is RunStatus.CANCELED else None,
         result_summary=None,
         failure_reason=None
         if run_status is RunStatus.PLANNED
-        else "recurring schedule was inactive at materialization",
+        else "recurring occurrence was canceled or inactive at materialization",
         external_execution_ref=workflow_id,
         occurrence_key=occurrence_key,
         created_at=now,
         updated_at=now,
     )
-    schedule.last_materialized_at = run.planned_start_at
+    schedule.last_materialized_at = planned_start_at_utc
     if schedule.schedule_status is ScheduleStatus.ACTIVE:
         if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
             raise InvalidStateTransitionError(
@@ -881,7 +1129,7 @@ async def materialize_run(
         schedule.next_run_at = next_occurrence_after(
             recurrence_rule=schedule.recurrence_rule,
             recurrence_timezone=schedule.recurrence_timezone,
-            after=run.planned_start_at,
+            after=planned_start_at_utc,
         )
     schedule.updated_at = now
     session.add(run)
@@ -892,6 +1140,7 @@ async def materialize_run(
         task=task,
         workflow_id=workflow_id,
         run_workspace_root=run_workspace_root,
+        instruction_source=effective_instruction,
     )
 
 
@@ -1017,6 +1266,178 @@ async def get_one_time_kanban(session: AsyncSession) -> dict[str, list[TaskDetai
     return board
 
 
+async def _one_time_calendar_items(
+    session: AsyncSession,
+    *,
+    window_start: datetime,
+    window_end: datetime,
+    include_completed: bool,
+) -> list[CalendarItem]:
+    filters = [
+        Task.execution_mode == ExecutionMode.ONE_TIME,
+        Task.archived_at.is_(None),
+        Schedule.schedule_type == ScheduleType.SINGLE_RUN,
+        Run.planned_start_at >= window_start,
+        Run.planned_start_at <= window_end,
+        Task.task_status != TaskStatus.CANCELED,
+        Schedule.schedule_status != ScheduleStatus.CANCELED,
+        Run.run_status != RunStatus.CANCELED,
+    ]
+    if not include_completed:
+        filters.append(
+            Run.run_status.in_(
+                {RunStatus.PLANNED, RunStatus.QUEUED, RunStatus.RUNNING}
+            )
+        )
+
+    statement = (
+        select(Task, Schedule, Run)
+        .join(Schedule, Schedule.task_id == Task.task_id)
+        .join(Run, Run.schedule_id == Schedule.schedule_id)
+        .where(*filters)
+    )
+    return [
+        CalendarItem(
+            task=task,
+            schedule=schedule,
+            occurrence_at=_db_datetime_to_utc(run.planned_start_at),
+            state=task.task_status,
+            original_occurrence_at=None,
+            occurrence_override=None,
+        )
+        for task, schedule, run in await session.execute(statement)
+    ]
+
+
+async def _recurring_calendar_items(
+    session: AsyncSession,
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> list[CalendarItem]:
+    statement = (
+        select(Task, Schedule)
+        .join(Schedule)
+        .where(
+            Task.execution_mode == ExecutionMode.RECURRING,
+            Task.archived_at.is_(None),
+            Schedule.schedule_type == ScheduleType.RECURRING_RULE,
+            Schedule.schedule_status == ScheduleStatus.ACTIVE,
+        )
+    )
+    rows = [(task, schedule) for task, schedule in await session.execute(statement)]
+    overrides = await _occurrence_overrides_by_schedule_id(
+        session,
+        schedule_ids=[schedule.schedule_id for _, schedule in rows],
+    )
+
+    items: list[CalendarItem] = []
+    seen_originals: set[tuple[str, datetime]] = set()
+    for task, schedule in rows:
+        if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
+            continue
+        schedule_overrides = overrides.get(schedule.schedule_id, {})
+        for original_at in _project_occurrences(
+            recurrence_rule=schedule.recurrence_rule,
+            recurrence_timezone=schedule.recurrence_timezone,
+            window_start=window_start,
+            window_end=window_end,
+        ):
+            seen_originals.add((schedule.schedule_id, original_at))
+            override = schedule_overrides.get(original_at)
+            if (
+                override is not None
+                and override.override_status is OccurrenceOverrideStatus.CANCELED
+            ):
+                continue
+            occurrence_at = (
+                override.override_occurrence_at
+                if override is not None and override.override_occurrence_at is not None
+                else original_at
+            )
+            occurrence_at = _db_datetime_to_utc(occurrence_at)
+            if window_start <= occurrence_at <= window_end:
+                items.append(
+                    CalendarItem(
+                        task=task,
+                        schedule=schedule,
+                        occurrence_at=occurrence_at,
+                        state=task.task_status,
+                        original_occurrence_at=original_at,
+                        occurrence_override=override,
+                    )
+                )
+        for original_at, override in schedule_overrides.items():
+            if (schedule.schedule_id, original_at) in seen_originals:
+                continue
+            if override.override_status is OccurrenceOverrideStatus.CANCELED:
+                continue
+            if override.override_occurrence_at is None:
+                continue
+            override_occurrence_at = _db_datetime_to_utc(
+                override.override_occurrence_at
+            )
+            if window_start <= override_occurrence_at <= window_end:
+                items.append(
+                    CalendarItem(
+                        task=task,
+                        schedule=schedule,
+                        occurrence_at=override_occurrence_at,
+                        state=task.task_status,
+                        original_occurrence_at=original_at,
+                        occurrence_override=override,
+                    )
+                )
+    return items
+
+
+def _project_occurrences(
+    *,
+    recurrence_rule: str,
+    recurrence_timezone: str,
+    window_start: datetime,
+    window_end: datetime,
+    max_occurrences: int = 500,
+) -> list[datetime]:
+    occurrences: list[datetime] = []
+    cursor = window_start - timedelta(microseconds=1)
+    while len(occurrences) < max_occurrences:
+        next_at = next_occurrence_after(
+            recurrence_rule=recurrence_rule,
+            recurrence_timezone=recurrence_timezone,
+            after=cursor,
+        )
+        if next_at > window_end:
+            break
+        occurrences.append(next_at)
+        cursor = next_at
+    return occurrences
+
+
+async def _occurrence_overrides_by_schedule_id(
+    session: AsyncSession,
+    *,
+    schedule_ids: list[str],
+) -> dict[str, dict[datetime, OccurrenceOverride]]:
+    if not schedule_ids:
+        return {}
+    statement = select(OccurrenceOverride).where(
+        OccurrenceOverride.schedule_id.in_(schedule_ids)
+    )
+    by_schedule: dict[str, dict[datetime, OccurrenceOverride]] = {}
+    for override in await session.scalars(statement):
+        by_schedule.setdefault(override.schedule_id, {})[
+            _db_datetime_to_utc(override.original_occurrence_at)
+        ] = override
+    return by_schedule
+
+
+def _db_datetime_to_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return to_utc(value)
+
+
 async def _list_recurring_todo_rows(
     session: AsyncSession,
     *,
@@ -1073,6 +1494,73 @@ async def _latest_runs_by_task_id(
     for run in await session.scalars(statement):
         latest.setdefault(run.task_id, run)
     return latest
+
+
+async def _get_active_recurring_task_and_schedule(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+    action: str,
+) -> tuple[Task, Schedule]:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    _require_version(schedule.version, version)
+    _require_active_recurring_task(task, schedule, action=action)
+    if schedule.schedule_status is not ScheduleStatus.ACTIVE:
+        raise InvalidStateTransitionError(
+            f"only active recurring schedules can be {action}"
+        )
+    return task, schedule
+
+
+async def _get_occurrence_override(
+    session: AsyncSession,
+    *,
+    schedule_id: str,
+    original_occurrence_at: datetime,
+) -> OccurrenceOverride | None:
+    statement = select(OccurrenceOverride).where(
+        OccurrenceOverride.schedule_id == schedule_id,
+        OccurrenceOverride.original_occurrence_at == original_occurrence_at,
+    )
+    return (await session.scalars(statement)).one_or_none()
+
+
+def _require_projected_occurrence(
+    schedule: Schedule,
+    original_occurrence_at: datetime,
+) -> None:
+    if schedule.schedule_type is not ScheduleType.RECURRING_RULE:
+        raise InvalidStateTransitionError("only recurring occurrences can be edited")
+    if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
+        raise InvalidStateTransitionError("recurring schedule is missing recurrence")
+    probe = original_occurrence_at - timedelta(microseconds=1)
+    projected = next_occurrence_after(
+        recurrence_rule=schedule.recurrence_rule,
+        recurrence_timezone=schedule.recurrence_timezone,
+        after=probe,
+    )
+    if projected != original_occurrence_at:
+        raise InvalidStateTransitionError(
+            "original_occurrence_at is not projected by the recurrence rule"
+        )
+
+
+async def _require_occurrence_not_started(
+    session: AsyncSession,
+    *,
+    schedule_id: str,
+    original_occurrence_at: datetime,
+) -> None:
+    require_future_datetime(original_occurrence_at, field_name="original_occurrence_at")
+    existing = await _get_run_for_occurrence(
+        session,
+        schedule_id=schedule_id,
+        occurrence_key=occurrence_key_for_datetime(original_occurrence_at),
+    )
+    if existing is not None and existing.run_status is not RunStatus.PLANNED:
+        raise InvalidStateTransitionError("occurrence already started")
 
 
 async def _set_run_status(
@@ -1204,7 +1692,9 @@ def _materialized_run_response(
     task: Task,
     workflow_id: str,
     run_workspace_root: str,
+    instruction_source: str | None = None,
 ) -> MaterializedRun:
+    _ = workflow_id
     return MaterializedRun(
         run_id=run.run_id,
         run_status=run.run_status,
@@ -1213,7 +1703,7 @@ def _materialized_run_response(
             task_id=task.task_id,
             schedule_id=run.schedule_id,
             executor=task.executor,
-            instruction_source=task.instruction_source,
+            instruction_source=instruction_source or task.instruction_source,
             planned_start_at=run.planned_start_at,
             working_directory=str(Path(run_workspace_root) / run.run_id),
             target_working_directory=task.target_working_directory,

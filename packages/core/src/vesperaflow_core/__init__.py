@@ -4,6 +4,8 @@ from .contracts import ExecutionSnapshot, ExecutorOutcome, MaterializedRun, Task
 from .enums import (
     ExecutionMode,
     ExecutorName,
+    OccurrenceEditScope,
+    OccurrenceOverrideStatus,
     RunStatus,
     ScheduleStatus,
     ScheduleType,
@@ -34,6 +36,8 @@ __all__ = [
     "ExecutorName",
     "ExecutorOutcome",
     "MaterializedRun",
+    "OccurrenceEditScope",
+    "OccurrenceOverrideStatus",
     "RunStatus",
     "ScheduleStatus",
     "ScheduleType",

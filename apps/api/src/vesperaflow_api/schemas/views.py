@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from vesperaflow_core import ExecutionMode, RunStatus, ScheduleStatus, TaskStatus
-from vesperaflow_store.repositories import HistoryItem, RecurringTodoItem
+from vesperaflow_store.repositories import CalendarItem, HistoryItem, RecurringTodoItem
 
 
 class KanbanCardResponse(BaseModel):
@@ -46,6 +46,36 @@ class HistoryItemResponse(BaseModel):
             finished_at=item.run.finished_at,
             result_summary=item.run.result_summary,
             failure_reason=item.run.failure_reason,
+        )
+
+
+class CalendarItemResponse(BaseModel):
+    calendar_item_id: str
+    task_id: str
+    schedule_id: str
+    title: str
+    execution_mode: ExecutionMode
+    occurrence_at: datetime
+    original_occurrence_at: datetime | None
+    state: TaskStatus
+    is_occurrence_override: bool
+    schedule_version: int
+
+    @classmethod
+    def from_item(cls, item: CalendarItem) -> "CalendarItemResponse":
+        occurrence_key = item.original_occurrence_at or item.occurrence_at
+        item_id = f"cal_{item.schedule.schedule_id}_{occurrence_key.isoformat()}"
+        return cls(
+            calendar_item_id=item_id,
+            task_id=item.task.task_id,
+            schedule_id=item.schedule.schedule_id,
+            title=item.task.title,
+            execution_mode=item.task.execution_mode,
+            occurrence_at=item.occurrence_at,
+            original_occurrence_at=item.original_occurrence_at,
+            state=item.state,
+            is_occurrence_override=item.occurrence_override is not None,
+            schedule_version=item.schedule.version,
         )
 
 

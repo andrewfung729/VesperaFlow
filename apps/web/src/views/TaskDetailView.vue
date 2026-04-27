@@ -43,6 +43,10 @@ const selectedRunId = computed(() => {
   const value = route.query.runId
   return typeof value === 'string' ? value : null
 })
+const selectedOccurrenceAt = computed(() => {
+  const value = route.query.occurrenceAt
+  return typeof value === 'string' ? value : null
+})
 const selectedRun = computed(() =>
   selectedDetail.value?.runs.find((run) => run.run_id === selectedRunId.value),
 )
@@ -283,6 +287,12 @@ function resetRecurrenceForm() {
               <dd class="m-0 mb-2.5 break-words">
                 {{ selectedRun.run_status }} ·
                 {{ selectedRun.result_summary ?? selectedRun.failure_reason ?? 'No summary' }}
+              </dd>
+            </template>
+            <template v-if="selectedOccurrenceAt">
+              <dt class="text-sm font-bold text-slate-500">Selected Occurrence</dt>
+              <dd class="m-0 mb-2.5 break-words">
+                {{ formatDateTime(selectedOccurrenceAt) }}
               </dd>
             </template>
           </dl>

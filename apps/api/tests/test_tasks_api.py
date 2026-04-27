@@ -279,6 +279,97 @@ async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
 
 
 @pytest.mark.asyncio
+async def test_calendar_returns_projected_items_and_hides_inactive(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    one_time_payload = _create_payload("Calendar one-time")
+    one_time_payload["schedule"]["planned_at"] = datetime(
+        2026, 4, 28, 0, 0, tzinfo=UTC
+    ).isoformat()
+    one_time = await client.post("/api/v1/tasks", json=one_time_payload)
+    recurring = await client.post(
+        "/api/v1/tasks", json=_recurring_payload("Calendar daily")
+    )
+    paused = await client.post("/api/v1/tasks", json=_recurring_payload("Paused daily"))
+
+    paused_data = cast(dict[str, object], paused.json()["data"])
+    paused_task = cast(dict[str, object], paused_data["task"])
+    paused_schedule = cast(dict[str, object], paused_data["schedule"])
+    await client.post(
+        f"/api/v1/tasks/{paused_task['task_id']}/schedule/pause",
+        json={"version": paused_schedule["version"]},
+    )
+
+    calendar = await client.get(
+        "/api/v1/views/calendar",
+        params={
+            "from": "2026-04-27T23:59:00+00:00",
+            "to": "2026-04-28T00:01:00+00:00",
+        },
+    )
+
+    assert one_time.status_code == 201
+    assert recurring.status_code == 201
+    assert calendar.status_code == 200
+    items = cast(list[dict[str, object]], calendar.json()["data"])
+    assert calendar.json()["meta"]["total"] == 2
+    assert [item["title"] for item in items] == [
+        "Calendar daily",
+        "Calendar one-time",
+    ]
+    assert {item["execution_mode"] for item in items} == {"one_time", "recurring"}
+
+
+@pytest.mark.asyncio
+async def test_occurrence_update_and_cancel_endpoints(
+    client: AsyncClient,
+) -> None:
+    created = await client.post(
+        "/api/v1/tasks", json=_recurring_payload("Override daily")
+    )
+    data = cast(dict[str, object], created.json()["data"])
+    task = cast(dict[str, object], data["task"])
+    schedule = cast(dict[str, object], data["schedule"])
+
+    updated = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/update",
+        json={
+            "version": schedule["version"],
+            "original_occurrence_at": "2026-04-28T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+            "planned_at": "2026-04-28T02:00:00+00:00",
+            "instruction_source": "Override instructions",
+        },
+    )
+    assert updated.status_code == 200
+    override = cast(dict[str, object], updated.json()["data"])
+    assert override["override_status"] == "active"
+    assert override["override_instruction_delta"] == "Override instructions"
+
+    calendar = await client.get(
+        "/api/v1/views/calendar",
+        params={
+            "from": "2026-04-28T01:59:00+00:00",
+            "to": "2026-04-28T02:01:00+00:00",
+        },
+    )
+    assert calendar.status_code == 200
+    assert calendar.json()["data"][0]["is_occurrence_override"] is True
+
+    canceled = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/cancel",
+        json={
+            "version": 2,
+            "original_occurrence_at": "2026-04-28T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+        },
+    )
+    assert canceled.status_code == 200
+    assert canceled.json()["data"]["override_status"] == "canceled"
+
+
+@pytest.mark.asyncio
 async def test_cancel_task_updates_kanban(client: AsyncClient) -> None:
     created = await client.post("/api/v1/tasks", json=_create_payload())
     data = cast(dict[str, object], created.json()["data"])

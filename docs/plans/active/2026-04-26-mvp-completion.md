@@ -313,6 +313,28 @@ Exit criteria:
 Purpose: give the user time-based planning visibility and scoped recurring edit
 behavior.
 
+Progress on 2026-04-27:
+
+- Added `OccurrenceOverride` storage, Alembic migration, shared occurrence edit
+  enums, and repository commands for single-occurrence update/cancel.
+- Added a bounded calendar read model that projects one-time planned runs and
+  active recurring future occurrences, applies active overrides, hides skipped
+  occurrences, hides paused recurring schedules, and hides canceled one-time
+  work by default.
+- Extended recurring run materialization so a canceled occurrence override
+  creates a canceled run and returns before executor invocation through the
+  existing Workflow no-op path; active instruction/time overrides are applied in
+  the first persistence Activity, and moved later occurrences wait on a Temporal
+  Workflow timer before executor invocation.
+- Added `/api/v1/views/calendar`,
+  `/api/v1/tasks/{task_id}/occurrences/update`, and
+  `/api/v1/tasks/{task_id}/occurrences/cancel`.
+- Added the web Calendar agenda route, primary navigation entry, overlap
+  visibility, task-detail linking with occurrence context, scoped edit panel,
+  and skip-this-occurrence action.
+- Added repository, API, web client, and Playwright smoke coverage, and
+  refreshed generated schema/API/Temporal/dependency snapshots.
+
 Scope:
 
 - Add OccurrenceOverride model, migration, repository methods, and API schemas.
@@ -370,12 +392,11 @@ Exit criteria:
 
 ## Next Actions
 
-1. Add recurring task creation/editing to the web composer and task detail
-   surfaces so the M3 recurring lifecycle is user-visible.
-2. Decide whether the opt-in full-stack smoke should become a CI service test or
+1. Decide whether the opt-in full-stack smoke should become a CI service test or
    remain local-only until recurring full-stack behavior lands.
-3. Start M5 calendar and occurrence override work with the store model/API
-   contract before adding the web agenda surface.
+2. Add live full-stack recurring smoke coverage with local Postgres, Temporal,
+   API, Worker, and web.
+3. Start M6 Claude Code preflight and release hardening.
 4. Improve one-time kanban web behavior where MVP specs already call out gaps.
 
 ## Blockers

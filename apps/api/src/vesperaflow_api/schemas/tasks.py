@@ -7,12 +7,14 @@ from pydantic import BaseModel, Field
 from vesperaflow_core import (
     ExecutionMode,
     ExecutorName,
+    OccurrenceEditScope,
+    OccurrenceOverrideStatus,
     RunStatus,
     ScheduleStatus,
     ScheduleType,
     TaskStatus,
 )
-from vesperaflow_store.models import Run, Schedule, Task
+from vesperaflow_store.models import OccurrenceOverride, Run, Schedule, Task
 from vesperaflow_store.repositories import TaskDetail
 
 
@@ -67,6 +69,22 @@ class ScheduleUpdateRequest(BaseModel):
 
 class VersionedCommand(BaseModel):
     version: int | None = None
+
+
+class OccurrenceUpdateRequest(BaseModel):
+    version: int | None = None
+    original_occurrence_at: datetime
+    scope: OccurrenceEditScope
+    planned_at: datetime | None = None
+    instruction_source: str | None = Field(default=None, min_length=1)
+    recurrence_rule: str | None = None
+    recurrence_timezone: str | None = None
+
+
+class OccurrenceCancelRequest(BaseModel):
+    version: int | None = None
+    original_occurrence_at: datetime
+    scope: OccurrenceEditScope
 
 
 class TaskResponse(BaseModel):
@@ -127,6 +145,22 @@ class RunResponse(BaseModel):
     @classmethod
     def from_model(cls, run: Run) -> "RunResponse":
         return cls.model_validate(_model_dict(run))
+
+
+class OccurrenceOverrideResponse(BaseModel):
+    occurrence_override_id: str
+    task_id: str
+    schedule_id: str
+    original_occurrence_at: datetime
+    override_occurrence_at: datetime | None
+    override_instruction_delta: str | None
+    override_status: OccurrenceOverrideStatus
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_model(cls, override: OccurrenceOverride) -> "OccurrenceOverrideResponse":
+        return cls.model_validate(_model_dict(override))
 
 
 class TaskBundleResponse(BaseModel):

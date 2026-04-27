@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-04-26. Update this whenever a major area improves or
+_Last updated: 2026-04-27. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -21,11 +21,11 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, and template default validation. Keep Temporal-import safety explicit. |
-| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo has a derived active/paused read model, and template archive/copy semantics are tested. |
-| `apps/api` | C | One-time, recurring lifecycle, recurring todo, history, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
+| `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
 | `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, and recurring materialization replay tests are covered, but live recurring stack coverage is not in place yet. |
-| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, and template route coverage; UI behavior coverage is still shallow. |
+| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, and template route coverage; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, and a local full-stack runbook are now present. |
 
@@ -38,9 +38,9 @@ Update this file when any of these change:
 - [ ] Integration tests requiring the full Postgres/Temporal stack are opt-in and
       not yet a CI gate.
 - [ ] Web E2E coverage is still smoke-level.
-- [ ] History and recurring todo latest-run context are implemented for
-      materialized recurring runs; calendar-specific recurring context is still
-      pending.
+- [ ] Calendar, history, and recurring todo latest-run/context paths are
+      implemented for materialized recurring runs, but live recurring stack
+      coverage is still pending.
 - [ ] Templates are implemented for direct management and composer prefill; the
       save-as-template shortcut from an existing task is not yet exposed.
 - [ ] No automated PR-opening cleanup loop yet; CI only detects the first set of drift patterns.
@@ -85,3 +85,6 @@ Update this file when any of these change:
   actions, tests, and refreshed generated API facts.
 - 2026-04-26: Added allowlisted Claude Agent SDK environment passthrough in the
   Worker while keeping credentials out of Temporal payloads and logs.
+- 2026-04-27: Added the M5 calendar and occurrence override slice across
+  store/API/web, including scoped occurrence update/cancel commands, calendar
+  projection, generated fact refresh, and repository/API/web smoke coverage.

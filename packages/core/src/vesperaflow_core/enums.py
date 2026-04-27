@@ -46,3 +46,13 @@ class RunStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELED = "canceled"
+
+
+class OccurrenceOverrideStatus(StrEnum):
+    ACTIVE = "active"
+    CANCELED = "canceled"
+
+
+class OccurrenceEditScope(StrEnum):
+    THIS_OCCURRENCE_ONLY = "this_occurrence_only"
+    THIS_AND_FUTURE = "this_and_future"

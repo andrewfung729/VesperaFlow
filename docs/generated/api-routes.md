@@ -1,6 +1,6 @@
 # API Route Snapshot
 
-- Generated: 2026-04-26
+- Generated: 2026-04-27
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `apps/api/src/vesperaflow_api/app.py`, `apps/api/src/vesperaflow_api/routes/`, `apps/api/src/vesperaflow_api/schemas/`
 - Limitations: generated from importable application metadata, not a live deployment.
@@ -12,6 +12,8 @@
 | `GET` | `/api/v1/tasks/{task_id}` | `get_task` | `` | `DataEnvelope` |
 | `PATCH` | `/api/v1/tasks/{task_id}` | `update_task` | `TaskUpdateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/detail` | `get_task_detail` | `` | `DataEnvelope` |
+| `POST` | `/api/v1/tasks/{task_id}/occurrences/cancel` | `cancel_occurrence` | `OccurrenceCancelRequest` | `DataEnvelope` |
+| `POST` | `/api/v1/tasks/{task_id}/occurrences/update` | `update_occurrence` | `OccurrenceUpdateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/runs` | `list_runs` | `` | `ListEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/schedule` | `get_schedule` | `` | `DataEnvelope` |
 | `PATCH` | `/api/v1/tasks/{task_id}/schedule` | `update_schedule` | `ScheduleUpdateRequest` | `DataEnvelope` |
@@ -24,6 +26,7 @@
 | `PATCH` | `/api/v1/templates/{template_id}` | `update_template` | `TemplateUpdateRequest` | `DataEnvelope` |
 | `POST` | `/api/v1/templates/{template_id}/archive` | `archive_template` | `VersionedCommand` | `DataEnvelope` |
 | `POST` | `/api/v1/templates/{template_id}/instantiate` | `instantiate_template` | `TemplateInstantiateRequest` | `DataEnvelope` |
+| `GET` | `/api/v1/views/calendar` | `get_calendar` | `` | `ListEnvelope` |
 | `GET` | `/api/v1/views/history` | `get_history` | `` | `ListEnvelope` |
 | `GET` | `/api/v1/views/kanban` | `get_kanban` | `` | `DataEnvelope` |
 | `GET` | `/api/v1/views/recurring-todo` | `get_recurring_todo` | `` | `ListEnvelope` |

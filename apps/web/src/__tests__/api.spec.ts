@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   archiveTemplate,
+  cancelOccurrence,
   createTask,
   createTemplate,
+  getCalendar,
   getHistory,
   getRecurringTodo,
   listTemplates,
   pauseRecurringTask,
   resumeRecurringTask,
+  updateOccurrence,
   updateRecurringSchedule,
   updateTemplate,
 } from '../api'
@@ -148,6 +151,78 @@ describe('api', () => {
           version: 5,
           recurrence_rule: 'RRULE:FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30',
           recurrence_timezone: 'Asia/Hong_Kong',
+        }),
+      }),
+    )
+  })
+
+  it('sends calendar and occurrence scoped edit requests', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.includes('/views/calendar')) {
+        return new Response(JSON.stringify({ data: [], meta: { total: 0 } }), {
+          status: 200,
+        })
+      }
+      return new Response(
+        JSON.stringify({
+          data: {
+            occurrence_override_id: 'ovr-1',
+            task_id: 'task-1',
+            schedule_id: 'sch-1',
+            original_occurrence_at: '2026-04-28T00:00:00Z',
+            override_occurrence_at: null,
+            override_instruction_delta: null,
+            override_status: 'active',
+            created_at: '2026-04-27T00:00:00Z',
+            updated_at: '2026-04-27T00:00:00Z',
+          },
+        }),
+        { status: 200 },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const calendar = await getCalendar({
+      from: '2026-04-28T00:00:00+00:00',
+      to: '2026-04-29T00:00:00+00:00',
+      include_completed: true,
+    })
+    await updateOccurrence('task-1', {
+      version: 3,
+      original_occurrence_at: '2026-04-28T00:00:00+00:00',
+      scope: 'this_occurrence_only',
+      planned_at: '2026-04-28T02:00:00+00:00',
+      instruction_source: 'Override',
+    })
+    await cancelOccurrence('task-1', 4, '2026-04-28T00:00:00+00:00')
+
+    expect(calendar.meta.total).toBe(0)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/views/calendar?from=2026-04-28T00%3A00%3A00%2B00%3A00'),
+      expect.any(Object),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/occurrences/update'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          version: 3,
+          original_occurrence_at: '2026-04-28T00:00:00+00:00',
+          scope: 'this_occurrence_only',
+          planned_at: '2026-04-28T02:00:00+00:00',
+          instruction_source: 'Override',
+        }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/occurrences/cancel'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          version: 4,
+          original_occurrence_at: '2026-04-28T00:00:00+00:00',
+          scope: 'this_occurrence_only',
         }),
       }),
     )

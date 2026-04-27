@@ -107,6 +107,31 @@ export interface RecurringTodoItem {
   failure_reason: string | null
 }
 
+export interface CalendarItem {
+  calendar_item_id: string
+  task_id: string
+  schedule_id: string
+  title: string
+  execution_mode: ExecutionMode
+  occurrence_at: string
+  original_occurrence_at: string | null
+  state: TaskStatus
+  is_occurrence_override: boolean
+  schedule_version: number
+}
+
+export interface OccurrenceOverride {
+  occurrence_override_id: string
+  task_id: string
+  schedule_id: string
+  original_occurrence_at: string
+  override_occurrence_at: string | null
+  override_instruction_delta: string | null
+  override_status: 'active' | 'canceled'
+  created_at: string
+  updated_at: string
+}
+
 export interface TemplateScheduleConfig {
   schedule_type: 'single_run' | 'recurring_rule'
   planned_at: string | null
@@ -228,6 +253,55 @@ export async function getRecurringTodo(params: {
   }
   const suffix = search.size > 0 ? `?${search}` : ''
   return requestList<RecurringTodoItem>(`/views/recurring-todo${suffix}`)
+}
+
+export async function getCalendar(params: {
+  from: string
+  to: string
+  include_completed?: boolean
+  limit?: number
+  offset?: number
+}): Promise<ListEnvelope<CalendarItem>> {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      search.set(key, String(value))
+    }
+  }
+  return requestList<CalendarItem>(`/views/calendar?${search}`)
+}
+
+export async function updateOccurrence(
+  taskId: string,
+  payload: {
+    version: number
+    original_occurrence_at: string
+    scope: 'this_occurrence_only' | 'this_and_future'
+    planned_at?: string | null
+    instruction_source?: string | null
+    recurrence_rule?: string | null
+    recurrence_timezone?: string | null
+  },
+): Promise<TaskBundle | OccurrenceOverride> {
+  return request<TaskBundle | OccurrenceOverride>(`/tasks/${taskId}/occurrences/update`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function cancelOccurrence(
+  taskId: string,
+  version: number,
+  originalOccurrenceAt: string,
+): Promise<OccurrenceOverride> {
+  return request<OccurrenceOverride>(`/tasks/${taskId}/occurrences/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({
+      version,
+      original_occurrence_at: originalOccurrenceAt,
+      scope: 'this_occurrence_only',
+    }),
+  })
 }
 
 export async function listTemplates(

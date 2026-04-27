@@ -8,6 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from vesperaflow_core import (
     ExecutionMode,
     ExecutorName,
+    OccurrenceOverrideStatus,
     RunStatus,
     ScheduleStatus,
     ScheduleType,
@@ -63,6 +64,10 @@ class Task(Base):
         cascade="all, delete-orphan",
     )
     runs: Mapped[list["Run"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+    occurrence_overrides: Mapped[list["OccurrenceOverride"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
     )
@@ -134,6 +139,10 @@ class Schedule(Base):
 
     task: Mapped[Task] = relationship(back_populates="schedules")
     runs: Mapped[list["Run"]] = relationship(back_populates="schedule")
+    occurrence_overrides: Mapped[list["OccurrenceOverride"]] = relationship(
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+    )
 
 
 class Run(Base):
@@ -171,3 +180,41 @@ class Run(Base):
 
     task: Mapped[Task] = relationship(back_populates="runs")
     schedule: Mapped[Schedule | None] = relationship(back_populates="runs")
+
+
+class OccurrenceOverride(Base):
+    __tablename__: str = "occurrence_overrides"
+    __table_args__: tuple[Index | UniqueConstraint, ...] = (
+        Index("ix_occurrence_overrides_task_id", "task_id"),
+        Index("ix_occurrence_overrides_schedule_id", "schedule_id"),
+        UniqueConstraint(
+            "schedule_id",
+            "original_occurrence_at",
+            name="uq_occurrence_overrides_schedule_original",
+        ),
+    )
+
+    occurrence_override_id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.task_id"), nullable=False)
+    schedule_id: Mapped[str] = mapped_column(
+        ForeignKey("schedules.schedule_id"), nullable=False
+    )
+    original_occurrence_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    override_occurrence_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    override_instruction_delta: Mapped[str | None] = mapped_column(Text)
+    override_status: Mapped[OccurrenceOverrideStatus] = enum_column(
+        OccurrenceOverrideStatus
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    task: Mapped[Task] = relationship(back_populates="occurrence_overrides")
+    schedule: Mapped[Schedule] = relationship(back_populates="occurrence_overrides")
