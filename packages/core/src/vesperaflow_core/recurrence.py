@@ -65,7 +65,7 @@ def parse_recurrence_rule(value: str) -> RecurrenceSpec:
 
 def require_iana_timezone(value: str) -> None:
     try:
-        ZoneInfo(value)
+        _ = ZoneInfo(value)
     except ZoneInfoNotFoundError as exc:
         raise ValueError("recurrence_timezone must be a valid IANA timezone") from exc
 

@@ -2,13 +2,13 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import ExecutionMode, ScheduleType
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
 
-from ..dependencies import get_session
+from ..dependencies import get_scheduler, get_session, get_settings
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
@@ -21,6 +21,8 @@ from ..schemas.templates import (
     TemplateResponse,
     TemplateUpdateRequest,
 )
+from ..settings import ApiSettings
+from ..temporal_scheduler import TemporalScheduler
 from ._shared import observed_version, optional_existing_absolute_directory
 
 router = APIRouter()
@@ -94,7 +96,7 @@ async def update_template(
     version = observed_version(payload.version, if_match)
     schedule = payload.default_schedule_config
     payload_fields = payload.model_fields_set
-    schedule_fields = schedule.model_fields_set if schedule else set()
+    schedule_fields: set[str] = schedule.model_fields_set if schedule else set()
     default_target_working_directory = optional_existing_absolute_directory(
         payload.default_target_working_directory
     )
@@ -150,7 +152,8 @@ async def archive_template(
 async def instantiate_template(
     template_id: str,
     payload: TemplateInstantiateRequest,
-    request: Request,
+    settings: Annotated[ApiSettings, Depends(get_settings)],
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
     if payload.execution_mode not in (None, ExecutionMode.ONE_TIME):
@@ -169,13 +172,13 @@ async def instantiate_template(
             template_id=template_id,
             target_working_directory=target_working_directory,
             planned_at=schedule.planned_at if schedule else None,
-            install_default_executor=request.app.state.settings.default_executor,
+            install_default_executor=settings.default_executor,
             title=payload.title,
             instruction_source=payload.instruction_source,
             executor=payload.executor,
         )
         try:
-            schedule_ref = await request.app.state.scheduler.create_one_time_schedule(
+            schedule_ref = await scheduler.create_one_time_schedule(
                 task=bundle.task,
                 schedule=bundle.schedule,
                 run=bundle.run,
@@ -184,7 +187,7 @@ async def instantiate_template(
             raise RuntimeError(
                 "execution_unavailable: Temporal schedule creation failed"
             ) from exc
-        await repo.set_schedule_external_ref(
+        _ = await repo.set_schedule_external_ref(
             session,
             schedule_id=bundle.schedule.schedule_id,
             external_schedule_ref=schedule_ref,

@@ -19,9 +19,9 @@ import {
   parseRecurrenceRule,
   recurrencePreview,
   recurrenceSummary,
+  weekdayOptions,
   type RecurrenceCadence,
   type WeekdayCode,
-  weekdayOptions,
 } from '@/lib/recurrence'
 
 const props = defineProps<{
@@ -226,7 +226,7 @@ function resetRecurrenceForm() {
             Target: {{ selectedDetail.task.target_working_directory ?? 'none' }}
           </p>
           <pre
-            class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 [overflow-wrap:anywhere]"
+            class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 wrap-anywhere"
           >{{ selectedDetail.task.instruction_source }}</pre>
           <section class="mt-6">
             <h3 class="m-0 mb-3 text-lg font-bold text-slate-950">Recent Runs</h3>
@@ -247,7 +247,7 @@ function resetRecurrenceForm() {
                     {{ formatDateTime(run.finished_at ?? run.actual_start_at ?? run.planned_start_at) }}
                   </span>
                 </div>
-                <p class="mb-0 text-sm text-slate-600 [overflow-wrap:anywhere]">
+                <p class="mb-0 text-sm text-slate-600 wrap-anywhere">
                   {{ run.result_summary ?? run.failure_reason ?? 'No run output yet' }}
                 </p>
               </article>
@@ -260,7 +260,7 @@ function resetRecurrenceForm() {
         >
           <dl class="m-0 grid gap-1.5">
             <dt class="text-sm font-bold text-slate-500">Planned</dt>
-            <dd class="m-0 mb-2.5 break-words">
+            <dd class="m-0 mb-2.5 wrap-break-word">
               {{
                 isRecurringTask
                   ? recurrenceSummary(
@@ -271,11 +271,11 @@ function resetRecurrenceForm() {
               }}
             </dd>
             <dt class="text-sm font-bold text-slate-500">Schedule</dt>
-            <dd class="m-0 mb-2.5 break-words">
+            <dd class="m-0 mb-2.5 wrap-break-word">
               {{ selectedDetail.schedule?.schedule_status ?? 'none' }}
             </dd>
             <dt class="text-sm font-bold text-slate-500">Latest Result</dt>
-            <dd class="m-0 mb-2.5 break-words">
+            <dd class="m-0 mb-2.5 wrap-break-word">
               {{
                 selectedDetail.latest_run?.result_summary ??
                 selectedDetail.latest_run?.failure_reason ??
@@ -284,14 +284,14 @@ function resetRecurrenceForm() {
             </dd>
             <template v-if="selectedRun">
               <dt class="text-sm font-bold text-slate-500">Selected Run</dt>
-              <dd class="m-0 mb-2.5 break-words">
+              <dd class="m-0 mb-2.5 wrap-break-word">
                 {{ selectedRun.run_status }} ·
                 {{ selectedRun.result_summary ?? selectedRun.failure_reason ?? 'No summary' }}
               </dd>
             </template>
             <template v-if="selectedOccurrenceAt">
               <dt class="text-sm font-bold text-slate-500">Selected Occurrence</dt>
-              <dd class="m-0 mb-2.5 break-words">
+              <dd class="m-0 mb-2.5 wrap-break-word">
                 {{ formatDateTime(selectedOccurrenceAt) }}
               </dd>
             </template>

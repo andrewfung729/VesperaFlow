@@ -55,7 +55,7 @@ def require_recurring_schedule_consistency(
         raise ValueError("recurring tasks require recurrence_rule")
     if not recurrence_timezone:
         raise ValueError("recurring tasks require recurrence_timezone")
-    parse_recurrence_rule(recurrence_rule)
+    _ = parse_recurrence_rule(recurrence_rule)
     require_iana_timezone(recurrence_timezone)
 
 
@@ -81,7 +81,7 @@ def require_template_schedule_defaults(
         raise ValueError("recurring template defaults require recurrence_rule")
     if not recurrence_timezone:
         raise ValueError("recurring template defaults require recurrence_timezone")
-    parse_recurrence_rule(recurrence_rule)
+    _ = parse_recurrence_rule(recurrence_rule)
     require_iana_timezone(recurrence_timezone)
 
 

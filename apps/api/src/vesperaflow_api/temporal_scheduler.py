@@ -33,7 +33,7 @@ from .settings import ApiSettings
 
 class TemporalScheduler:
     def __init__(self, settings: ApiSettings) -> None:
-        self._settings = settings
+        self._settings: ApiSettings = settings
         self._client: Client | None = None
 
     async def connect(self) -> None:
@@ -54,7 +54,7 @@ class TemporalScheduler:
             raise ValueError("one-time Temporal schedule requires run")
         client = self._require_client()
         schedule_ref = temporal_schedule_id(schedule.schedule_id)
-        await client.create_schedule(
+        _ = await client.create_schedule(
             schedule_ref,
             self._build_schedule(task=task, schedule=schedule, run=run),
         )
@@ -82,7 +82,7 @@ class TemporalScheduler:
         _ = run
         client = self._require_client()
         schedule_ref = temporal_schedule_id(schedule.schedule_id)
-        await client.create_schedule(
+        _ = await client.create_schedule(
             schedule_ref,
             self._build_recurring_schedule(task=task, schedule=schedule),
         )

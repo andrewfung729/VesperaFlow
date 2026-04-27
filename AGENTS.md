@@ -38,6 +38,7 @@ Run from the repository root unless noted.
 
 ```bash
 uv run ruff check .
+uv run basedpyright
 uv run pytest
 python scripts/check_agent_repo.py
 ```

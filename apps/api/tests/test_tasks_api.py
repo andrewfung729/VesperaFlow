@@ -2,13 +2,14 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import Any, NotRequired, TypedDict
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from vesperaflow_api.app import create_app
+from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
@@ -77,10 +78,7 @@ async def api_context(tmp_path: Path) -> AsyncIterator[ApiTestContext]:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     session_factory = create_session_factory(engine)
-    app.state.settings = ApiSettings()
-    app.state.engine = engine
-    app.state.session_factory = session_factory
-    app.state.scheduler = FakeScheduler()
+    set_app_state(ApiSettings(), session_factory, FakeScheduler())
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport, base_url="http://test"
@@ -99,16 +97,14 @@ async def test_create_task_success(client: AsyncClient) -> None:
     response = await client.post("/api/v1/tasks", json=_create_payload())
 
     assert response.status_code == 201
-    body = cast(dict[str, object], response.json()["data"])
-    task = cast(dict[str, object], body["task"])
-    assert cast(str, task["task_status"]) == "scheduled"
-    assert cast(str, task["target_working_directory"]) == str(Path.cwd())
-    schedule = cast(dict[str, object], body["schedule"])
-    assert cast(str, schedule["external_schedule_ref"]).startswith(
-        "vesperaflow.schedule."
-    )
-    run = cast(dict[str, object], body["run"])
-    assert cast(str, run["run_status"]) == "planned"
+    body: dict[str, Any] = response.json()["data"]
+    task: dict[str, Any] = body["task"]
+    assert task["task_status"] == "scheduled"
+    assert task["target_working_directory"] == str(Path.cwd())
+    schedule: dict[str, Any] = body["schedule"]
+    assert schedule["external_schedule_ref"].startswith("vesperaflow.schedule.")
+    run: dict[str, Any] = body["run"]
+    assert run["run_status"] == "planned"
 
 
 @pytest.mark.asyncio
@@ -209,9 +205,9 @@ async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
     created = await client.post("/api/v1/tasks", json=_recurring_payload())
 
     assert created.status_code == 201
-    data = cast(dict[str, object], created.json()["data"])
-    task = cast(dict[str, object], data["task"])
-    schedule = cast(dict[str, object], data["schedule"])
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
     assert task["execution_mode"] == "recurring"
     assert task["task_status"] == "scheduled"
     assert data["run"] is None
@@ -227,7 +223,7 @@ async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
         },
     )
     assert updated.status_code == 200
-    updated_schedule = cast(dict[str, object], updated.json()["data"]["schedule"])
+    updated_schedule: dict[str, Any] = updated.json()["data"]["schedule"]
     assert updated_schedule["recurrence_rule"] == (
         "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=30"
     )
@@ -237,9 +233,9 @@ async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
         json={"version": updated_schedule["version"]},
     )
     assert paused.status_code == 200
-    paused_data = cast(dict[str, object], paused.json()["data"])
-    paused_task = cast(dict[str, object], paused_data["task"])
-    paused_schedule = cast(dict[str, object], paused_data["schedule"])
+    paused_data: dict[str, Any] = paused.json()["data"]
+    paused_task: dict[str, Any] = paused_data["task"]
+    paused_schedule: dict[str, Any] = paused_data["schedule"]
     assert paused_task["task_status"] == "paused"
     assert paused_schedule["schedule_status"] == "paused"
     assert paused_schedule["next_run_at"] is None
@@ -249,7 +245,7 @@ async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
         json={"version": paused_schedule["version"]},
     )
     assert resumed.status_code == 200
-    resumed_schedule = cast(dict[str, object], resumed.json()["data"]["schedule"])
+    resumed_schedule: dict[str, Any] = resumed.json()["data"]["schedule"]
     assert resumed.json()["data"]["task"]["task_status"] == "scheduled"
     assert resumed_schedule["schedule_status"] == "active"
     assert resumed_schedule["next_run_at"] is not None
@@ -271,12 +267,12 @@ async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
     active = await client.post("/api/v1/tasks", json=_recurring_payload("Active daily"))
     paused = await client.post("/api/v1/tasks", json=_recurring_payload("Paused daily"))
     one_time = await client.post("/api/v1/tasks", json=_create_payload("One-time"))
-    active_data = cast(dict[str, object], active.json()["data"])
-    paused_data = cast(dict[str, object], paused.json()["data"])
-    active_task = cast(dict[str, object], active_data["task"])
-    active_schedule = cast(dict[str, object], active_data["schedule"])
-    paused_task = cast(dict[str, object], paused_data["task"])
-    paused_schedule = cast(dict[str, object], paused_data["schedule"])
+    active_data: dict[str, Any] = active.json()["data"]
+    paused_data: dict[str, Any] = paused.json()["data"]
+    active_task: dict[str, Any] = active_data["task"]
+    active_schedule: dict[str, Any] = active_data["schedule"]
+    paused_task: dict[str, Any] = paused_data["task"]
+    paused_schedule: dict[str, Any] = paused_data["schedule"]
 
     paused_response = await client.post(
         f"/api/v1/tasks/{paused_task['task_id']}/schedule/pause",
@@ -290,13 +286,13 @@ async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
         async with session.begin():
             schedule = await repo.get_schedule(
                 session,
-                cast(str, active_schedule["schedule_id"]),
+                active_schedule["schedule_id"],
             )
             schedule.next_run_at = planned_start_at
             materialized = await repo.materialize_run(
                 session,
-                payload_task_id=cast(str, active_task["task_id"]),
-                payload_schedule_id=cast(str, active_schedule["schedule_id"]),
+                payload_task_id=active_task["task_id"],
+                payload_schedule_id=active_schedule["schedule_id"],
                 payload_run_id=None,
                 planned_start_at=planned_start_at,
                 occurrence_key=None,
@@ -319,7 +315,7 @@ async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
     )
 
     assert todo.status_code == 200
-    items = cast(list[dict[str, object]], todo.json()["data"])
+    items: list[dict[str, Any]] = todo.json()["data"]
     assert todo.json()["meta"]["total"] == 2
     assert [item["title"] for item in items] == ["Active daily", "Paused daily"]
     assert items[0]["schedule_status"] == "active"
@@ -346,9 +342,9 @@ async def test_calendar_returns_projected_items_and_hides_inactive(
     )
     paused = await client.post("/api/v1/tasks", json=_recurring_payload("Paused daily"))
 
-    paused_data = cast(dict[str, object], paused.json()["data"])
-    paused_task = cast(dict[str, object], paused_data["task"])
-    paused_schedule = cast(dict[str, object], paused_data["schedule"])
+    paused_data: dict[str, Any] = paused.json()["data"]
+    paused_task: dict[str, Any] = paused_data["task"]
+    paused_schedule: dict[str, Any] = paused_data["schedule"]
     await client.post(
         f"/api/v1/tasks/{paused_task['task_id']}/schedule/pause",
         json={"version": paused_schedule["version"]},
@@ -365,7 +361,7 @@ async def test_calendar_returns_projected_items_and_hides_inactive(
     assert one_time.status_code == 201
     assert recurring.status_code == 201
     assert calendar.status_code == 200
-    items = cast(list[dict[str, object]], calendar.json()["data"])
+    items: list[dict[str, Any]] = calendar.json()["data"]
     assert calendar.json()["meta"]["total"] == 2
     assert [item["title"] for item in items] == [
         "Calendar daily",
@@ -381,9 +377,9 @@ async def test_occurrence_update_and_cancel_endpoints(
     created = await client.post(
         "/api/v1/tasks", json=_recurring_payload("Override daily")
     )
-    data = cast(dict[str, object], created.json()["data"])
-    task = cast(dict[str, object], data["task"])
-    schedule = cast(dict[str, object], data["schedule"])
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
 
     updated = await client.post(
         f"/api/v1/tasks/{task['task_id']}/occurrences/update",
@@ -396,7 +392,7 @@ async def test_occurrence_update_and_cancel_endpoints(
         },
     )
     assert updated.status_code == 200
-    override = cast(dict[str, object], updated.json()["data"])
+    override: dict[str, Any] = updated.json()["data"]
     assert override["override_status"] == "active"
     assert override["override_instruction_delta"] == "Override instructions"
 
@@ -425,33 +421,29 @@ async def test_occurrence_update_and_cancel_endpoints(
 @pytest.mark.asyncio
 async def test_cancel_task_updates_kanban(client: AsyncClient) -> None:
     created = await client.post("/api/v1/tasks", json=_create_payload())
-    data = cast(dict[str, object], created.json()["data"])
-    task = cast(dict[str, object], data["task"])
-    schedule = cast(dict[str, object], data["schedule"])
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
 
     canceled = await client.post(
-        f"/api/v1/tasks/{cast(str, task['task_id'])}/schedule/cancel",
-        json={"version": cast(str, schedule["version"])},
+        f"/api/v1/tasks/{task['task_id']}/schedule/cancel",
+        json={"version": schedule["version"]},
     )
 
     # Default view hides canceled tasks per UX rules.
     board_default = await client.get("/api/v1/views/kanban")
     assert canceled.status_code == 200
     assert board_default.status_code == 200
-    columns_default = cast(
-        dict[str, object], board_default.json()["data"]["columns"]
-    )
+    columns_default: dict[str, Any] = board_default.json()["data"]["columns"]
     assert "canceled" not in columns_default
 
     # Explicitly requesting canceled tasks shows them.
-    board_with_canceled = await client.get(
-        "/api/v1/views/kanban?include_canceled=true"
-    )
+    board_with_canceled = await client.get("/api/v1/views/kanban?include_canceled=true")
     assert board_with_canceled.status_code == 200
-    columns_with_canceled = cast(
-        dict[str, object], board_with_canceled.json()["data"]["columns"]
-    )
-    assert len(cast(list[object], columns_with_canceled["canceled"])) == 1
+    columns_with_canceled: dict[str, Any] = board_with_canceled.json()["data"][
+        "columns"
+    ]
+    assert len(columns_with_canceled["canceled"]) == 1
 
 
 @pytest.mark.asyncio
@@ -462,32 +454,32 @@ async def test_history_returns_terminal_runs_with_filters(
     completed = await client.post("/api/v1/tasks", json=_create_payload("Completed"))
     failed = await client.post("/api/v1/tasks", json=_create_payload("Failed"))
     planned = await client.post("/api/v1/tasks", json=_create_payload("Planned"))
-    completed_data = cast(dict[str, object], completed.json()["data"])
-    failed_data = cast(dict[str, object], failed.json()["data"])
-    planned_data = cast(dict[str, object], planned.json()["data"])
+    completed_data: dict[str, Any] = completed.json()["data"]
+    failed_data: dict[str, Any] = failed.json()["data"]
+    planned_data: dict[str, Any] = planned.json()["data"]
 
     async with api_context.session_factory() as session:
         async with session.begin():
-            completed_run_id = cast(dict[str, object], completed_data["run"])["run_id"]
-            await repo.mark_run_queued(session, run_id=cast(str, completed_run_id))
-            await repo.mark_run_running(session, run_id=cast(str, completed_run_id))
+            completed_run_id = completed_data["run"]["run_id"]
+            await repo.mark_run_queued(session, run_id=completed_run_id)
+            await repo.mark_run_running(session, run_id=completed_run_id)
             completed_run = await repo.mark_run_completed(
                 session,
-                run_id=cast(str, completed_run_id),
+                run_id=completed_run_id,
                 result_summary="Done",
             )
             completed_run.finished_at = datetime(2026, 4, 25, 9, 0, tzinfo=UTC)
 
-            failed_run_id = cast(dict[str, object], failed_data["run"])["run_id"]
-            await repo.mark_run_queued(session, run_id=cast(str, failed_run_id))
-            await repo.mark_run_running(session, run_id=cast(str, failed_run_id))
+            failed_run_id = failed_data["run"]["run_id"]
+            await repo.mark_run_queued(session, run_id=failed_run_id)
+            await repo.mark_run_running(session, run_id=failed_run_id)
             failed_run = await repo.mark_run_failed(
                 session,
-                run_id=cast(str, failed_run_id),
+                run_id=failed_run_id,
                 failure_reason="Executor failed",
             )
             failed_run.finished_at = datetime(2026, 4, 25, 10, 0, tzinfo=UTC)
-            planned_run = cast(dict[str, object], planned_data["run"])
+            planned_run: dict[str, Any] = planned_data["run"]
             assert planned_run["run_status"] == "planned"
 
     all_history = await client.get("/api/v1/views/history")
@@ -501,14 +493,14 @@ async def test_history_returns_terminal_runs_with_filters(
     )
 
     assert all_history.status_code == 200
-    all_items = cast(list[dict[str, object]], all_history.json()["data"])
+    all_items: list[dict[str, Any]] = all_history.json()["data"]
     assert all_history.json()["meta"]["total"] == 2
     assert [item["title"] for item in all_items] == ["Failed", "Completed"]
     assert all_items[0]["failure_reason"] == "Executor failed"
     assert all_items[1]["result_summary"] == "Done"
 
     assert failed_history.status_code == 200
-    failed_items = cast(list[dict[str, object]], failed_history.json()["data"])
+    failed_items: list[dict[str, Any]] = failed_history.json()["data"]
     assert failed_history.json()["meta"]["total"] == 1
     assert failed_items[0]["run_status"] == "failed"
 
@@ -522,8 +514,8 @@ async def test_template_lifecycle_and_instantiation_copy_fields(
 ) -> None:
     created = await client.post("/api/v1/templates", json=_template_payload())
     assert created.status_code == 201
-    template = cast(dict[str, object], created.json()["data"])
-    template_id = cast(str, template["template_id"])
+    template: dict[str, Any] = created.json()["data"]
+    template_id = template["template_id"]
 
     instantiated = await client.post(
         f"/api/v1/templates/{template_id}/instantiate",
@@ -536,9 +528,9 @@ async def test_template_lifecycle_and_instantiation_copy_fields(
         },
     )
     assert instantiated.status_code == 201
-    bundle = cast(dict[str, object], instantiated.json()["data"])
-    task = cast(dict[str, object], bundle["task"])
-    task_id = cast(str, task["task_id"])
+    bundle: dict[str, Any] = instantiated.json()["data"]
+    task: dict[str, Any] = bundle["task"]
+    task_id = task["task_id"]
     assert task["title"] == "Template Task"
     assert task["instruction_source"] == "Original template instructions"
     assert task["target_working_directory"] == str(Path.cwd())
@@ -558,7 +550,7 @@ async def test_template_lifecycle_and_instantiation_copy_fields(
     assert updated.status_code == 200
     assert updated.json()["data"]["description"] is None
     detail = await client.get(f"/api/v1/tasks/{task_id}/detail")
-    detail_task = cast(dict[str, object], detail.json()["data"]["task"])
+    detail_task: dict[str, Any] = detail.json()["data"]["task"]
     assert detail_task["title"] == "Template Task"
     assert detail_task["instruction_source"] == "Original template instructions"
 
@@ -566,7 +558,7 @@ async def test_template_lifecycle_and_instantiation_copy_fields(
     assert active.status_code == 200
     assert active.json()["meta"]["total"] == 1
 
-    updated_template = cast(dict[str, object], updated.json()["data"])
+    updated_template: dict[str, Any] = updated.json()["data"]
     archived = await client.post(
         f"/api/v1/templates/{template_id}/archive",
         json={"version": updated_template["version"]},
@@ -586,9 +578,9 @@ async def test_create_task_with_template_uses_template_default_executor(
     client: AsyncClient,
 ) -> None:
     created = await client.post("/api/v1/templates", json=_template_payload())
-    template = cast(dict[str, object], created.json()["data"])
+    template: dict[str, Any] = created.json()["data"]
     payload = _create_payload()
-    payload["template_id"] = cast(str, template["template_id"])
+    payload["template_id"] = template["template_id"]
     del payload["executor"]
 
     response = await client.post("/api/v1/tasks", json=payload)
@@ -606,7 +598,7 @@ async def test_template_default_target_directory_can_create_task(
     payload = _template_payload()
     payload["default_target_working_directory"] = str(Path.cwd())
     created = await client.post("/api/v1/templates", json=payload)
-    template = cast(dict[str, object], created.json()["data"])
+    template: dict[str, Any] = created.json()["data"]
 
     instantiated = await client.post(
         f"/api/v1/templates/{template['template_id']}/instantiate",
@@ -623,7 +615,7 @@ async def test_template_default_target_directory_can_create_task(
     assert task["target_working_directory"] == str(Path.cwd())
 
     direct_payload = _create_payload()
-    direct_payload["template_id"] = cast(str, template["template_id"])
+    direct_payload["template_id"] = template["template_id"]
     del direct_payload["target_working_directory"]
     direct = await client.post("/api/v1/tasks", json=direct_payload)
 

@@ -1,6 +1,7 @@
 """Debug executor adapter."""
 
 import logging
+from typing import override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
 
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class DebugPrinterExecutor(ExecutorAdapter):
+    @override
     async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
         logger.info("debug_printer_snapshot %s", snapshot.model_dump_json())
         return ExecutorOutcome(

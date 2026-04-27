@@ -1,6 +1,6 @@
 """FastAPI application factory."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -15,25 +15,24 @@ from vesperaflow_store.errors import (
     StoreError,
 )
 
+from .dependencies import set_app_state
 from .routes.executors import router as executors_router
 from .routes.tasks import router as tasks_router
 from .routes.templates import router as templates_router
 from .routes.views import router as views_router
-from .schemas.tasks import ErrorEnvelope
+from .schemas.tasks import ErrorBody, ErrorEnvelope
 from .settings import get_settings
 from .temporal_scheduler import TemporalScheduler
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
     engine = create_engine(settings.database_url)
-    app.state.settings = settings
-    app.state.engine = engine
-    app.state.session_factory = create_session_factory(engine)
+    session_factory = create_session_factory(engine)
     scheduler = TemporalScheduler(settings)
     await scheduler.connect()
-    app.state.scheduler = scheduler
+    set_app_state(settings, session_factory, scheduler)
     yield
     await engine.dispose()
 
@@ -42,20 +41,20 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="VesperaFlow API", lifespan=lifespan)
     app.add_middleware(
-        CORSMiddleware,
+        middleware_class=CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(tasks_router, prefix="/api/v1")
-    app.include_router(templates_router, prefix="/api/v1")
-    app.include_router(executors_router, prefix="/api/v1")
-    app.include_router(views_router, prefix="/api/v1")
+    app.include_router(router=tasks_router, prefix="/api/v1")
+    app.include_router(router=templates_router, prefix="/api/v1")
+    app.include_router(router=executors_router, prefix="/api/v1")
+    app.include_router(router=views_router, prefix="/api/v1")
     app.add_exception_handler(StoreError, store_error_handler)
     app.add_exception_handler(ValueError, value_error_handler)
     app.add_exception_handler(RuntimeError, runtime_error_handler)
-    app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)  # pyright: ignore[reportArgumentType]
     return app
 
 
@@ -63,7 +62,7 @@ def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content=ErrorEnvelope(
-            error={"code": code, "message": message, "details": {}}
+            error=ErrorBody(code=code, message=message, details={})
         ).model_dump(),
     )
 
@@ -104,10 +103,10 @@ async def validation_error_handler(
     return JSONResponse(
         status_code=422,
         content=ErrorEnvelope(
-            error={
-                "code": "validation_error",
-                "message": "Request validation failed",
-                "details": {"errors": exc.errors()},
-            }
+            error=ErrorBody(
+                code="validation_error",
+                message="Request validation failed",
+                details={"errors": exc.errors()},
+            )
         ).model_dump(),
     )

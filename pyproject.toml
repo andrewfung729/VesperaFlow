@@ -16,6 +16,7 @@ dev = [
     "pytest>=9.0.1",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.15.12",
+    "basedpyright>=1.29.0",
 ]
 
 [tool.uv.workspace]
@@ -44,6 +45,28 @@ pythonpath = [
 markers = [
     "integration: tests that require external services such as Postgres or Temporal",
 ]
+
+[tool.basedpyright]
+pythonVersion = "3.13"
+typeCheckingMode = "recommended"
+include = [
+    "packages/core/src",
+    "packages/store/src",
+    "apps/api/src",
+    "apps/worker/src",
+]
+exclude = [
+    ".venv",
+    "**/__pycache__",
+    "**/.pytest_cache",
+    ".ruff_cache",
+    "infra",
+    "docs",
+    "tests",
+]
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = false
 
 [tool.ruff]
 target-version = "py313" # 對應 Python 3.13

@@ -8,7 +8,7 @@ from vesperaflow_core import ExecutorName
 
 
 class ApiSettings(BaseSettings):
-    model_config = SettingsConfigDict(
+    model_config: SettingsConfigDict = SettingsConfigDict(  # pyright: ignore[reportIncompatibleVariableOverride]
         env_prefix="VESPERAFLOW_",
         env_file=".env",
         extra="ignore",

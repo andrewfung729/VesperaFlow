@@ -2,7 +2,7 @@ import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,6 +10,7 @@ from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 from vesperaflow_api.app import create_app
+from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
 from vesperaflow_api.temporal_scheduler import TemporalScheduler
 from vesperaflow_core import ExecutorName
@@ -53,10 +54,7 @@ async def test_one_time_debug_printer_reaches_terminal_state(
     )
 
     app = create_app()
-    app.state.settings = settings
-    app.state.engine = engine
-    app.state.session_factory = create_session_factory(engine)
-    app.state.scheduler = scheduler
+    set_app_state(settings, create_session_factory(engine), scheduler)
 
     try:
         async with Worker(
@@ -81,17 +79,17 @@ async def test_one_time_debug_printer_reaches_terminal_state(
                     json=_create_payload(tmp_path),
                 )
                 assert created.status_code == 201, created.text
-                body = cast(dict[str, Any], created.json()["data"])
-                task = cast(dict[str, Any], body["task"])
+                body: dict[str, Any] = created.json()["data"]
+                task: dict[str, Any] = body["task"]
                 detail = await _wait_for_terminal_run(
-                    client, cast(str, task["task_id"])
+                    client, task["task_id"]
                 )
     finally:
         await activities.close()
         await engine.dispose()
 
-    latest_run = cast(dict[str, Any], detail["latest_run"])
-    schedule = cast(dict[str, Any], detail["schedule"])
+    latest_run: dict[str, Any] = detail["latest_run"]
+    schedule: dict[str, Any] = detail["schedule"]
     assert detail["task"]["task_status"] == "completed"
     assert latest_run["run_status"] == "completed"
     assert latest_run["result_summary"].startswith("Debug printer completed run")
@@ -126,7 +124,7 @@ async def _wait_for_terminal_run(
     while datetime.now(UTC) < deadline:
         response = await client.get(f"/api/v1/tasks/{task_id}/detail")
         assert response.status_code == 200, response.text
-        detail = cast(dict[str, Any], response.json()["data"])
+        detail: dict[str, Any] = response.json()["data"]
         latest_run = detail["latest_run"]
         if isinstance(latest_run, dict) and latest_run["run_status"] in terminal:
             return detail

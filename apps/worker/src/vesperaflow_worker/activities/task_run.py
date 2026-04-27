@@ -24,7 +24,7 @@ class TaskRunActivities:
             create_session_factory(engine)
         )
         self._executor: ExecutorAdapter = executor
-        self._run_workspace_root = run_workspace_root
+        self._run_workspace_root: str = run_workspace_root
 
     @activity.defn(name="materialize_run")
     async def materialize_run(

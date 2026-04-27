@@ -1,6 +1,7 @@
 """Executor routing adapter."""
 
 from dataclasses import dataclass
+from typing import override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorName, ExecutorOutcome
 
@@ -12,6 +13,7 @@ class ExecutorRouter(ExecutorAdapter):
     claude_code: ExecutorAdapter
     debug_printer: ExecutorAdapter
 
+    @override
     async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
         if snapshot.executor is ExecutorName.CLAUDE_CODE:
             return await self.claude_code.execute(snapshot)

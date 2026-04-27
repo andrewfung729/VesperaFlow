@@ -121,11 +121,11 @@ function emptyColumns(): KanbanBoard['columns'] {
             class="mb-2.5 grid min-h-24 w-full cursor-pointer rounded-md border border-slate-200 bg-white p-3 text-left text-slate-950 shadow-xs transition hover:border-teal-300 hover:shadow-sm"
             @click="openTask(card.task_id)"
           >
-            <strong class="[overflow-wrap:anywhere]">{{ card.title }}</strong>
-            <span class="text-sm text-slate-500 [overflow-wrap:anywhere]">
+            <strong class="wrap-anywhere">{{ card.title }}</strong>
+            <span class="text-sm text-slate-500 wrap-anywhere">
               {{ formatDateTime(card.next_run_at) }}
             </span>
-            <small class="text-slate-500 [overflow-wrap:anywhere]">
+            <small class="text-slate-500 wrap-anywhere">
               {{ card.latest_run_status ?? 'planned' }}
             </small>
           </button>

@@ -1,7 +1,8 @@
 """API schemas for the vertical task slice."""
 
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any
+from typing import cast
 
 from pydantic import BaseModel, Field
 from vesperaflow_core import (
@@ -21,7 +22,7 @@ from vesperaflow_store.repositories import TaskDetail
 class ErrorBody(BaseModel):
     code: str
     message: str
-    details: dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, object] = Field(default_factory=dict)
 
 
 class ErrorEnvelope(BaseModel):
@@ -29,11 +30,11 @@ class ErrorEnvelope(BaseModel):
 
 
 class DataEnvelope(BaseModel):
-    data: Any
+    data: object
 
 
 class ListEnvelope(BaseModel):
-    data: list[Any]
+    data: list[object]
     meta: dict[str, int]
 
 
@@ -201,7 +202,11 @@ def bundle_response(
     )
 
 
-def _model_dict(model: Any) -> dict[str, Any]:
-    return {
-        column.name: getattr(model, column.name) for column in model.__table__.columns
-    }
+def _model_dict(model: object) -> dict[str, object]:
+    table = cast(object, getattr(model, "__table__"))
+    columns = cast(Iterable[object], getattr(table, "columns"))
+    result: dict[str, object] = {}
+    for column in columns:
+        name = cast(str, getattr(column, "name"))
+        result[name] = getattr(model, name)
+    return result

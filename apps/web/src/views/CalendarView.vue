@@ -3,10 +3,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import {
-  cancelOccurrence,
-  getCalendar,
-  updateOccurrence,
-  type CalendarItem,
+    cancelOccurrence,
+    getCalendar,
+    updateOccurrence,
+    type CalendarItem,
 } from '@/api'
 import { formatDateTime, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
@@ -269,7 +269,7 @@ function overlapLabel(item: CalendarItem): string {
               <td class="px-4 py-3 text-slate-700">{{ formatDateTime(item.occurrence_at) }}</td>
               <td class="px-4 py-3">
                 <button
-                  class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 [overflow-wrap:anywhere] hover:text-teal-900"
+                  class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 wrap-anywhere hover:text-teal-900"
                   @click="openTask(item)"
                 >
                   {{ item.title }}

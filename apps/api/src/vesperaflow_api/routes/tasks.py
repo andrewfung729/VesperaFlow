@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import (
     ExecutionMode,
@@ -14,7 +14,7 @@ from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
 from vesperaflow_store.models import OccurrenceOverride
 
-from ..dependencies import get_session
+from ..dependencies import get_scheduler, get_session, get_settings
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
@@ -31,6 +31,8 @@ from ..schemas.tasks import (
     VersionedCommand,
     bundle_response,
 )
+from ..settings import ApiSettings
+from ..temporal_scheduler import TemporalScheduler
 from ._shared import observed_version, require_existing_absolute_directory
 
 router = APIRouter()
@@ -39,7 +41,8 @@ router = APIRouter()
 @router.post("/tasks", status_code=201)
 async def create_task(
     payload: TaskCreateRequest,
-    request: Request,
+    settings: Annotated[ApiSettings, Depends(get_settings)],
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
     async with session.begin():
@@ -50,9 +53,8 @@ async def create_task(
                 raise InvalidStateTransitionError(
                     "archived templates cannot create tasks"
                 )
-        raw_target_working_directory = (
-            payload.target_working_directory
-            or (template.default_target_working_directory if template else None)
+        raw_target_working_directory = payload.target_working_directory or (
+            template.default_target_working_directory if template else None
         )
         if raw_target_working_directory is None:
             raise ValueError("target_working_directory is required")
@@ -62,7 +64,7 @@ async def create_task(
         executor = (
             payload.executor
             or (template.default_executor if template else None)
-            or request.app.state.settings.default_executor
+            or settings.default_executor
         )
         if payload.execution_mode is ExecutionMode.ONE_TIME:
             if (
@@ -81,7 +83,7 @@ async def create_task(
                 template_id=payload.template_id,
                 executor=executor,
             )
-            create_schedule = request.app.state.scheduler.create_one_time_schedule
+            create_schedule = scheduler.create_one_time_schedule
         else:
             if (
                 payload.schedule.schedule_type is not ScheduleType.RECURRING_RULE
@@ -89,8 +91,8 @@ async def create_task(
                 or payload.schedule.recurrence_timezone is None
             ):
                 raise ValueError(
-                    "recurring tasks require schedule_type recurring_rule, "
-                    "recurrence_rule, and recurrence_timezone"
+                    "recurring tasks require schedule_type "
+                    + "recurring_rule, recurrence_rule, and recurrence_timezone"
                 )
             bundle = await repo.create_recurring_task(
                 session,
@@ -102,7 +104,7 @@ async def create_task(
                 template_id=payload.template_id,
                 executor=executor,
             )
-            create_schedule = request.app.state.scheduler.create_recurring_schedule
+            create_schedule = scheduler.create_recurring_schedule
         try:
             schedule_ref = await create_schedule(
                 task=bundle.task,
@@ -113,7 +115,7 @@ async def create_task(
             raise RuntimeError(
                 "execution_unavailable: Temporal schedule creation failed"
             ) from exc
-        await repo.set_schedule_external_ref(
+        _ = await repo.set_schedule_external_ref(
             session,
             schedule_id=bundle.schedule.schedule_id,
             external_schedule_ref=schedule_ref,
@@ -140,7 +142,7 @@ async def list_tasks(
         limit=limit,
         offset=offset,
     )
-    data = []
+    data: list[object] = []
     for task in tasks:
         data.append(TaskResponse.from_model(task).model_dump())
     return ListEnvelope(data=data, meta={"total": len(tasks)})
@@ -196,7 +198,7 @@ async def get_schedule(
 async def update_schedule(
     task_id: str,
     payload: ScheduleUpdateRequest,
-    request: Request,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
@@ -212,7 +214,7 @@ async def update_schedule(
                 version=version,
                 planned_at=payload.planned_at,
             )
-            schedule_ref = await request.app.state.scheduler.replace_one_time_schedule(
+            schedule_ref = await scheduler.replace_one_time_schedule(
                 task=bundle.task,
                 schedule=bundle.schedule,
                 run=bundle.run,
@@ -226,8 +228,8 @@ async def update_schedule(
             )
             if recurrence_rule is None or recurrence_timezone is None:
                 raise ValueError(
-                    "recurring schedule updates require recurrence_rule and "
-                    "recurrence_timezone"
+                    "recurring schedule updates require "
+                    + "recurrence_rule and recurrence_timezone"
                 )
             bundle = await repo.update_recurring_task_schedule(
                 session,
@@ -236,11 +238,11 @@ async def update_schedule(
                 recurrence_rule=recurrence_rule,
                 recurrence_timezone=recurrence_timezone,
             )
-            schedule_ref = await request.app.state.scheduler.replace_recurring_schedule(
+            schedule_ref = await scheduler.replace_recurring_schedule(
                 task=bundle.task,
                 schedule=bundle.schedule,
             )
-        await repo.set_schedule_external_ref(
+        _ = await repo.set_schedule_external_ref(
             session,
             schedule_id=bundle.schedule.schedule_id,
             external_schedule_ref=schedule_ref,
@@ -254,7 +256,7 @@ async def update_schedule(
 async def pause_schedule(
     task_id: str,
     payload: VersionedCommand,
-    request: Request,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
@@ -265,7 +267,7 @@ async def pause_schedule(
             task_id=task_id,
             version=version,
         )
-        await request.app.state.scheduler.pause_schedule(bundle.schedule.schedule_id)
+        await scheduler.pause_schedule(bundle.schedule.schedule_id)
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )
@@ -275,7 +277,7 @@ async def pause_schedule(
 async def resume_schedule(
     task_id: str,
     payload: VersionedCommand,
-    request: Request,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
@@ -286,7 +288,7 @@ async def resume_schedule(
             task_id=task_id,
             version=version,
         )
-        await request.app.state.scheduler.resume_schedule(bundle.schedule.schedule_id)
+        await scheduler.resume_schedule(bundle.schedule.schedule_id)
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )
@@ -296,7 +298,7 @@ async def resume_schedule(
 async def cancel_schedule(
     task_id: str,
     payload: VersionedCommand,
-    request: Request,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
@@ -315,7 +317,7 @@ async def cancel_schedule(
                 task_id=task_id,
                 version=version,
             )
-        await request.app.state.scheduler.delete_schedule(bundle.schedule.schedule_id)
+        await scheduler.delete_schedule(bundle.schedule.schedule_id)
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )
@@ -325,7 +327,7 @@ async def cancel_schedule(
 async def update_occurrence(
     task_id: str,
     payload: OccurrenceUpdateRequest,
-    request: Request,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
@@ -345,11 +347,11 @@ async def update_occurrence(
         if isinstance(result, OccurrenceOverride):
             data = OccurrenceOverrideResponse.from_model(result).model_dump()
         else:
-            schedule_ref = await request.app.state.scheduler.replace_recurring_schedule(
+            schedule_ref = await scheduler.replace_recurring_schedule(
                 task=result.task,
                 schedule=result.schedule,
             )
-            await repo.set_schedule_external_ref(
+            _ = await repo.set_schedule_external_ref(
                 session,
                 schedule_id=result.schedule.schedule_id,
                 external_schedule_ref=schedule_ref,

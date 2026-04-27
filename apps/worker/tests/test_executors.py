@@ -6,7 +6,6 @@ import subprocess
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import cast
 
 import pytest
 from vesperaflow_core import ExecutionSnapshot, ExecutorName, RunStatus
@@ -54,9 +53,8 @@ def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
         text=True,
     )
 
-    loaded = cast(
-        dict[str, bool],
-        json.loads(check.stdout.strip().splitlines()[-1]),
+    loaded: dict[str, bool] = json.loads(
+        check.stdout.strip().splitlines()[-1],
     )
 
     assert loaded == {"root_loaded": False, "workflow_loaded": False}

@@ -207,8 +207,9 @@ def _extract_text_blocks(message: object) -> list[str]:
         return [content]
     if not isinstance(content, list):
         return []
+    content_list = cast(list[object], content)
     text_blocks: list[str] = []
-    for block in cast("list[object]", content):
+    for block in content_list:
         text = getattr(block, "text", None)
         if isinstance(text, str):
             text_blocks.append(text)

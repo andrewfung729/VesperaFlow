@@ -2,16 +2,16 @@
 
 
 class StoreError(Exception):
-    code = "store_error"
+    code: str = "store_error"
 
 
 class NotFoundError(StoreError):
-    code = "not_found"
+    code: str = "not_found"
 
 
 class ConflictError(StoreError):
-    code = "conflict"
+    code: str = "conflict"
 
 
 class InvalidStateTransitionError(StoreError):
-    code = "invalid_state_transition"
+    code: str = "invalid_state_transition"

@@ -92,3 +92,6 @@ Update this file when any of these change:
   including API workspace preflight, Worker runtime classification, composer
   visibility, documented opt-in live smoke, and broader MVP navigation smoke
   coverage.
+- 2026-04-27: Introduced basedpyright for static type checking across all Python
+  packages, fixed existing type errors in API exception handlers and store
+  repository filters, and added it to CI and common commands.

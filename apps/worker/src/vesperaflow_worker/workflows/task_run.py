@@ -1,6 +1,7 @@
 """TaskRunWorkflow Temporal workflow definition."""
 
 from datetime import timedelta
+from typing import cast
 
 from temporalio import workflow
 from vesperaflow_core.contracts import ExecutorOutcome, MaterializedRun, TaskRunInput
@@ -17,20 +18,30 @@ class TaskRunWorkflow:
             occurrence_key = payload.occurrence_key or occurrence_key_for_datetime(
                 workflow.info().start_time
             )
-            materialized = await workflow.execute_activity(
-                "materialize_run",
-                args=[
-                    payload.model_copy(update={"occurrence_key": occurrence_key}),
-                    workflow.info().workflow_id,
-                    workflow.info().start_time,
-                ],
-                start_to_close_timeout=timedelta(seconds=30),
+            # String-based activity lookup returns Any; cast is required because
+            # importing the activity class into workflow code would pull in
+            # sandbox-restricted dependencies (DB session, drivers, etc.).
+            materialized = cast(
+                MaterializedRun | str,
+                await workflow.execute_activity(
+                    "materialize_run",
+                    args=[
+                        payload.model_copy(update={"occurrence_key": occurrence_key}),
+                        workflow.info().workflow_id,
+                        workflow.info().start_time,
+                    ],
+                    start_to_close_timeout=timedelta(seconds=30),
+                ),
             )
         else:
-            materialized = await workflow.execute_activity(
-                "materialize_run",
-                payload,
-                start_to_close_timeout=timedelta(seconds=30),
+            # See cast above: string-based activity lookup returns Any.
+            materialized = cast(
+                MaterializedRun | str,
+                await workflow.execute_activity(
+                    "materialize_run",
+                    payload,
+                    start_to_close_timeout=timedelta(seconds=30),
+                ),
             )
         if isinstance(materialized, str):
             if payload.run_id is None:
@@ -68,11 +79,15 @@ class TaskRunWorkflow:
             run_id,
             start_to_close_timeout=timedelta(seconds=30),
         )
-        outcome: ExecutorOutcome = await workflow.execute_activity(
-            "execute_agent_run",
-            execution_payload,
-            schedule_to_close_timeout=timedelta(hours=6),
-            heartbeat_timeout=timedelta(minutes=5),
+        # See cast above: string-based activity lookup returns Any.
+        outcome = cast(
+            ExecutorOutcome,
+            await workflow.execute_activity(
+                "execute_agent_run",
+                execution_payload,
+                schedule_to_close_timeout=timedelta(hours=6),
+                heartbeat_timeout=timedelta(minutes=5),
+            ),
         )
         if isinstance(outcome, dict):
             outcome = ExecutorOutcome.model_validate(outcome)

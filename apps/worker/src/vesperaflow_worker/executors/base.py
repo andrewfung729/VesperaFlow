@@ -8,5 +8,5 @@ class ExecutorUnavailableError(RuntimeError):
 
 
 class ExecutorAdapter:
-    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
+    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:  # pyright: ignore[reportUnusedParameter]
         raise NotImplementedError

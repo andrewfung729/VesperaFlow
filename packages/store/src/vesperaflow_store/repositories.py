@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from vesperaflow_core import (
@@ -282,7 +282,7 @@ async def list_templates(
     limit: int = 100,
     offset: int = 0,
 ) -> TemplatePage:
-    filters = []
+    filters: list[ColumnElement[bool]] = []
     if not include_archived:
         filters.append(Template.archived_at.is_(None))
 
@@ -488,7 +488,7 @@ async def get_latest_run(session: AsyncSession, task_id: str) -> Run | None:
 
 
 async def list_runs_for_task(session: AsyncSession, task_id: str) -> list[Run]:
-    await get_task(session, task_id)
+    _ = await get_task(session, task_id)
     statement = (
         select(Run).where(Run.task_id == task_id).order_by(Run.created_at.desc())
     )
@@ -511,7 +511,7 @@ async def list_history(
             return HistoryPage(items=[], total=0)
         history_statuses = {status}
 
-    filters = [
+    filters: list[ColumnElement[bool]] = [
         Run.run_status.in_(history_statuses),
         Run.finished_at.is_not(None),
     ]
@@ -533,7 +533,7 @@ async def list_history(
         .limit(limit)
         .offset(offset)
     )
-    rows = (await session.execute(statement)).all()
+    rows = (await session.execute(statement)).tuples().all()
     return HistoryPage(
         items=[HistoryItem(run=run, task=task) for run, task in rows],
         total=total,
@@ -768,7 +768,7 @@ async def update_recurring_occurrence_scope(
             instruction_source=instruction_source,
         )
     if scope is not OccurrenceEditScope.THIS_AND_FUTURE:
-        raise InvalidStateTransitionError("unsupported recurring occurrence scope")
+        raise InvalidStateTransitionError("unsupported recurring occurrence scope")  # pyright: ignore[reportUnreachable]
 
     current_schedule = await get_schedule_for_task(session, task_id)
     _require_projected_occurrence(current_schedule, to_utc(original_occurrence_at))
@@ -778,11 +778,11 @@ async def update_recurring_occurrence_scope(
         and instruction_source is None
     ):
         raise ValueError(
-            "this_and_future requires recurrence_rule, recurrence_timezone, "
-            "or instruction_source"
+            "this_and_future requires recurrence_rule, "
+            + "recurrence_timezone, or instruction_source"
         )
     if instruction_source is not None:
-        await update_task(
+        _ = await update_task(
             session,
             task_id=task_id,
             version=(await get_task(session, task_id)).version,
@@ -1303,6 +1303,7 @@ async def _one_time_calendar_items(
         .join(Run, Run.schedule_id == Schedule.schedule_id)
         .where(*filters)
     )
+    result = await session.execute(statement)
     return [
         CalendarItem(
             task=task,
@@ -1312,7 +1313,7 @@ async def _one_time_calendar_items(
             original_occurrence_at=None,
             occurrence_override=None,
         )
-        for task, schedule, run in await session.execute(statement)
+        for task, schedule, run in result.tuples()
     ]
 
 
@@ -1332,7 +1333,7 @@ async def _recurring_calendar_items(
             Schedule.schedule_status == ScheduleStatus.ACTIVE,
         )
     )
-    rows = [(task, schedule) for task, schedule in await session.execute(statement)]
+    rows = (await session.execute(statement)).tuples().all()
     overrides = await _occurrence_overrides_by_schedule_id(
         session,
         schedule_ids=[schedule.schedule_id for _, schedule in rows],
@@ -1469,7 +1470,8 @@ async def _list_recurring_todo_rows(
         )
     else:
         statement = statement.order_by(Schedule.updated_at.desc(), Task.task_id.asc())
-    return [(task, schedule) for task, schedule in (await session.execute(statement))]
+    result = await session.execute(statement)
+    return list(result.tuples())
 
 
 def _recurring_todo_statuses(
@@ -1499,7 +1501,7 @@ async def _latest_runs_by_task_id(
     )
     latest: dict[str, Run] = {}
     for run in await session.scalars(statement):
-        latest.setdefault(run.task_id, run)
+        _ = latest.setdefault(run.task_id, run)
     return latest
 
 
