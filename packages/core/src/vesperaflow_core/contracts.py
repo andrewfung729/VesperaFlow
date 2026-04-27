@@ -7,9 +7,9 @@ version-conscious schema evolution across Temporal boundaries.
 from datetime import datetime
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import ExecutorName, RunStatus
+from .enums import ExecutorName, ExecutorPreflightStatus, RunStatus
 
 
 class ExecutionSnapshot(BaseModel):
@@ -52,3 +52,20 @@ class ExecutorOutcome(BaseModel):
     result_artifact_ref: str | None = None
     terminal_code: str | None = None
     failure_reason: str | None = None
+
+
+class ExecutorPreflightResult(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    executor: ExecutorName
+    status: ExecutorPreflightStatus
+    code: str
+    message: str
+    details: dict[str, str | bool | None] = Field(default_factory=dict)
+
+    @property
+    def available(self) -> bool:
+        return self.status in {
+            ExecutorPreflightStatus.AVAILABLE,
+            ExecutorPreflightStatus.WARNING,
+        }

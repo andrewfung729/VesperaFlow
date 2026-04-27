@@ -21,7 +21,7 @@ It covers:
 - request and response shapes
 - validation rules
 - error model
-- behavior for one-time tasks, recurring tasks, templates, calendar, one-time kanban, recurring todo, and task detail
+- behavior for one-time tasks, recurring tasks, templates, calendar, one-time kanban, recurring todo, task detail, and executor preflight
 - history read model behavior
 
 It does not cover:
@@ -66,6 +66,7 @@ MVP assumes a single local user. Authentication is out of scope for this phase.
 - `recurring-todo-items`
 - `task-detail`
 - `history-items`
+- `executor-preflight`
 
 ## 4. Shared Conventions
 
@@ -116,9 +117,8 @@ All non-2xx responses return:
 - `unsupported_operation` — operation is not supported by the current execution mode
 - `execution_unavailable` — the command was rejected because the execution layer could not be reached or rolled back safely; the PostgreSQL write was rolled back and the client should retry
 - `executor_not_available` — the requested or default executor is not available on the host; surfaced on task creation and on run start
-- `executor_sdk_not_importable` — the configured executor SDK is missing from the Worker environment during deployment or preflight
 - `executor_not_authenticated` — the configured executor SDK is installed but not authenticated or not configured for use
-- `executor_misconfigured` — the configured executor SDK is present but fails adapter preflight checks
+- `executor_misconfigured` — the configured executor SDK is present but fails at runtime because of configuration or SDK transport errors
 - `executor_workspace_unavailable` — the run artifact directory or selected target working directory cannot be created or accessed
 - `internal_error` — unexpected server failure
 
@@ -273,6 +273,52 @@ Templates may define `default_target_working_directory`. When present, creating 
   "updated_at": "2026-04-24T10:00:00+08:00"
 }
 ```
+
+### 5.6 Executor Preflight Object
+
+```json
+{
+  "executor": "claude_code",
+  "status": "available",
+  "code": "executor_preflight_passed",
+  "message": "Claude Code target workspace is available",
+  "details": {
+    "live": false
+  }
+}
+```
+
+`status` is one of:
+
+- `available`
+- `warning`
+- `unavailable`
+
+`code` is stable enough for clients to branch on. Claude Code preflight may
+return `executor_workspace_unavailable` or `executor_preflight_passed` from the
+API without running an agent. Authentication and runtime configuration failures
+are reported by the Worker when a Claude Code task runs.
+
+### 5.7 Executor Preflight Endpoint
+
+`GET /api/v1/executors/preflight`
+
+Query params:
+
+- `executor`: `claude_code` or `debug_printer`; defaults to `claude_code`
+- `target_working_directory`: absolute target workspace path to validate
+
+Response:
+
+- `200 OK` with `Executor Preflight Object`
+
+Behavior:
+
+- `debug_printer` returns available without a target workspace
+- `claude_code` validates that the target workspace is an existing absolute
+  directory visible to the API process
+- live Claude Code auth/configuration checks are intentionally not performed by
+  the API because executor invocation belongs to Worker Activities
 
 ## 6. Template Endpoints
 

@@ -16,6 +16,12 @@ class ExecutorName(StrEnum):
     DEBUG_PRINTER = "debug_printer"
 
 
+class ExecutorPreflightStatus(StrEnum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    WARNING = "warning"
+
+
 class ScheduleType(StrEnum):
     SINGLE_RUN = "single_run"
     RECURRING_RULE = "recurring_rule"

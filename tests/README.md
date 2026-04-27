@@ -29,6 +29,11 @@ VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL=postgresql+asyncpg://vespera:password@
   uv run pytest tests/integration/test_full_stack_one_time_smoke.py
 ```
 
+Live Claude Code verification is also opt-in because it uses local developer
+credentials and workspace access. Follow the live smoke path in
+`docs/local-full-stack-runbook.md` and create a live Claude-backed task through
+the normal API/Worker execution path.
+
 Test ownership:
 
 - `packages/core/tests`: dependency-free domain rules, enums, Temporal ID helpers, and pure contracts.

@@ -76,3 +76,23 @@ VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL=postgresql+asyncpg://vespera:password@
 
 Without `VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL`, the test is skipped during
 normal `uv run pytest` runs.
+
+## Claude Code Live Smoke
+
+Claude Code live smoke is opt-in because it uses the developer machine's local
+Claude Code installation, authentication state, and selected workspace.
+VesperaFlow does not store or print executor credentials.
+
+Start the API and Worker with the Claude executor, then create a one-time task
+in the web UI using an existing absolute target directory and the `claude_code`
+executor:
+
+```bash
+uv run vesperaflow-api
+uv run vesperaflow-worker
+```
+
+Use a harmless instruction such as asking Claude Code to inspect the repository
+and write a short summary into the run output only. Verify task detail reaches a
+terminal completed or classified failed state, and inspect the run artifact path
+only if you need the raw Claude output.

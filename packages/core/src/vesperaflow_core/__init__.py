@@ -1,9 +1,16 @@
 """Shared pure domain primitives for VesperaFlow."""
 
-from .contracts import ExecutionSnapshot, ExecutorOutcome, MaterializedRun, TaskRunInput
+from .contracts import (
+    ExecutionSnapshot,
+    ExecutorOutcome,
+    ExecutorPreflightResult,
+    MaterializedRun,
+    TaskRunInput,
+)
 from .enums import (
     ExecutionMode,
     ExecutorName,
+    ExecutorPreflightStatus,
     OccurrenceEditScope,
     OccurrenceOverrideStatus,
     RunStatus,
@@ -35,6 +42,8 @@ __all__ = [
     "ExecutionSnapshot",
     "ExecutorName",
     "ExecutorOutcome",
+    "ExecutorPreflightResult",
+    "ExecutorPreflightStatus",
     "MaterializedRun",
     "OccurrenceEditScope",
     "OccurrenceOverrideStatus",

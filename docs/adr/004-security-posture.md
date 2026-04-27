@@ -37,7 +37,7 @@ MVP security posture:
 - structured logs must not include full task instructions or full executor output at default log levels; summary-level fields are sufficient
 - PostgreSQL is assumed to run on trusted local storage; at-rest encryption is a deployment decision, not an MVP feature
 - credential rotation for an executor is a user-side operation on the SDK; VesperaFlow requires no code changes and no Worker restart beyond what the executor itself requires
-- adapter preflight must surface `executor_sdk_not_importable`, `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable` as distinct actionable states rather than generic run failures
+- task execution must surface `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable` as distinct actionable states rather than generic run failures
 
 ## Consequences
 

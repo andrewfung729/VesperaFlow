@@ -823,10 +823,10 @@ These items were previously open and are now architectural decisions for MVP:
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
 - MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code` and `debug_printer`.
-- The adapter performs a preflight check for SDK availability, supported version, authentication/configuration, and working-directory access. Failures are mapped to actionable product errors such as `executor_sdk_not_importable`, `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
+- The API preflight checks target working-directory access. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
-- The Claude Agent SDK compatibility policy is lockfile-driven: fail below the locked minimum or outside the supported major version, warn on unvalidated newer minor or patch versions within the same major, and fail closed on unknown newer major versions.
+- The Claude Agent SDK compatibility policy is dependency-lock driven: the Worker pins the validated SDK version and imports it normally instead of reimplementing package-version or optional-import policy at runtime.
 
 ## 16. Recommended Next Documents
 

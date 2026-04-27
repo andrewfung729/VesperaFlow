@@ -10,6 +10,7 @@ export type TaskStatus =
 export type ExecutionMode = 'one_time' | 'recurring'
 export type RunStatus = 'planned' | 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
 export type ExecutorName = 'claude_code' | 'debug_printer'
+export type ExecutorPreflightStatus = 'available' | 'unavailable' | 'warning'
 
 export interface Task {
   task_id: string
@@ -55,6 +56,14 @@ export interface TaskBundle {
   task: Task
   schedule: Schedule
   run: Run | null
+}
+
+export interface ExecutorPreflightResult {
+  executor: ExecutorName
+  status: ExecutorPreflightStatus
+  code: string
+  message: string
+  details: Record<string, string | boolean | null>
 }
 
 export interface TaskDetail {
@@ -211,6 +220,17 @@ export async function createTask(payload: CreateTaskPayload): Promise<TaskBundle
       schedule,
     }),
   })
+}
+
+export async function preflightExecutor(params: {
+  executor: ExecutorName
+  target_working_directory?: string
+}): Promise<ExecutorPreflightResult> {
+  const search = new URLSearchParams({ executor: params.executor })
+  if (params.target_working_directory) {
+    search.set('target_working_directory', params.target_working_directory)
+  }
+  return request<ExecutorPreflightResult>(`/executors/preflight?${search}`)
 }
 
 export async function getKanban(): Promise<KanbanBoard> {

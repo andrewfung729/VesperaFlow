@@ -6,7 +6,7 @@ import logging
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast, override
+from typing import Literal, cast, override
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
@@ -15,15 +15,25 @@ from claude_agent_sdk import (
     CLIConnectionError,
     CLIJSONDecodeError,
     CLINotFoundError,
-    PermissionMode,
     ProcessError,
-    SettingSource,
 )
-from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
+from vesperaflow_core import (
+    ExecutionSnapshot,
+    ExecutorOutcome,
+    RunStatus,
+)
 
 from .base import ExecutorAdapter
 
 logger = logging.getLogger(__name__)
+
+PermissionMode = Literal[
+    "default",
+    "acceptEdits",
+    "bypassPermissions",
+    "plan",
+]
+SettingSource = Literal["user", "project", "local"]
 
 CLAUDE_SETTING_SOURCES: tuple[SettingSource, ...] = ("user", "project", "local")
 DEFAULT_SUMMARY_MAX_CHARS = 4000
@@ -54,22 +64,7 @@ class ClaudeCodeExecutor(ExecutorAdapter):
         client: ClaudeSDKClient | None = None
 
         try:
-            if self.env:
-                options = ClaudeAgentOptions(
-                    cwd=str(workspace),
-                    permission_mode=self.permission_mode,
-                    setting_sources=list(self.setting_sources),
-                    max_turns=self.max_turns,
-                    env=dict(self.env),
-                )
-            else:
-                options = ClaudeAgentOptions(
-                    cwd=str(workspace),
-                    permission_mode=self.permission_mode,
-                    setting_sources=list(self.setting_sources),
-                    max_turns=self.max_turns,
-                )
-            sdk = ClaudeSDKClient(options=options)
+            sdk = self._build_client(workspace)
             client = sdk
             async with sdk:
                 await sdk.query(snapshot.instruction_source)
@@ -123,6 +118,24 @@ class ClaudeCodeExecutor(ExecutorAdapter):
             result_artifact_ref=artifact_ref,
             terminal_code="claude_code_completed",
         )
+
+    def _build_client(self, workspace: Path) -> ClaudeSDKClient:
+        if self.env:
+            options = ClaudeAgentOptions(
+                cwd=str(workspace),
+                permission_mode=self.permission_mode,
+                setting_sources=list(self.setting_sources),
+                max_turns=self.max_turns,
+                env=dict(self.env),
+            )
+        else:
+            options = ClaudeAgentOptions(
+                cwd=str(workspace),
+                permission_mode=self.permission_mode,
+                setting_sources=list(self.setting_sources),
+                max_turns=self.max_turns,
+            )
+        return ClaudeSDKClient(options=options)
 
 
 def _existing_directory(value: str | None) -> Path | None:

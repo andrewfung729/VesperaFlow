@@ -7,6 +7,7 @@
 
 | Methods | Path | Handler | Request model | Response annotation |
 |---|---|---|---|---|
+| `GET` | `/api/v1/executors/preflight` | `preflight_executor` | `` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks` | `list_tasks` | `` | `ListEnvelope` |
 | `POST` | `/api/v1/tasks` | `create_task` | `TaskCreateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}` | `get_task` | `` | `DataEnvelope` |

@@ -5,7 +5,9 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   createTask,
   listTemplates,
+  preflightExecutor,
   type ExecutionMode,
+  type ExecutorPreflightResult,
   type ExecutorName,
   type TaskTemplate,
 } from '@/api'
@@ -40,7 +42,9 @@ const recurrenceWeekdays = ref<WeekdayCode[]>(['MO'])
 const templates = ref<TaskTemplate[]>([])
 const selectedTemplateId = ref('')
 const isSaving = ref(false)
+const isCheckingExecutor = ref(false)
 const errorMessage = ref<string | null>(null)
+const executorPreflight = ref<ExecutorPreflightResult | null>(null)
 
 const timezoneLabel = browserRecurrenceTimezone()
 const selectedTemplate = computed(() => {
@@ -70,6 +74,21 @@ const canSave = computed(
       ? isFutureLocal(plannedAt.value)
       : recurrenceIsValid.value),
 )
+const executorStatusText = computed(() => {
+  if (executor.value === 'debug_printer') return 'Debug printer is available.'
+  if (!executorPreflight.value) return 'Claude Code has not been checked for this target.'
+  return executorPreflight.value.message
+})
+const executorStatusClass = computed(() => {
+  if (!executorPreflight.value) return 'border-slate-200 bg-white text-slate-600'
+  if (executorPreflight.value.status === 'unavailable') {
+    return 'border-red-200 bg-red-50 text-red-800'
+  }
+  if (executorPreflight.value.status === 'warning') {
+    return 'border-amber-200 bg-amber-50 text-amber-800'
+  }
+  return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+})
 
 onMounted(loadTemplates)
 
@@ -125,6 +144,7 @@ function applySelectedTemplate() {
   targetWorkingDirectory.value =
     selectedTemplate.value.default_target_working_directory || targetWorkingDirectory.value
   executor.value = selectedTemplate.value.default_executor || executor.value
+  executorPreflight.value = null
 }
 
 function toggleWeekday(day: WeekdayCode) {
@@ -150,6 +170,13 @@ async function submitTask() {
   isSaving.value = true
   errorMessage.value = null
   try {
+    if (executor.value === 'claude_code') {
+      const preflight = await checkExecutor()
+      if (preflight?.status === 'unavailable') {
+        errorMessage.value = preflight.message
+        return
+      }
+    }
     const schedulePayload =
       executionMode.value === 'recurring'
         ? {
@@ -185,6 +212,52 @@ async function submitTask() {
     isSaving.value = false
   }
 }
+
+async function checkExecutor(): Promise<ExecutorPreflightResult | null> {
+  if (executor.value === 'debug_printer') {
+    executorPreflight.value = {
+      executor: 'debug_printer',
+      status: 'available',
+      code: 'executor_preflight_passed',
+      message: 'Debug printer is available.',
+      details: {},
+    }
+    return executorPreflight.value
+  }
+  if (!targetWorkingDirectory.value.trim().startsWith('/')) {
+    executorPreflight.value = {
+      executor: 'claude_code',
+      status: 'unavailable',
+      code: 'executor_workspace_unavailable',
+      message: 'Target directory must be an existing absolute directory.',
+      details: {},
+    }
+    return executorPreflight.value
+  }
+  isCheckingExecutor.value = true
+  try {
+    executorPreflight.value = await preflightExecutor({
+      executor: executor.value,
+      target_working_directory: targetWorkingDirectory.value.trim(),
+    })
+    return executorPreflight.value
+  } catch (error) {
+    executorPreflight.value = {
+      executor: executor.value,
+      status: 'unavailable',
+      code: 'executor_preflight_failed',
+      message: readableError(error),
+      details: {},
+    }
+    return executorPreflight.value
+  } finally {
+    isCheckingExecutor.value = false
+  }
+}
+
+watch([executor, targetWorkingDirectory], () => {
+  executorPreflight.value = null
+})
 
 function hasScheduleInput(): boolean {
   if (executionMode.value === 'one_time') {
@@ -358,6 +431,24 @@ function resetScheduleForMode(mode: ExecutionMode) {
             </option>
           </select>
         </label>
+        <div class="grid gap-2">
+          <div
+            class="rounded-md border px-3 py-2 text-sm font-medium"
+            :class="executorStatusClass"
+            role="status"
+          >
+            {{ executorStatusText }}
+          </div>
+          <button
+            v-if="executor === 'claude_code'"
+            class="min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+            type="button"
+            :disabled="isCheckingExecutor || targetWorkingDirectory.trim().length === 0"
+            @click="checkExecutor"
+          >
+            {{ isCheckingExecutor ? 'Checking...' : 'Check Executor' }}
+          </button>
+        </div>
         <p class="m-0 text-sm text-slate-500">Timezone: {{ timezoneLabel }}</p>
         <button
           class="min-h-10 w-fit cursor-pointer rounded-md border border-transparent bg-teal-700 px-5 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"

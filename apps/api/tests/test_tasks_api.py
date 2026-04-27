@@ -125,6 +125,59 @@ async def test_create_task_accepts_debug_printer_executor(
 
 
 @pytest.mark.asyncio
+async def test_executor_preflight_classifies_workspace_unavailable(
+    client: AsyncClient,
+) -> None:
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "claude_code",
+            "target_working_directory": "/tmp/does-not-exist-vespera",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["status"] == "unavailable"
+    assert body["code"] == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_executor_preflight_accepts_existing_workspace(
+    client: AsyncClient,
+    tmp_path: Path,
+) -> None:
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "claude_code",
+            "target_working_directory": str(tmp_path),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["status"] == "available"
+    assert body["code"] == "executor_preflight_passed"
+    assert body["details"] == {"live": False}
+
+
+@pytest.mark.asyncio
+async def test_executor_preflight_returns_debug_printer_available(
+    client: AsyncClient,
+) -> None:
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={"executor": "debug_printer"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["status"] == "available"
+    assert body["code"] == "executor_preflight_passed"
+
+
+@pytest.mark.asyncio
 async def test_create_task_rejects_past_time(client: AsyncClient) -> None:
     payload = _create_payload()
     payload["schedule"]["planned_at"] = (

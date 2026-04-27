@@ -10,6 +10,7 @@ import {
   getRecurringTodo,
   listTemplates,
   pauseRecurringTask,
+  preflightExecutor,
   resumeRecurringTask,
   updateOccurrence,
   updateRecurringSchedule,
@@ -73,6 +74,38 @@ describe('api', () => {
       recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
       recurrence_timezone: 'Asia/Hong_Kong',
     })
+  })
+
+  it('requests executor preflight with the target workspace', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              executor: 'claude_code',
+              status: 'available',
+              code: 'executor_preflight_passed',
+              message: 'Claude Code target workspace is available',
+              details: { live: false },
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await preflightExecutor({
+      executor: 'claude_code',
+      target_working_directory: '/tmp/project',
+    })
+
+    expect(result.status).toBe('available')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/executors/preflight?executor=claude_code&target_working_directory=%2Ftmp%2Fproject',
+      ),
+      expect.any(Object),
+    )
   })
 
   it('sends history filters as query parameters', async () => {

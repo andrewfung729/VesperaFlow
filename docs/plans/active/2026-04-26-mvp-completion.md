@@ -365,11 +365,27 @@ Exit criteria:
 Purpose: finish executor confidence and release-readiness checks after the
 product surfaces are connected.
 
+Progress on 2026-04-27:
+
+- Added shared executor preflight contracts and an API
+  `/api/v1/executors/preflight` endpoint for lightweight Claude Code
+  workspace checks.
+- Kept Claude Agent SDK import as a normal Worker dependency and mapped runtime
+  unauthenticated, misconfigured, workspace unavailable, and executor
+  unavailable outcomes through task execution.
+- Added composer visibility and submit-time gating for Claude Code preflight.
+- Documented the opt-in live Claude Code smoke path in the local full-stack
+  runbook.
+- Expanded Playwright smoke coverage to navigate composer, kanban, task detail,
+  history, templates, recurring todo, and calendar with mocked API data.
+- Remaining M6 work: run and record an authenticated live Claude Code smoke,
+  decide CI service-test policy for full-stack smoke, run broad verification,
+  and close or split this active plan.
+
 Scope:
 
-- Add an explicit Claude Code preflight path that classifies SDK missing,
-  unauthenticated, misconfigured, workspace unavailable, and execution
-  unavailable failures.
+- Add an explicit Claude Code workspace preflight path and keep authentication
+  or runtime configuration failures on the normal execution path.
 - Add web/API visibility for executor unavailability before or during task
   creation where practical.
 - Add a documented live Claude Code smoke path that is opt-in and safe for local

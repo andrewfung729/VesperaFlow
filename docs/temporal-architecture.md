@@ -438,10 +438,9 @@ API-only and Activity-only changes are lower risk, but Executor Activity changes
 
 Claude Agent SDK compatibility policy:
 
-- The dependency lockfile is the source of truth for the supported SDK major version.
-- The adapter fails preflight when the installed SDK is below the locked minimum or outside the supported major version.
-- Newer patch or minor versions within the supported major version may run, but the adapter should emit a warning until that version is validated.
-- Unknown newer major versions fail closed because SDK event, cancellation, and result semantics may have changed.
+- The Worker dependency pin and lockfile are the source of truth for the validated SDK version.
+- API preflight verifies workspace access; live SDK behavior is verified through the normal task execution path.
+- SDK upgrades should update the dependency pin, lockfile, adapter tests, and live smoke record together.
 
 ## 12. Testing And Verification
 

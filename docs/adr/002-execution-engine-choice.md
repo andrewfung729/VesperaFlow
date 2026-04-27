@@ -92,7 +92,7 @@ Executor and integration-mode selection:
 - the configured default is recorded in environment configuration, not in the database
 - per-task UI switching is available for choosing between the supported MVP executors
 - CLI subprocess integration is deferred and should be introduced only if an executor cannot provide a stable SDK or if process isolation becomes a concrete requirement
-- the Claude Agent SDK dependency lockfile is the source of truth for the supported SDK major version; the adapter fails below the locked minimum or outside the supported major, warns on unvalidated newer minor or patch versions, and fails closed on unknown newer major versions
+- the Claude Agent SDK dependency pin and lockfile are the source of truth for the validated SDK version; runtime preflight verifies importability and optional live execution instead of reimplementing version policy
 - one-time deferred tasks use one dedicated Temporal Schedule per product `Schedule`; VesperaFlow does not use a shared dispatcher Schedule for MVP
 
 ## Consequences

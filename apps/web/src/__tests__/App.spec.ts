@@ -217,6 +217,35 @@ describe('App', () => {
     )
   })
 
+  it('checks Claude Code availability before creating a Claude task', async () => {
+    const fetchMock = stubFetch()
+    const { wrapper } = await mountAppAt('/compose')
+
+    await wrapper.get('input[placeholder="Nightly Deep Research"]').setValue('Claude Task')
+    await wrapper.get('textarea').setValue('Run this with Claude.')
+    const targetInput = wrapper
+      .findAll('input[type="text"]')
+      .find((input) => input.attributes('placeholder') === '/Users/you/project')
+    if (!targetInput) throw new Error('Expected target directory input to render')
+    await targetInput.setValue('/tmp')
+    const executorSelect = wrapper.findAll('select')[1]
+    if (!executorSelect) throw new Error('Expected executor select to render')
+    await executorSelect.setValue('claude_code')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/executors/preflight?executor=claude_code&target_working_directory=%2Ftmp',
+      ),
+      expect.any(Object),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('navigates to task detail from a board card', async () => {
     stubFetch()
     const { router, wrapper } = await mountAppAt('/board')
@@ -413,6 +442,16 @@ function stubFetch(options: StubFetchOptions = {}) {
 
     if (url.includes('/views/recurring-todo')) {
       return jsonResponse(recurringItems, { total: recurringItems.length })
+    }
+
+    if (url.includes('/executors/preflight')) {
+      return jsonResponse({
+        executor: 'claude_code',
+        status: 'available',
+        code: 'executor_preflight_passed',
+        message: 'Claude Code target workspace is available',
+        details: { live: false },
+      })
     }
 
     if (url.includes('/templates') && method === 'GET') {

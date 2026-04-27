@@ -21,11 +21,11 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
-| `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, and recurring materialization replay tests are covered, but live recurring stack coverage is not in place yet. |
-| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, and template route coverage; UI behavior coverage is still shallow. |
+| `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, and Claude Code runtime classification tests are covered, but live recurring stack and authenticated Claude Code coverage are not in place yet. |
+| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, and a local full-stack runbook are now present. |
 
@@ -37,7 +37,7 @@ Update this file when any of these change:
       paths, but not failed or canceled representative histories.
 - [ ] Integration tests requiring the full Postgres/Temporal stack are opt-in and
       not yet a CI gate.
-- [ ] Web E2E coverage is still smoke-level.
+- [ ] Web E2E coverage includes the MVP navigation path, but remains smoke-level.
 - [ ] Calendar, history, and recurring todo latest-run/context paths are
       implemented for materialized recurring runs, but live recurring stack
       coverage is still pending.
@@ -88,3 +88,7 @@ Update this file when any of these change:
 - 2026-04-27: Added the M5 calendar and occurrence override slice across
   store/API/web, including scoped occurrence update/cancel commands, calendar
   projection, generated fact refresh, and repository/API/web smoke coverage.
+- 2026-04-27: Added the M6 Claude Code preflight slice across core/API/Worker/web,
+  including API workspace preflight, Worker runtime classification, composer
+  visibility, documented opt-in live smoke, and broader MVP navigation smoke
+  coverage.
