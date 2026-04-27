@@ -26,9 +26,9 @@ class WorkerSettings(BaseSettings):
     )
 
     database_url: str = Field(
-        default="postgresql+asyncpg://vespera:password@localhost:5432/vespera"
+        default="postgresql+asyncpg://vespera:password@localhost:15432/vespera"
     )
-    temporal_address: str = "localhost:7233"
+    temporal_address: str = "localhost:17233"
     temporal_namespace: str = "default"
     task_queue: str = "vesperaflow-default"
     run_workspace_root: str = "/tmp/vesperaflow-runs"

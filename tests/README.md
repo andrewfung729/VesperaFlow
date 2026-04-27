@@ -25,7 +25,7 @@ The full local Temporal/Postgres one-time smoke test is opt-in. Start the local
 infrastructure from `docs/local-full-stack-runbook.md`, then run:
 
 ```bash
-VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL=postgresql+asyncpg://vespera:password@localhost:5432/vespera \
+VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL=postgresql+asyncpg://vespera:password@localhost:15432/vespera \
   uv run pytest tests/integration/test_full_stack_one_time_smoke.py
 ```
 

@@ -70,7 +70,7 @@ The opt-in integration smoke test runs the API app and Worker in-process against
 a real local Temporal server and Postgres database:
 
 ```bash
-VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL=postgresql+asyncpg://vespera:password@localhost:5432/vespera \
+VESPERAFLOW_FULL_STACK_SMOKE_DATABASE_URL=postgresql+asyncpg://vespera:password@localhost:15432/vespera \
   uv run pytest tests/integration/test_full_stack_one_time_smoke.py
 ```
 
