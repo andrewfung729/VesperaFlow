@@ -1,25 +1,81 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { cancelOccurrence, getCalendar, updateOccurrence, type CalendarItem } from '@/api'
-import { formatDateTime, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
+import {
+  cancelOccurrence,
+  createTask,
+  getCalendar,
+  updateOccurrence,
+  type CalendarItem,
+  type ExecutorName,
+} from '@/api'
+import {
+  defaultDateTimeLocal,
+  formatDateTime,
+  isFutureLocal,
+  toDateTimeLocal,
+  toIsoWithOffset,
+} from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
+
+type CalendarViewMode = 'day' | 'week' | 'month'
+
+interface CalendarDay {
+  date: Date
+  key: string
+  label: string
+  weekday: string
+  dayNumber: number
+  isToday: boolean
+  isOutsideMonth: boolean
+}
 
 const router = useRouter()
 
-const fromLocal = ref(toDateTimeLocal(new Date().toISOString()))
-const toLocal = ref(toDateTimeLocal(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()))
+const viewMode = ref<CalendarViewMode>('week')
+const anchorDate = ref(startOfDay(new Date()))
 const includeCompleted = ref(false)
 const items = ref<CalendarItem[]>([])
 const total = ref(0)
 const isLoading = ref(false)
+const isCreatingTask = ref(false)
 const actionItemId = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
+const selectedItem = ref<CalendarItem | null>(null)
 const editingItem = ref<CalendarItem | null>(null)
 const editScope = ref<'this_occurrence_only' | 'this_and_future'>('this_occurrence_only')
 const occurrencePlannedAt = ref('')
 const occurrenceInstruction = ref('')
+const newTaskPlannedAt = ref('')
+const newTaskTitle = ref('')
+const newTaskInstructions = ref('')
+const newTaskTargetDirectory = ref('')
+const newTaskExecutor = ref<ExecutorName>('debug_printer')
+
+const hours = Array.from({ length: 24 }, (_, hour) => hour)
+const executorOptions: Array<{ label: string; value: ExecutorName }> = [
+  { label: 'Debug Printer', value: 'debug_printer' },
+  { label: 'Claude Code', value: 'claude_code' },
+  { label: 'Kimi Code', value: 'kimi_code' },
+]
+const visibleRange = computed(() => rangeForMode(viewMode.value, anchorDate.value))
+const rangeLabel = computed(() =>
+  labelForRange(viewMode.value, visibleRange.value, anchorDate.value),
+)
+const calendarDays = computed(() =>
+  daysBetween(visibleRange.value.start, visibleRange.value.end).map((date) =>
+    buildCalendarDay(date, anchorDate.value),
+  ),
+)
+const timeGridDays = computed(() => (viewMode.value === 'month' ? [] : calendarDays.value))
+const monthRows = computed(() => {
+  const rows: CalendarDay[][] = []
+  for (let index = 0; index < calendarDays.value.length; index += 7) {
+    rows.push(calendarDays.value.slice(index, index + 7))
+  }
+  return rows
+})
 
 const overlapCounts = computed(() => {
   const counts = new Map<string, number>()
@@ -29,17 +85,52 @@ const overlapCounts = computed(() => {
   return counts
 })
 
+const itemsByDay = computed(() => {
+  const grouped = new Map<string, CalendarItem[]>()
+  for (const item of sortedItems(items.value)) {
+    const key = dateKey(new Date(item.occurrence_at))
+    const dayItems = grouped.get(key) ?? []
+    dayItems.push(item)
+    grouped.set(key, dayItems)
+  }
+  return grouped
+})
+
+const itemsByHour = computed(() => {
+  const grouped = new Map<string, CalendarItem[]>()
+  for (const item of sortedItems(items.value)) {
+    const date = new Date(item.occurrence_at)
+    const key = `${dateKey(date)}-${date.getHours()}`
+    const hourItems = grouped.get(key) ?? []
+    hourItems.push(item)
+    grouped.set(key, hourItems)
+  }
+  return grouped
+})
+const canCreateTask = computed(
+  () =>
+    newTaskTitle.value.trim().length > 0 &&
+    newTaskInstructions.value.trim().length > 0 &&
+    newTaskTargetDirectory.value.trim().startsWith('/') &&
+    isFutureLocal(newTaskPlannedAt.value),
+)
+
 onMounted(() => {
+  void refreshCalendar()
+})
+
+watch([viewMode, anchorDate, includeCompleted], () => {
   void refreshCalendar()
 })
 
 async function refreshCalendar() {
   isLoading.value = true
   errorMessage.value = null
+  const range = visibleRange.value
   try {
     const response = await getCalendar({
-      from: toIsoWithOffset(fromLocal.value),
-      to: toIsoWithOffset(toLocal.value),
+      from: toIsoWithOffset(toDateTimeLocal(range.start.toISOString())),
+      to: toIsoWithOffset(toDateTimeLocal(range.end.toISOString())),
       include_completed: includeCompleted.value,
       limit: 500,
     })
@@ -62,7 +153,33 @@ async function openTask(item: CalendarItem) {
   await router.push({ name: 'task-detail', params: { taskId: item.task_id }, query })
 }
 
+function openItemModal(item: CalendarItem) {
+  selectedItem.value = item
+}
+
+function closeItemModal() {
+  selectedItem.value = null
+}
+
+async function openSelectedTask() {
+  if (!selectedItem.value) return
+  const item = selectedItem.value
+  selectedItem.value = null
+  await openTask(item)
+}
+
+function editSelectedItem() {
+  if (!selectedItem.value) return
+  startEdit(selectedItem.value)
+}
+
+async function skipSelectedItem() {
+  if (!selectedItem.value) return
+  await skipOccurrence(selectedItem.value)
+}
+
 function startEdit(item: CalendarItem) {
+  selectedItem.value = null
   editingItem.value = item
   editScope.value = 'this_occurrence_only'
   occurrencePlannedAt.value = toDateTimeLocal(item.occurrence_at)
@@ -97,6 +214,7 @@ async function submitOccurrenceEdit() {
 async function skipOccurrence(item: CalendarItem) {
   const confirmed = window.confirm(`Skip "${item.title}" at ${formatDateTime(item.occurrence_at)}?`)
   if (!confirmed) return
+  selectedItem.value = null
   actionItemId.value = item.calendar_item_id
   errorMessage.value = null
   try {
@@ -113,9 +231,213 @@ async function skipOccurrence(item: CalendarItem) {
   }
 }
 
+function openAddTaskModal(date: Date) {
+  selectedItem.value = null
+  editingItem.value = null
+  newTaskPlannedAt.value =
+    date.getTime() > Date.now() ? toDateTimeLocal(date.toISOString()) : defaultDateTimeLocal()
+  newTaskTitle.value = ''
+  newTaskInstructions.value = ''
+  newTaskTargetDirectory.value = ''
+  newTaskExecutor.value = 'debug_printer'
+}
+
+function closeAddTaskModal() {
+  newTaskPlannedAt.value = ''
+}
+
+async function submitNewTask() {
+  if (!canCreateTask.value) {
+    errorMessage.value =
+      'Add a title, instructions, an absolute target directory, and a future execution time.'
+    return
+  }
+  isCreatingTask.value = true
+  errorMessage.value = null
+  try {
+    await createTask({
+      title: newTaskTitle.value.trim(),
+      instruction_source: newTaskInstructions.value.trim(),
+      target_working_directory: newTaskTargetDirectory.value.trim(),
+      executor: newTaskExecutor.value,
+      planned_at: toIsoWithOffset(newTaskPlannedAt.value),
+    })
+    closeAddTaskModal()
+    await refreshCalendar()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    isCreatingTask.value = false
+  }
+}
+
+function setViewMode(mode: CalendarViewMode) {
+  viewMode.value = mode
+}
+
+function movePeriod(direction: -1 | 1) {
+  if (viewMode.value === 'month') {
+    anchorDate.value = addMonths(anchorDate.value, direction)
+    return
+  }
+  anchorDate.value = addDays(anchorDate.value, direction * (viewMode.value === 'week' ? 7 : 1))
+}
+
+function moveToToday() {
+  anchorDate.value = startOfDay(new Date())
+}
+
+function itemsForDay(day: CalendarDay): CalendarItem[] {
+  return itemsByDay.value.get(day.key) ?? []
+}
+
+function itemsForHour(day: CalendarDay, hour: number): CalendarItem[] {
+  return itemsByHour.value.get(`${day.key}-${hour}`) ?? []
+}
+
+function slotDate(day: CalendarDay, hour: number): Date {
+  const date = new Date(day.date)
+  date.setHours(hour, 0, 0, 0)
+  return date
+}
+
+function defaultDaySlot(day: CalendarDay): Date {
+  const date = new Date(day.date)
+  date.setHours(9, 0, 0, 0)
+  return date
+}
+
+function hourHasItems(hour: number): boolean {
+  return timeGridDays.value.some((day) => itemsForHour(day, hour).length > 0)
+}
+
+function addTaskLabel(date: Date): string {
+  return `Add task at ${formatDateTime(date.toISOString())}`
+}
+
 function overlapLabel(item: CalendarItem): string {
   const count = overlapCounts.value.get(item.occurrence_at) ?? 0
   return count > 1 ? `${count} overlapping` : 'No overlap'
+}
+
+function modeLabel(item: CalendarItem): string {
+  return item.execution_mode === 'recurring' ? 'Recurring' : 'One-time'
+}
+
+function viewModeLabel(mode: CalendarViewMode): string {
+  return mode.charAt(0).toUpperCase() + mode.slice(1)
+}
+
+function hourLabel(hour: number): string {
+  const date = new Date()
+  date.setHours(hour, 0, 0, 0)
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).format(date)
+}
+
+function itemTime(item: CalendarItem): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(item.occurrence_at))
+}
+
+function dateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function startOfWeek(date: Date): Date {
+  const day = startOfDay(date)
+  const offset = (day.getDay() + 6) % 7
+  return addDays(day, -offset)
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1)
+}
+
+function rangeForMode(mode: CalendarViewMode, date: Date): { start: Date; end: Date } {
+  if (mode === 'day') {
+    const start = startOfDay(date)
+    return { start, end: addDays(start, 1) }
+  }
+  if (mode === 'week') {
+    const start = startOfWeek(date)
+    return { start, end: addDays(start, 7) }
+  }
+
+  const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1)
+  const lastOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0)
+  const start = startOfWeek(firstOfMonth)
+  const end = addDays(startOfWeek(lastOfMonth), 7)
+  return { start, end }
+}
+
+function daysBetween(start: Date, end: Date): Date[] {
+  const days: Date[] = []
+  for (let day = startOfDay(start); day < end; day = addDays(day, 1)) {
+    days.push(day)
+  }
+  return days
+}
+
+function buildCalendarDay(date: Date, currentMonthDate: Date): CalendarDay {
+  return {
+    date,
+    key: dateKey(date),
+    label: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date),
+    weekday: new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date),
+    dayNumber: date.getDate(),
+    isToday: dateKey(date) === dateKey(new Date()),
+    isOutsideMonth: date.getMonth() !== currentMonthDate.getMonth(),
+  }
+}
+
+function labelForRange(
+  mode: CalendarViewMode,
+  range: { start: Date; end: Date },
+  currentDate: Date,
+): string {
+  if (mode === 'month') {
+    return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(
+      currentDate,
+    )
+  }
+  if (mode === 'day') {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(range.start)
+  }
+  const end = addDays(range.end, -1)
+  return `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(
+    range.start,
+  )} - ${new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(end)}`
+}
+
+function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
+  return [...calendarItems].sort(
+    (left, right) =>
+      new Date(left.occurrence_at).getTime() - new Date(right.occurrence_at).getTime(),
+  )
 }
 </script>
 
@@ -132,26 +454,53 @@ function overlapLabel(item: CalendarItem): string {
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Calendar</p>
-          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">Agenda</h2>
+          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">{{ rangeLabel }}</h2>
           <p class="m-0 text-sm text-slate-500">{{ total }} planned items</p>
         </div>
-        <form class="flex flex-wrap items-end gap-3" @submit.prevent="refreshCalendar">
-          <label class="grid gap-1 text-sm font-semibold text-slate-700">
-            <span>From</span>
-            <input
-              v-model="fromLocal"
-              class="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950 shadow-xs outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="datetime-local"
-            />
-          </label>
-          <label class="grid gap-1 text-sm font-semibold text-slate-700">
-            <span>To</span>
-            <input
-              v-model="toLocal"
-              class="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950 shadow-xs outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="datetime-local"
-            />
-          </label>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="inline-flex rounded-md border border-slate-300 bg-white p-1 shadow-xs">
+            <button
+              v-for="mode in ['day', 'week', 'month'] as CalendarViewMode[]"
+              :key="mode"
+              class="min-h-9 cursor-pointer rounded px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-55"
+              :class="
+                viewMode === mode
+                  ? 'bg-teal-700 text-white'
+                  : 'bg-transparent text-slate-700 hover:bg-slate-50'
+              "
+              :disabled="isLoading"
+              type="button"
+              @click="setViewMode(mode)"
+            >
+              {{ viewModeLabel(mode) }}
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="isLoading"
+              type="button"
+              @click="movePeriod(-1)"
+            >
+              Previous
+            </button>
+            <button
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="isLoading"
+              type="button"
+              @click="moveToToday"
+            >
+              Today
+            </button>
+            <button
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              :disabled="isLoading"
+              type="button"
+              @click="movePeriod(1)"
+            >
+              Next
+            </button>
+          </div>
           <label class="flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700">
             <input v-model="includeCompleted" type="checkbox" />
             <span>Completed</span>
@@ -159,21 +508,324 @@ function overlapLabel(item: CalendarItem): string {
           <button
             class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="isLoading"
-            type="submit"
+            type="button"
+            @click="refreshCalendar"
           >
             Refresh
           </button>
-        </form>
+        </div>
       </div>
 
+      <div v-if="isLoading" class="rounded-md border border-slate-200 bg-white p-7 text-slate-600">
+        Loading calendar items...
+      </div>
+      <div
+        v-else-if="items.length === 0"
+        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-4"
+      >
+        <h3 class="m-0 text-lg font-bold text-slate-950">No upcoming AI work scheduled</h3>
+        <button
+          class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
+          type="button"
+          @click="openAddTaskModal(new Date())"
+        >
+          Create Task
+        </button>
+      </div>
+      <div v-if="!isLoading" class="grid gap-4">
+        <div
+          v-if="viewMode === 'month'"
+          class="hidden overflow-x-auto rounded-md border border-slate-200 bg-white md:block"
+        >
+          <div class="grid min-w-[920px] grid-cols-7 border-b border-slate-200 bg-slate-50">
+            <div
+              v-for="day in calendarDays.slice(0, 7)"
+              :key="day.weekday"
+              class="px-3 py-2 text-xs font-bold tracking-wide text-slate-500 uppercase"
+            >
+              {{ day.weekday }}
+            </div>
+          </div>
+          <div
+            v-for="(week, weekIndex) in monthRows"
+            :key="weekIndex"
+            class="grid min-w-[920px] grid-cols-7 border-b border-slate-200 last:border-b-0"
+          >
+            <div
+              v-for="day in week"
+              :key="day.key"
+              class="min-h-36 cursor-pointer border-r border-slate-200 p-2 last:border-r-0 hover:bg-teal-50/40"
+              :class="
+                day.isOutsideMonth ? 'bg-slate-50/70 text-slate-400' : 'bg-white text-slate-950'
+              "
+              :aria-label="addTaskLabel(defaultDaySlot(day))"
+              role="button"
+              tabindex="0"
+              @click="openAddTaskModal(defaultDaySlot(day))"
+              @keydown.enter.prevent="openAddTaskModal(defaultDaySlot(day))"
+            >
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <span
+                  class="inline-flex size-7 items-center justify-center rounded-full text-sm font-bold"
+                  :class="day.isToday ? 'bg-teal-700 text-white' : 'text-slate-700'"
+                >
+                  {{ day.dayNumber }}
+                </span>
+                <span class="text-xs text-slate-500">{{ itemsForDay(day).length || '' }}</span>
+              </div>
+              <div class="grid gap-1">
+                <article
+                  v-for="item in itemsForDay(day).slice(0, 3)"
+                  :key="item.calendar_item_id"
+                  class="rounded-md border px-2 py-1 text-xs shadow-xs transition hover:-translate-y-px hover:shadow-sm"
+                  :class="
+                    item.execution_mode === 'recurring'
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950'
+                      : 'border-teal-200 bg-teal-50 text-teal-950'
+                  "
+                  :aria-label="`${itemTime(item)} ${item.title}`"
+                  role="button"
+                  tabindex="0"
+                  @click.stop="openItemModal(item)"
+                  @keydown.enter.stop.prevent="openItemModal(item)"
+                >
+                  <div class="font-bold text-inherit wrap-anywhere">
+                    {{ itemTime(item) }} {{ item.title }}
+                  </div>
+                  <span class="mt-1 flex flex-wrap gap-1">
+                    <span class="rounded bg-white/80 px-1.5 py-0.5 font-semibold">
+                      {{ modeLabel(item) }}
+                    </span>
+                    <span
+                      v-if="item.is_occurrence_override"
+                      class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800"
+                    >
+                      Override
+                    </span>
+                  </span>
+                </article>
+                <span
+                  v-if="itemsForDay(day).length > 3"
+                  class="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600"
+                >
+                  +{{ itemsForDay(day).length - 3 }} more
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-else
+          class="hidden overflow-x-auto rounded-md border border-slate-200 bg-white md:block"
+        >
+          <div
+            class="grid min-w-[980px] border-b border-slate-200 bg-slate-50"
+            :style="{ gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(0, 1fr))` }"
+          >
+            <div class="px-3 py-3 text-xs font-bold tracking-wide text-slate-500 uppercase">
+              Time
+            </div>
+            <div
+              v-for="day in timeGridDays"
+              :key="day.key"
+              class="border-l border-slate-200 px-3 py-3"
+            >
+              <div class="text-xs font-bold tracking-wide text-slate-500 uppercase">
+                {{ day.weekday }}
+              </div>
+              <div class="text-sm font-bold text-slate-950">{{ day.label }}</div>
+            </div>
+          </div>
+          <div
+            v-for="hour in hours"
+            :key="hour"
+            class="grid min-w-[980px] border-b border-slate-100 last:border-b-0"
+            :class="hourHasItems(hour) ? 'min-h-20' : 'min-h-9'"
+            :style="{ gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(0, 1fr))` }"
+          >
+            <div
+              class="bg-slate-50 px-3 text-xs font-semibold text-slate-500"
+              :class="hourHasItems(hour) ? 'py-3' : 'py-2'"
+            >
+              {{ hourLabel(hour) }}
+            </div>
+            <div
+              v-for="day in timeGridDays"
+              :key="`${day.key}-${hour}`"
+              class="cursor-pointer border-l border-slate-100 transition hover:bg-teal-50/50"
+              :class="hourHasItems(hour) ? 'min-h-20 p-2' : 'min-h-9 px-2 py-1'"
+              :aria-label="addTaskLabel(slotDate(day, hour))"
+              role="button"
+              tabindex="0"
+              @click="openAddTaskModal(slotDate(day, hour))"
+              @keydown.enter.prevent="openAddTaskModal(slotDate(day, hour))"
+            >
+              <div class="grid gap-2">
+                <article
+                  v-for="item in itemsForHour(day, hour)"
+                  :key="item.calendar_item_id"
+                  class="rounded-md border p-2 shadow-xs transition hover:-translate-y-px hover:shadow-sm"
+                  :class="
+                    item.execution_mode === 'recurring'
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950'
+                      : 'border-teal-200 bg-teal-50 text-teal-950'
+                  "
+                  :aria-label="`${itemTime(item)} ${item.title}`"
+                  role="button"
+                  tabindex="0"
+                  @click.stop="openItemModal(item)"
+                  @keydown.enter.stop.prevent="openItemModal(item)"
+                >
+                  <div class="mb-2 flex flex-wrap items-center gap-1">
+                    <span class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold">
+                      {{ itemTime(item) }}
+                    </span>
+                    <span class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold">
+                      {{ modeLabel(item) }}
+                    </span>
+                    <span
+                      v-if="item.is_occurrence_override"
+                      class="rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800"
+                    >
+                      Override
+                    </span>
+                  </div>
+                  <div class="mb-2 text-sm font-bold text-inherit wrap-anywhere">
+                    {{ item.title }}
+                  </div>
+                  <div class="mb-2 text-xs font-semibold text-slate-600">
+                    {{ item.state }} · {{ overlapLabel(item) }}
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-md border border-slate-200 bg-white md:hidden">
+          <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <span class="text-sm font-bold text-slate-950">Agenda</span>
+            <button
+              class="min-h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800"
+              type="button"
+              @click="openAddTaskModal(new Date())"
+            >
+              New
+            </button>
+          </div>
+          <div class="grid divide-y divide-slate-200">
+            <article
+              v-for="item in sortedItems(items)"
+              :key="item.calendar_item_id"
+              class="grid cursor-pointer gap-2 bg-white px-4 py-3 transition hover:bg-teal-50/50"
+              :aria-label="item.title"
+              role="button"
+              tabindex="0"
+              @click="openItemModal(item)"
+              @keydown.enter.prevent="openItemModal(item)"
+            >
+              <span class="text-sm font-bold text-teal-800 wrap-anywhere">
+                {{ item.title }}
+              </span>
+              <span class="text-xs font-semibold text-slate-600">
+                {{ formatDateTime(item.occurrence_at) }} · {{ modeLabel(item) }}
+              </span>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div
+      v-if="selectedItem"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4"
+      @click.self="closeItemModal"
+    >
+      <section
+        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="calendar-item-title"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="m-0 text-xs font-bold tracking-wide text-teal-700 uppercase">
+              {{ modeLabel(selectedItem) }}
+            </p>
+            <h3 id="calendar-item-title" class="m-0 text-xl font-bold text-slate-950">
+              {{ selectedItem.title }}
+            </h3>
+          </div>
+          <button
+            class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+            type="button"
+            @click="closeItemModal"
+          >
+            Close
+          </button>
+        </div>
+        <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt class="font-semibold text-slate-500">Time</dt>
+          <dd class="m-0 text-slate-950">{{ formatDateTime(selectedItem.occurrence_at) }}</dd>
+          <dt class="font-semibold text-slate-500">State</dt>
+          <dd class="m-0 text-slate-950">{{ selectedItem.state }}</dd>
+          <dt class="font-semibold text-slate-500">Overlap</dt>
+          <dd class="m-0 text-slate-950">{{ overlapLabel(selectedItem) }}</dd>
+          <dt v-if="selectedItem.is_occurrence_override" class="font-semibold text-slate-500">
+            Override
+          </dt>
+          <dd v-if="selectedItem.is_occurrence_override" class="m-0 text-amber-800">
+            This occurrence has custom timing or instructions.
+          </dd>
+        </dl>
+        <div class="flex flex-wrap gap-2">
+          <button
+            class="min-h-10 rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
+            type="button"
+            @click="openSelectedTask"
+          >
+            Detail
+          </button>
+          <button
+            v-if="selectedItem.execution_mode === 'recurring'"
+            class="min-h-10 rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+            :disabled="actionItemId === selectedItem.calendar_item_id"
+            type="button"
+            @click="editSelectedItem"
+          >
+            Edit Occurrence
+          </button>
+          <button
+            v-if="selectedItem.execution_mode === 'recurring'"
+            class="min-h-10 rounded-md border border-red-300 bg-red-50 px-4 font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+            :disabled="actionItemId === selectedItem.calendar_item_id"
+            type="button"
+            @click="skipSelectedItem"
+          >
+            Skip Occurrence
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
+      v-if="editingItem"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4"
+      @click.self="editingItem = null"
+    >
       <form
-        v-if="editingItem"
-        class="mb-6 grid gap-4 rounded-md border border-slate-200 bg-white p-4"
+        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-occurrence-title"
         @submit.prevent="submitOccurrenceEdit"
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 class="m-0 text-lg font-bold text-slate-950">Edit Recurring Task</h3>
+            <h3 id="edit-occurrence-title" class="m-0 text-lg font-bold text-slate-950">
+              Edit Recurring Task
+            </h3>
             <p class="m-0 text-sm text-slate-500">
               {{ editingItem.title }} · {{ formatDateTime(editingItem.occurrence_at) }}
             </p>
@@ -241,80 +893,88 @@ function overlapLabel(item: CalendarItem): string {
           Save
         </button>
       </form>
+    </div>
 
-      <div v-if="isLoading" class="rounded-md border border-slate-200 bg-white p-7 text-slate-600">
-        Loading calendar items...
-      </div>
-      <div v-else-if="items.length === 0" class="rounded-md border border-slate-200 bg-white p-7">
-        <h3 class="m-0 text-lg font-bold text-slate-950">No planned work in this window</h3>
-      </div>
-      <div v-else class="overflow-x-auto rounded-md border border-slate-200 bg-white">
-        <table class="w-full min-w-[860px] border-collapse text-left text-sm">
-          <thead class="bg-slate-50 text-xs font-bold tracking-wide text-slate-500 uppercase">
-            <tr>
-              <th class="px-4 py-3">Time</th>
-              <th class="px-4 py-3">Task</th>
-              <th class="px-4 py-3">Mode</th>
-              <th class="px-4 py-3">Overlap</th>
-              <th class="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="item in items"
-              :key="item.calendar_item_id"
-              class="border-t border-slate-200"
-            >
-              <td class="px-4 py-3 text-slate-700">{{ formatDateTime(item.occurrence_at) }}</td>
-              <td class="px-4 py-3">
-                <button
-                  class="cursor-pointer border-0 bg-transparent p-0 text-left font-bold text-teal-700 wrap-anywhere hover:text-teal-900"
-                  @click="openTask(item)"
-                >
-                  {{ item.title }}
-                </button>
-                <span
-                  v-if="item.is_occurrence_override"
-                  class="ml-2 inline-flex rounded-md bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800"
-                >
-                  Override
-                </span>
-              </td>
-              <td class="px-4 py-3 text-slate-600">{{ item.execution_mode }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ overlapLabel(item) }}</td>
-              <td class="px-4 py-3">
-                <div class="flex justify-end gap-2">
-                  <button
-                    class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                    type="button"
-                    @click="openTask(item)"
-                  >
-                    Detail
-                  </button>
-                  <button
-                    v-if="item.execution_mode === 'recurring'"
-                    class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                    :disabled="actionItemId === item.calendar_item_id"
-                    type="button"
-                    @click="startEdit(item)"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    v-if="item.execution_mode === 'recurring'"
-                    class="min-h-9 rounded-md border border-red-300 bg-red-50 px-3 font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
-                    :disabled="actionItemId === item.calendar_item_id"
-                    type="button"
-                    @click="skipOccurrence(item)"
-                  >
-                    Skip
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div
+      v-if="newTaskPlannedAt"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4"
+      @click.self="closeAddTaskModal"
+    >
+      <form
+        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-calendar-task-title"
+        @submit.prevent="submitNewTask"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p class="m-0 text-xs font-bold tracking-wide text-teal-700 uppercase">One-time task</p>
+            <h3 id="new-calendar-task-title" class="m-0 text-lg font-bold text-slate-950">
+              New Calendar Task
+            </h3>
+          </div>
+          <button
+            class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+            type="button"
+            @click="closeAddTaskModal"
+          >
+            Cancel
+          </button>
+        </div>
+        <label class="grid gap-2 font-semibold text-slate-700">
+          <span>Title</span>
+          <input
+            v-model="newTaskTitle"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            type="text"
+            placeholder="Run benchmark report"
+          />
+        </label>
+        <label class="grid gap-2 font-semibold text-slate-700">
+          <span>Instructions</span>
+          <textarea
+            v-model="newTaskInstructions"
+            class="min-h-24 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            placeholder="Describe the AI work to run later..."
+          />
+        </label>
+        <label class="grid gap-2 font-semibold text-slate-700">
+          <span>Execution Time</span>
+          <input
+            v-model="newTaskPlannedAt"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            type="datetime-local"
+          />
+        </label>
+        <label class="grid gap-2 font-semibold text-slate-700">
+          <span>Target Directory</span>
+          <input
+            v-model="newTaskTargetDirectory"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            type="text"
+            placeholder="/Users/you/project"
+          />
+        </label>
+        <label class="grid gap-2 font-semibold text-slate-700">
+          <span>Executor</span>
+          <select
+            v-model="newTaskExecutor"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+          >
+            <option v-for="option in executorOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
+        <button
+          class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+          :disabled="!canCreateTask || isCreatingTask"
+          type="submit"
+        >
+          {{ isCreatingTask ? 'Saving...' : 'Save Task' }}
+        </button>
+      </form>
+    </div>
   </div>
 </template>

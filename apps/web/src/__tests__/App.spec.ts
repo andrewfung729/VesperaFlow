@@ -8,6 +8,7 @@ import { routes } from '../router'
 
 describe('App', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -112,6 +113,101 @@ describe('App', () => {
     const { wrapper } = await mountAppAt('/history')
 
     expect(wrapper.text()).toContain('No completed or failed runs')
+  })
+
+  it('renders mixed one-time and recurring items in calendar modes', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-28T12:00:00+08:00'))
+    const fetchMock = stubFetch()
+
+    const { wrapper } = await mountAppAt('/calendar')
+
+    expect(wrapper.text()).toContain('Day')
+    expect(wrapper.text()).toContain('Week')
+    expect(wrapper.text()).toContain('Month')
+    expect(wrapper.text()).toContain('One-Time Calendar')
+    expect(wrapper.text()).toContain('Recurring Calendar')
+    expect(wrapper.text()).toContain('One-time')
+    expect(wrapper.text()).toContain('Recurring')
+
+    const oneTimeItem = wrapper
+      .findAll('[role="button"]')
+      .find((element) => element.attributes('aria-label')?.includes('One-Time Calendar'))
+    if (!oneTimeItem) throw new Error('Expected one-time calendar item to render')
+    await oneTimeItem.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Detail')
+    expect(wrapper.text()).not.toContain('Edit Occurrence')
+
+    const closeButton = wrapper.findAll('button').find((button) => button.text() === 'Close')
+    if (!closeButton) throw new Error('Expected item modal close button to render')
+    await closeButton.trigger('click')
+    await flushPromises()
+
+    const calendarUrls = () =>
+      fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .filter((url) => url.includes('/views/calendar'))
+
+    const initialCalendarCalls = calendarUrls().length
+    const monthButton = wrapper.findAll('button').find((button) => button.text() === 'Month')
+    if (!monthButton) throw new Error('Expected Month button to render')
+    await monthButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('One-Time Calendar')
+    expect(wrapper.text()).toContain('Recurring Calendar')
+    expect(calendarUrls().length).toBeGreaterThan(initialCalendarCalls)
+
+    const dayButton = wrapper.findAll('button').find((button) => button.text() === 'Day')
+    if (!dayButton) throw new Error('Expected Day button to render')
+    await dayButton.trigger('click')
+    await flushPromises()
+
+    const urls = calendarUrls()
+    const dayRangeUrl = urls[urls.length - 1]
+    if (!dayRangeUrl) throw new Error('Expected a calendar request')
+    const dayParams = new URL(dayRangeUrl, 'http://localhost').searchParams
+    const from = new Date(dayParams.get('from') ?? '')
+    const to = new Date(dayParams.get('to') ?? '')
+    expect(to.getTime() - from.getTime()).toBe(24 * 60 * 60 * 1000)
+  })
+
+  it('creates a one-time task from the calendar add modal', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-28T12:00:00+08:00'))
+    const fetchMock = stubFetch({ calendarItems: [] })
+
+    const { wrapper } = await mountAppAt('/calendar')
+
+    const createButton = wrapper.findAll('button').find((button) => button.text() === 'Create Task')
+    if (!createButton) throw new Error('Expected empty calendar create button to render')
+    await createButton.trigger('click')
+    await flushPromises()
+
+    const form = wrapper.find('form[aria-labelledby="new-calendar-task-title"]')
+    expect(form.exists()).toBe(true)
+
+    const textInputs = form.findAll('input[type="text"]')
+    const titleInput = textInputs[0]
+    const targetInput = textInputs[1]
+    if (!titleInput || !targetInput) throw new Error('Expected new task text inputs')
+    await titleInput.setValue('Calendar-created task')
+    await form.find('textarea').setValue('Run this from the calendar.')
+    await form.find('input[type="datetime-local"]').setValue('2026-04-29T14:00')
+    await targetInput.setValue('/tmp')
+    await form.trigger('submit')
+    await flushPromises()
+
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).endsWith('/tasks') && init?.method === 'POST',
+    )
+    if (!createCall) throw new Error('Expected calendar task create request')
+    const body = JSON.parse(String(createCall[1]?.body))
+    expect(body.title).toBe('Calendar-created task')
+    expect(body.execution_mode).toBe('one_time')
+    expect(body.schedule.planned_at).toBe('2026-04-29T14:00:00+08:00')
   })
 
   it('renders the templates route and links templates into the composer', async () => {
@@ -437,6 +533,7 @@ async function mountAppAt(path: string) {
 interface StubFetchOptions {
   historyItems?: unknown[]
   recurringItems?: unknown[]
+  calendarItems?: unknown[]
 }
 
 function stubFetch(options: StubFetchOptions = {}) {
@@ -493,6 +590,32 @@ function stubFetch(options: StubFetchOptions = {}) {
       failure_reason: null,
     },
   ]
+  const calendarItems = options.calendarItems ?? [
+    {
+      calendar_item_id: 'cal-one-time-1',
+      task_id: 'task-1',
+      schedule_id: 'schedule-1',
+      title: 'One-Time Calendar',
+      execution_mode: 'one_time',
+      occurrence_at: '2026-04-28T10:00:00+08:00',
+      original_occurrence_at: null,
+      state: 'scheduled',
+      is_occurrence_override: false,
+      schedule_version: 1,
+    },
+    {
+      calendar_item_id: 'cal-recurring-1',
+      task_id: 'task-recurring-1',
+      schedule_id: 'schedule-task-recurring-1',
+      title: 'Recurring Calendar',
+      execution_mode: 'recurring',
+      occurrence_at: '2026-04-28T11:00:00+08:00',
+      original_occurrence_at: '2026-04-28T11:00:00+08:00',
+      state: 'scheduled',
+      is_occurrence_override: true,
+      schedule_version: 2,
+    },
+  ]
 
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input)
@@ -526,6 +649,10 @@ function stubFetch(options: StubFetchOptions = {}) {
 
     if (url.includes('/views/recurring-todo')) {
       return jsonResponse(recurringItems, { total: recurringItems.length })
+    }
+
+    if (url.includes('/views/calendar')) {
+      return jsonResponse(calendarItems, { total: calendarItems.length })
     }
 
     if (url.includes('/executors/preflight')) {

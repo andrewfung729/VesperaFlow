@@ -75,7 +75,8 @@ const canSave = computed(
 )
 const executorStatusText = computed(() => {
   if (executor.value === 'debug_printer') return 'Debug printer is available.'
-  if (!executorPreflight.value) return `${executorOptions.find((o) => o.value === executor.value)?.label ?? 'Executor'} has not been checked for this target.`
+  if (!executorPreflight.value)
+    return `${executorOptions.find((o) => o.value === executor.value)?.label ?? 'Executor'} has not been checked for this target.`
   return executorPreflight.value.message
 })
 const executorStatusClass = computed(() => {

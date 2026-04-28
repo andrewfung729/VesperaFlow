@@ -281,6 +281,7 @@ Primary actions:
 ### 7.1 Goal
 
 Provide a time-based planning surface for both one-time tasks and recurring occurrences.
+The primary calendar surface supports day, week, and month views.
 
 ### 7.2 Calendar Content Rules
 
@@ -289,6 +290,9 @@ Display:
 - future one-time scheduled tasks
 - future recurring projected occurrences
 - recurring occurrence overrides
+
+One-time tasks and recurring occurrences appear together in the same calendar grid.
+They must be differentiated visually, not separated into independent tabs.
 
 Hide by default:
 
@@ -314,9 +318,15 @@ Recommended indicators:
 
 Primary interactions:
 
-- click item to open detail preview
+- switch between day, week, and month calendar views
+- move to the previous period, next period, or today
+- click item to open a modal detail preview
 - open full detail from preview
 - edit or reschedule from preview
+- click an empty day or time slot to open a modal for creating a one-time task at that slot
+
+Week and day views should compress hour rows where the entire row has no tasks,
+while keeping empty cells interactive for task creation.
 
 MVP decision:
 
@@ -599,7 +609,7 @@ Use lightweight toasts or inline confirmations for:
 
 - kanban may collapse into horizontally scrollable columns
 - recurring todo remains a vertical list
-- calendar may switch to agenda-oriented view on smaller screens
+- calendar keeps day/week/month navigation but may show an agenda-oriented item list on smaller screens
 
 ## 14. Accessibility
 

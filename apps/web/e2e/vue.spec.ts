@@ -35,9 +35,10 @@ test('renders the recurring todo route shell', async ({ page }) => {
 
 test('renders the calendar route shell', async ({ page }) => {
   await page.goto('/calendar')
-  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
-  await expect(page.getByLabel('From')).toBeVisible()
-  await expect(page.getByLabel('To', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Day', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Week', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Today' })).toBeVisible()
 })
 
 test('covers the MVP navigation path', async ({ page }) => {
@@ -64,8 +65,17 @@ test('covers the MVP navigation path', async ({ page }) => {
   await expect(page.getByText('Active Recurring')).toBeVisible()
 
   await page.getByRole('link', { name: 'Calendar' }).click()
-  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible()
-  await expect(page.getByText('Calendar Task')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Day', exact: true })).toBeVisible()
+  const oneTimeCalendarItem = page.locator('[role="button"][aria-label*="One-Time Calendar"]').first()
+  const recurringCalendarItem = page
+    .locator('[role="button"][aria-label*="Recurring Calendar"]')
+    .first()
+  await expect(oneTimeCalendarItem).toBeVisible()
+  await expect(recurringCalendarItem).toBeVisible()
+  await oneTimeCalendarItem.click()
+  await expect(page.getByRole('dialog', { name: 'One-Time Calendar' })).toBeVisible()
+  await page.getByRole('button', { name: 'Detail' }).click()
+  await expect(page.getByRole('heading', { name: 'Detailed Task' })).toBeVisible()
 })
 
 async function stubApi(page: Page) {
@@ -200,10 +210,10 @@ async function stubApi(page: Page) {
         json: {
           data: [
             {
-              calendar_item_id: 'cal-1',
+              calendar_item_id: 'cal-one-time-1',
               task_id: 'task-1',
               schedule_id: 'schedule-1',
-              title: 'Calendar Task',
+              title: 'One-Time Calendar',
               execution_mode: 'one_time',
               occurrence_at: '2026-04-28T10:00:00+08:00',
               original_occurrence_at: null,
@@ -211,8 +221,20 @@ async function stubApi(page: Page) {
               is_occurrence_override: false,
               schedule_version: 1,
             },
+            {
+              calendar_item_id: 'cal-recurring-1',
+              task_id: 'task-recurring-1',
+              schedule_id: 'schedule-recurring-1',
+              title: 'Recurring Calendar',
+              execution_mode: 'recurring',
+              occurrence_at: '2026-04-28T11:00:00+08:00',
+              original_occurrence_at: '2026-04-28T11:00:00+08:00',
+              state: 'scheduled',
+              is_occurrence_override: false,
+              schedule_version: 1,
+            },
           ],
-          meta: { total: 1 },
+          meta: { total: 2 },
         },
       })
       return
