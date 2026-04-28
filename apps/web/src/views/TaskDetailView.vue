@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import {
   cancelTask,
@@ -11,6 +11,7 @@ import {
   runTaskNow,
   updateRecurringSchedule,
   updateTask,
+  type Run,
   type TaskDetail,
 } from '@/api'
 import MarkdownReader from '@/components/MarkdownReader.vue'
@@ -26,13 +27,16 @@ import {
   type RecurrenceCadence,
   type WeekdayCode,
 } from '@/lib/recurrence'
+import { runOutcome, statusBadgeClass } from '@/lib/runDisplay'
 
 const props = defineProps<{
   taskId: string
 }>()
 
 const route = useRoute()
+const router = useRouter()
 const selectedDetail = ref<TaskDetail | null>(null)
+const taskRuns = ref<Run[]>([])
 const isLoadingDetail = ref(false)
 const errorMessage = ref<string | null>(null)
 const rescheduleAt = ref('')
@@ -53,9 +57,10 @@ const selectedOccurrenceAt = computed(() => {
   const value = route.query.occurrenceAt
   return typeof value === 'string' ? value : null
 })
-const selectedRun = computed(() =>
-  selectedDetail.value?.runs.find((run) => run.run_id === selectedRunId.value),
-)
+const selectedRun = computed(() => {
+  const matchingRun = taskRuns.value.find((run) => run.run_id === selectedRunId.value)
+  return matchingRun ?? taskRuns.value[0] ?? null
+})
 const isRecurringTask = computed(() => selectedDetail.value?.task.execution_mode === 'recurring')
 const isTaskEditable = computed(() => {
   const status = selectedDetail.value?.task.task_status
@@ -86,6 +91,7 @@ async function loadTaskDetail() {
   errorMessage.value = null
   try {
     selectedDetail.value = await getTaskDetail(props.taskId)
+    taskRuns.value = selectedDetail.value.runs
     rescheduleAt.value = selectedDetail.value.schedule?.planned_at
       ? toDateTimeLocal(selectedDetail.value.schedule.planned_at)
       : ''
@@ -95,6 +101,7 @@ async function loadTaskDetail() {
     isEditingRecurrence.value = route.query.edit === 'recurrence'
   } catch (error) {
     selectedDetail.value = null
+    taskRuns.value = []
     rescheduleAt.value = ''
     errorMessage.value = readableError(error)
   } finally {
@@ -251,6 +258,10 @@ function resetRecurrenceForm() {
   recurrenceTimezone.value =
     selectedDetail.value?.schedule?.recurrence_timezone || browserRecurrenceTimezone()
 }
+
+async function openRunArchive() {
+  await router.push({ name: 'recurring-run-archive', params: { taskId: props.taskId } })
+}
 </script>
 
 <template>
@@ -326,34 +337,68 @@ function resetRecurrenceForm() {
               Edit Task
             </button>
           </template>
-          <section class="mt-6">
-            <h3 class="m-0 mb-3 text-lg font-bold text-slate-950">Recent Runs</h3>
-            <div v-if="selectedDetail.runs.length > 0" class="grid gap-2">
-              <article
-                v-for="run in selectedDetail.runs"
-                :key="run.run_id"
-                class="rounded-md border p-3"
-                :class="
-                  selectedRunId === run.run_id
-                    ? 'border-teal-400 bg-teal-50'
-                    : 'border-slate-200 bg-white'
-                "
+          <section
+            v-if="isRecurringTask"
+            class="mt-6 rounded-md border border-slate-200 bg-white p-5"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 class="m-0 text-lg font-bold text-slate-950">Run Archive</h3>
+                <p class="m-0 mt-1 text-sm text-slate-500">
+                  Read each recurring outcome in a focused single-column reader.
+                </p>
+              </div>
+              <button
+                class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
+                type="button"
+                @click="openRunArchive"
               >
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <strong class="text-slate-800">{{ run.run_status }}</strong>
-                  <span class="text-sm text-slate-500">
-                    {{
-                      formatDateTime(run.finished_at ?? run.actual_start_at ?? run.planned_start_at)
-                    }}
-                  </span>
+                Open Run Archive
+              </button>
+            </div>
+          </section>
+          <section v-else class="mt-6">
+            <h3 class="m-0 mb-3 text-lg font-bold text-slate-950">Recent Runs</h3>
+            <article v-if="selectedRun" class="rounded-md border border-slate-200 bg-white p-5">
+              <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <h4 class="m-0 text-base font-bold text-slate-950">{{ selectedRun.run_id }}</h4>
+                <span
+                  class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
+                  :class="statusBadgeClass(selectedRun.run_status)"
+                >
+                  {{ selectedRun.run_status }}
+                </span>
+              </div>
+              <dl class="m-0 mb-4 grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                  <dt class="font-bold text-slate-500">Planned</dt>
+                  <dd class="m-0 text-slate-700">
+                    {{ formatDateTime(selectedRun.planned_start_at) }}
+                  </dd>
                 </div>
+                <div>
+                  <dt class="font-bold text-slate-500">Started</dt>
+                  <dd class="m-0 text-slate-700">
+                    {{ formatDateTime(selectedRun.actual_start_at) }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="font-bold text-slate-500">Finished</dt>
+                  <dd class="m-0 text-slate-700">{{ formatDateTime(selectedRun.finished_at) }}</dd>
+                </div>
+              </dl>
+              <div class="max-w-3xl border-t border-slate-200 pt-4">
                 <MarkdownReader
-                  :content="run.result_summary ?? run.failure_reason"
+                  :content="runOutcome(selectedRun)"
+                  :expandable="false"
                   class="wrap-anywhere"
                 />
-              </article>
+              </div>
+            </article>
+            <div v-else class="rounded-md border border-slate-200 bg-white p-5">
+              <h4 class="m-0 text-base font-bold text-slate-950">No runs recorded</h4>
+              <p class="m-0 mt-1 text-sm text-slate-500">This task has no run output yet.</p>
             </div>
-            <p v-else class="text-sm text-slate-500">No runs recorded.</p>
           </section>
         </div>
         <aside
@@ -371,19 +416,45 @@ function resetRecurrenceForm() {
                   : formatDateTime(selectedDetail.schedule?.planned_at ?? null)
               }}
             </dd>
+            <template v-if="isRecurringTask">
+              <dt class="text-sm font-bold text-slate-500">Timezone</dt>
+              <dd class="m-0 mb-2.5 wrap-break-word">
+                {{ selectedDetail.schedule?.recurrence_timezone ?? 'none' }}
+              </dd>
+              <dt class="text-sm font-bold text-slate-500">Next Run</dt>
+              <dd class="m-0 mb-2.5 wrap-break-word">
+                {{ formatDateTime(selectedDetail.schedule?.next_run_at ?? null) }}
+              </dd>
+            </template>
             <dt class="text-sm font-bold text-slate-500">Schedule</dt>
             <dd class="m-0 mb-2.5 wrap-break-word">
               {{ selectedDetail.schedule?.schedule_status ?? 'none' }}
             </dd>
             <dt class="text-sm font-bold text-slate-500">Latest Result</dt>
-            <dd class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 line-clamp-3">
-              {{
-                selectedDetail.latest_run?.result_summary ??
-                selectedDetail.latest_run?.failure_reason ??
-                'Pending'
-              }}
+            <dd
+              class="m-0 mb-2.5 wrap-break-word rounded-md border p-3 text-sm line-clamp-4"
+              :class="
+                selectedDetail.latest_run?.run_status === 'failed'
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-slate-200 bg-white text-slate-600'
+              "
+            >
+              <span
+                v-if="selectedDetail.latest_run"
+                class="mb-1 inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
+                :class="statusBadgeClass(selectedDetail.latest_run.run_status)"
+              >
+                {{ selectedDetail.latest_run.run_status }}
+              </span>
+              <span class="block">
+                {{
+                  selectedDetail.latest_run?.result_summary ??
+                  selectedDetail.latest_run?.failure_reason ??
+                  'Pending'
+                }}
+              </span>
             </dd>
-            <template v-if="selectedRun">
+            <template v-if="selectedRun && !isRecurringTask">
               <dt class="text-sm font-bold text-slate-500">Selected Run</dt>
               <dd class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 line-clamp-3">
                 {{ selectedRun.run_status }} ·

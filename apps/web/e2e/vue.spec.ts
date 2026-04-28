@@ -63,6 +63,15 @@ test('covers the MVP navigation path', async ({ page }) => {
   await page.getByRole('link', { name: 'Recurring Todo' }).click()
   await expect(page.getByRole('heading', { name: 'Recurring Tasks', exact: true })).toBeVisible()
   await expect(page.getByText('Active Recurring')).toBeVisible()
+  await page.getByRole('button', { name: 'View Runs' }).click()
+  await expect(page.getByRole('heading', { name: 'Run Archive' })).toBeVisible()
+  await expect(page.getByText('Daily recurring completed')).toBeVisible()
+  await page.getByRole('button', { name: 'Read Outcome' }).click()
+  await expect(page.getByRole('heading', { name: 'Active Recurring' })).toBeVisible()
+  await expect(page.getByText('Outcome Reader')).toBeVisible()
+  await expect(page.locator('.run-reader-content').getByText('Daily recurring completed')).toBeVisible()
+  await page.getByRole('button', { name: 'Back to Archive' }).click()
+  await expect(page.getByRole('heading', { name: 'Run Archive' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Calendar' }).click()
   await expect(page.getByRole('button', { name: 'Day', exact: true })).toBeVisible()
@@ -124,6 +133,60 @@ async function stubApi(page: Page) {
             latest_run: null,
             runs: [],
           },
+        },
+      })
+      return
+    }
+    if (url.includes('/tasks/task-1/runs')) {
+      await route.fulfill({
+        json: {
+          data: [
+            {
+              run_id: 'run-1',
+              task_id: 'task-1',
+              schedule_id: 'schedule-1',
+              run_status: 'failed',
+              planned_start_at: '2026-04-27T10:00:00+08:00',
+              actual_start_at: '2026-04-27T10:01:00+08:00',
+              finished_at: '2026-04-27T11:00:00+08:00',
+              result_summary: null,
+              failure_reason: 'Executor failed',
+              occurrence_key: null,
+            },
+          ],
+          meta: { total: 1 },
+        },
+      })
+      return
+    }
+    if (url.includes('/tasks/task-recurring-1/detail')) {
+      await route.fulfill({
+        json: {
+          data: {
+            task: taskResponse('task-recurring-1', 'Active Recurring', 'recurring'),
+            schedule: {
+              schedule_id: 'schedule-recurring-1',
+              task_id: 'task-recurring-1',
+              schedule_type: 'recurring_rule',
+              schedule_status: 'active',
+              planned_at: null,
+              recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+              recurrence_timezone: 'Asia/Hong_Kong',
+              next_run_at: '2026-04-28T08:00:00+08:00',
+              version: 1,
+            },
+            latest_run: recurringRunResponse(),
+            runs: [recurringRunResponse()],
+          },
+        },
+      })
+      return
+    }
+    if (url.includes('/tasks/task-recurring-1/runs')) {
+      await route.fulfill({
+        json: {
+          data: [recurringRunResponse()],
+          meta: { total: 1 },
         },
       })
       return
@@ -257,5 +320,20 @@ function taskResponse(taskId: string, title: string, executionMode: 'one_time' |
     created_at: '2026-04-27T09:00:00+08:00',
     updated_at: '2026-04-27T09:00:00+08:00',
     archived_at: null,
+  }
+}
+
+function recurringRunResponse() {
+  return {
+    run_id: 'run-recurring-1',
+    task_id: 'task-recurring-1',
+    schedule_id: 'schedule-recurring-1',
+    run_status: 'completed',
+    planned_start_at: '2026-04-27T08:00:00+08:00',
+    actual_start_at: '2026-04-27T08:01:00+08:00',
+    finished_at: '2026-04-27T08:30:00+08:00',
+    result_summary: 'Daily recurring completed',
+    failure_reason: null,
+    occurrence_key: '20260427T000000Z',
   }
 }

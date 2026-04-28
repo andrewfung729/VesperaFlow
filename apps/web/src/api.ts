@@ -246,6 +246,31 @@ export async function getTaskDetail(taskId: string): Promise<TaskDetail> {
   return request<TaskDetail>(`/tasks/${taskId}/detail`)
 }
 
+export async function getTaskRuns(
+  taskId: string,
+  params: {
+    status?: RunStatus | ''
+    limit?: number
+    offset?: number
+  } = {},
+): Promise<ListEnvelope<Run>> {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      search.set(key, String(value))
+    }
+  }
+  const suffix = search.size > 0 ? `?${search}` : ''
+  const response = await requestList<Run>(`/tasks/${taskId}/runs${suffix}`)
+  const status = params.status
+  if (!status) return response
+  const data = response.data.filter((run) => run.run_status === status)
+  return {
+    data,
+    meta: { total: data.length },
+  }
+}
+
 export async function getHistory(
   params: {
     status?: HistoryItem['run_status'] | ''

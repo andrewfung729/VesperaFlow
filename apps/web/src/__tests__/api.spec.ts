@@ -8,6 +8,7 @@ import {
   getCalendar,
   getHistory,
   getRecurringTodo,
+  getTaskRuns,
   listTemplates,
   pauseRecurringTask,
   preflightExecutor,
@@ -187,6 +188,54 @@ describe('api', () => {
           recurrence_timezone: 'Asia/Hong_Kong',
         }),
       }),
+    )
+  })
+
+  it('loads task runs and applies client-side status filtering', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                run_id: 'run-1',
+                task_id: 'task-1',
+                schedule_id: 'schedule-1',
+                run_status: 'completed',
+                planned_start_at: '2026-04-25T10:00:00+08:00',
+                actual_start_at: '2026-04-25T10:01:00+08:00',
+                finished_at: '2026-04-25T11:00:00+08:00',
+                result_summary: 'Done',
+                failure_reason: null,
+                occurrence_key: null,
+              },
+              {
+                run_id: 'run-2',
+                task_id: 'task-1',
+                schedule_id: 'schedule-1',
+                run_status: 'failed',
+                planned_start_at: '2026-04-26T10:00:00+08:00',
+                actual_start_at: '2026-04-26T10:01:00+08:00',
+                finished_at: '2026-04-26T11:00:00+08:00',
+                result_summary: null,
+                failure_reason: 'Executor failed',
+                occurrence_key: null,
+              },
+            ],
+            meta: { total: 2 },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const runs = await getTaskRuns('task-1', { status: 'failed' })
+
+    expect(runs.meta.total).toBe(1)
+    expect(runs.data[0]?.run_id).toBe('run-2')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/runs?status=failed'),
+      expect.any(Object),
     )
   })
 

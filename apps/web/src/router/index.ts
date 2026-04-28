@@ -3,7 +3,9 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import CalendarView from '@/views/CalendarView.vue'
 import HistoryView from '@/views/HistoryView.vue'
 import KanbanBoardView from '@/views/KanbanBoardView.vue'
+import RecurringRunArchiveView from '@/views/RecurringRunArchiveView.vue'
 import RecurringTodoView from '@/views/RecurringTodoView.vue'
+import RunOutcomeReaderView from '@/views/RunOutcomeReaderView.vue'
 import TaskComposerView from '@/views/TaskComposerView.vue'
 import TaskDetailView from '@/views/TaskDetailView.vue'
 import TemplatesView from '@/views/TemplatesView.vue'
@@ -42,6 +44,18 @@ export const routes: RouteRecordRaw[] = [
     path: '/history',
     name: 'history',
     component: HistoryView,
+  },
+  {
+    path: '/tasks/:taskId/runs',
+    name: 'recurring-run-archive',
+    component: RecurringRunArchiveView,
+    props: true,
+  },
+  {
+    path: '/tasks/:taskId/runs/:runId',
+    name: 'recurring-run-reader',
+    component: RunOutcomeReaderView,
+    props: true,
   },
   {
     path: '/tasks/:taskId',

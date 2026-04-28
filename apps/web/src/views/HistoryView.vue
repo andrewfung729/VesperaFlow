@@ -40,6 +40,13 @@ async function refreshHistory() {
 }
 
 async function openHistoryItem(item: HistoryItem) {
+  if (item.execution_mode === 'recurring') {
+    await router.push({
+      name: 'recurring-run-reader',
+      params: { taskId: item.task_id, runId: item.run_id },
+    })
+    return
+  }
   await router.push({
     name: 'task-detail',
     params: { taskId: item.task_id },
@@ -134,7 +141,18 @@ async function openHistoryItem(item: HistoryItem) {
                 {{ item.run_status }}
               </td>
               <td class="px-4 py-3 text-slate-600">
-                {{ item.execution_mode }}
+                <span
+                  v-if="item.execution_mode === 'recurring'"
+                  class="inline-flex rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-800 uppercase"
+                >
+                  Recurring
+                </span>
+                <span
+                  v-else
+                  class="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-700 uppercase"
+                >
+                  One-Time
+                </span>
               </td>
               <td class="px-4 py-3 text-slate-600">
                 {{ formatDateTime(item.finished_at) }}

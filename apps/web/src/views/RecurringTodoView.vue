@@ -50,6 +50,13 @@ async function openTask(item: RecurringTodoItem) {
   await router.push({ name: 'task-detail', params: { taskId: item.task_id } })
 }
 
+async function viewRuns(item: RecurringTodoItem) {
+  await router.push({
+    name: 'recurring-run-archive',
+    params: { taskId: item.task_id },
+  })
+}
+
 async function createRecurringTask() {
   await router.push({ name: 'compose', query: { mode: 'recurring' } })
 }
@@ -198,7 +205,15 @@ function latestOutcome(item: RecurringTodoItem): string {
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">
                       <button
-                        class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        type="button"
+                        :disabled="actionTaskId === item.task_id"
+                        @click="viewRuns(item)"
+                      >
+                        View Runs
+                      </button>
+                      <button
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                         type="button"
                         :disabled="actionTaskId === item.task_id"
                         @click="runNowItem(item)"
@@ -206,7 +221,7 @@ function latestOutcome(item: RecurringTodoItem): string {
                         Run Now
                       </button>
                       <button
-                        class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                         type="button"
                         :disabled="actionTaskId === item.task_id"
                         @click="editRecurrence(item)"
@@ -214,7 +229,7 @@ function latestOutcome(item: RecurringTodoItem): string {
                         Edit
                       </button>
                       <button
-                        class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                         type="button"
                         :disabled="actionTaskId === item.task_id"
                         @click="pauseItem(item)"
@@ -270,7 +285,15 @@ function latestOutcome(item: RecurringTodoItem): string {
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">
                       <button
-                        class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        type="button"
+                        :disabled="actionTaskId === item.task_id"
+                        @click="viewRuns(item)"
+                      >
+                        View Runs
+                      </button>
+                      <button
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                         type="button"
                         :disabled="actionTaskId === item.task_id"
                         @click="editRecurrence(item)"
@@ -278,7 +301,7 @@ function latestOutcome(item: RecurringTodoItem): string {
                         Edit
                       </button>
                       <button
-                        class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                         type="button"
                         :disabled="actionTaskId === item.task_id"
                         @click="resumeItem(item)"
