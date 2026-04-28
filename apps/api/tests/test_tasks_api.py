@@ -346,7 +346,7 @@ async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
     assert paused_response.status_code == 200
     assert one_time.status_code == 201
 
-    planned_start_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
+    planned_start_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
     async with api_context.session_factory() as session:
         async with session.begin():
             schedule = await repo.get_schedule(
@@ -399,7 +399,7 @@ async def test_calendar_returns_projected_items_and_hides_inactive(
     client = api_context.client
     one_time_payload = _create_payload("Calendar one-time")
     one_time_payload["schedule"]["planned_at"] = datetime(
-        2026, 4, 28, 0, 0, tzinfo=UTC
+        2030, 1, 1, 0, 0, tzinfo=UTC
     ).isoformat()
     one_time = await client.post("/api/v1/tasks", json=one_time_payload)
     recurring = await client.post(
@@ -418,8 +418,8 @@ async def test_calendar_returns_projected_items_and_hides_inactive(
     calendar = await client.get(
         "/api/v1/views/calendar",
         params={
-            "from": "2026-04-27T23:59:00+00:00",
-            "to": "2026-04-28T00:01:00+00:00",
+            "from": "2029-12-31T23:59:00+00:00",
+            "to": "2030-01-01T00:01:00+00:00",
         },
     )
 
@@ -450,9 +450,9 @@ async def test_occurrence_update_and_cancel_endpoints(
         f"/api/v1/tasks/{task['task_id']}/occurrences/update",
         json={
             "version": schedule["version"],
-            "original_occurrence_at": "2026-04-28T00:00:00+00:00",
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
             "scope": "this_occurrence_only",
-            "planned_at": "2026-04-28T02:00:00+00:00",
+            "planned_at": "2030-01-01T02:00:00+00:00",
             "instruction_source": "Override instructions",
         },
     )
@@ -464,8 +464,8 @@ async def test_occurrence_update_and_cancel_endpoints(
     calendar = await client.get(
         "/api/v1/views/calendar",
         params={
-            "from": "2026-04-28T01:59:00+00:00",
-            "to": "2026-04-28T02:01:00+00:00",
+            "from": "2030-01-01T01:59:00+00:00",
+            "to": "2030-01-01T02:01:00+00:00",
         },
     )
     assert calendar.status_code == 200
@@ -475,7 +475,7 @@ async def test_occurrence_update_and_cancel_endpoints(
         f"/api/v1/tasks/{task['task_id']}/occurrences/cancel",
         json={
             "version": 2,
-            "original_occurrence_at": "2026-04-28T00:00:00+00:00",
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
             "scope": "this_occurrence_only",
         },
     )

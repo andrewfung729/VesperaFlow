@@ -317,7 +317,7 @@ async def test_recurring_todo_lists_active_then_paused_with_latest_outcome(
 async def test_calendar_projects_one_time_and_active_recurring_items(
     session: AsyncSession,
 ) -> None:
-    occurrence_at = datetime(2026, 4, 28, 0, 0, tzinfo=UTC)
+    occurrence_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
     async with session.begin():
         one_time = await repo.create_one_time_task(
             session,
@@ -385,8 +385,8 @@ async def test_calendar_projects_one_time_and_active_recurring_items(
 async def test_occurrence_override_moves_and_cancels_single_occurrence(
     session: AsyncSession,
 ) -> None:
-    original_at = datetime(2026, 4, 28, 0, 0, tzinfo=UTC)
-    moved_at = datetime(2026, 4, 28, 2, 0, tzinfo=UTC)
+    original_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2030, 1, 1, 2, 0, tzinfo=UTC)
     async with session.begin():
         bundle = await repo.create_recurring_task(
             session,
