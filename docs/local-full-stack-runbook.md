@@ -96,3 +96,37 @@ Use a harmless instruction such as asking Claude Code to inspect the repository
 and write a short summary into the run output only. Verify task detail reaches a
 terminal completed or classified failed state, and inspect the run artifact path
 only if you need the raw Claude output.
+
+## Kimi Code Live Smoke
+
+Kimi Code live smoke is opt-in because it uses the developer machine's local
+`kimi` CLI installation, authentication state, and selected workspace.
+VesperaFlow does not store or print executor credentials.
+
+Prerequisites:
+
+- `kimi` is installed and available on `PATH`.
+- Kimi Code is authenticated through `KIMI_API_KEY`, a cached OAuth token, or the
+  CLI's supported configuration.
+- The target working directory is an existing absolute path.
+
+Start the API and Worker with the Kimi executor, then create a one-time task in
+the web UI using the `kimi_code` executor:
+
+```bash
+VESPERAFLOW_DEFAULT_EXECUTOR=kimi_code uv run vesperaflow-api
+VESPERAFLOW_EXECUTOR_ADAPTER=kimi_code uv run vesperaflow-worker
+```
+
+Use a harmless instruction such as asking Kimi Code to inspect the repository and
+write a short summary into the run output only. Verify the executor preflight
+passes for the selected target directory, then verify task detail reaches a
+terminal completed or classified failed state.
+
+Expected successful execution artifacts under the run artifact directory:
+
+- `kimi-output.txt` contains the final text output captured from stdout.
+- `kimi-result.json` contains captured stdout and stderr diagnostic fields.
+
+Expected classified failures include `executor_workspace_unavailable`,
+`executor_not_available`, `executor_not_authenticated`, and `executor_error`.

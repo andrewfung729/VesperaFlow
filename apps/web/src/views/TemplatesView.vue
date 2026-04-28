@@ -16,6 +16,7 @@ const router = useRouter()
 const executorOptions: Array<{ label: string; value: ExecutorName }> = [
   { label: 'Debug Printer', value: 'debug_printer' },
   { label: 'Claude Code', value: 'claude_code' },
+  { label: 'Kimi Code', value: 'kimi_code' },
 ]
 const installDefaultExecutor = '' as const
 

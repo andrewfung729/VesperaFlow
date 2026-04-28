@@ -201,14 +201,15 @@ Rules:
 
 ### 5.2 Executor Activities
 
-Executor Activities delegate AI execution to an external coding-agent runtime invoked from a Temporal Activity through its official SDK. The executor SDK is imported into the Worker process through Worker startup or Activity-only modules and driven directly from the Activity. It must not be imported through package root, Workflow modules, or any Workflow-reachable facade. VesperaFlow does not call LLM APIs from Workflow or Activity code. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
+Executor Activities delegate AI execution to an external coding-agent runtime invoked from a Temporal Activity through its official SDK or CLI transport. SDK dependencies and CLI process management live in Worker startup or Activity-only modules. They must not be reachable through package root, Workflow modules, or any Workflow-reachable facade. VesperaFlow does not call LLM APIs from Workflow or Activity code. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
 
 Supported executor:
 
-- `claude-code` via the Claude Agent SDK
+- `claude_code` via the Claude Agent SDK
+- `kimi_code` via the `kimi` CLI text transport
 - `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
 
-`codex`, `opencode`, and CLI subprocess invocation are post-MVP candidates.
+`codex`, `opencode`, and additional executor integrations are post-MVP candidates.
 
 Candidate Activities:
 
@@ -221,21 +222,23 @@ General rules:
 - Each attempt of `execute_agent_run` must reuse or recreate the same `run_id`-scoped working directory; attempts must not be directed to ephemeral temp paths that disappear between retries.
 - Activity timeouts must be large enough to accommodate long-running coding-agent sessions; use `heartbeat_timeout` with regular heartbeats while the executor is active.
 - After Activity cancellation propagates to the executor, the Activity must not retry.
-- Terminal outcomes are normalized: a successful SDK return maps to `completed`; SDK exceptions map to `failed` with a `failure_reason` category derived from the SDK error type; cancellations map to `canceled`.
+- Terminal outcomes are normalized: successful executor completion maps to `completed`; SDK exceptions or non-zero CLI exits map to `failed` with a `failure_reason` category derived from the SDK error type or CLI diagnostics; cancellations map to `canceled`.
 
-SDK integration rules:
+Executor integration rules:
 
 - SDK-based Executor Activities are async Activities that `await` the SDK's entrypoint; they run on the Worker's async event loop.
-- Activity cancellation is propagated into the SDK through the SDK's native cancellation token, context cancellation, or `asyncio.CancelledError` as the SDK documents.
+- CLI-based Executor Activities spawn the official CLI binary in a run-scoped working directory and capture stdout/stderr into artifacts.
+- Activity cancellation is propagated into the executor through the SDK's native cancellation token, context cancellation, `asyncio.CancelledError`, or process signal handling as the executor documents.
 - Concrete executor modules may import their SDK dependencies at module top level, but only if those modules are unreachable from Workflow imports.
-- The SDK client instance is constructed inside the Activity execution path, not at module import time; Activity retries must not reuse a stale SDK client across attempts.
-- The adapter must not rely on SDK internals beyond the stable documented API; coupling to internal types is forbidden.
+- The SDK client instance or CLI subprocess is constructed inside the Activity execution path, not at module import time; Activity retries must not reuse stale runtime state across attempts.
+- The adapter must not rely on SDK or CLI internals beyond the stable documented API; coupling to internal types is forbidden.
 
 Secrets handling rules for Executor Activities:
 
-- VesperaFlow does not store or manage LLM provider credentials; the executor SDK is expected to be authenticated independently by the user before invocation
+- VesperaFlow does not store or manage LLM provider credentials; the executor runtime is expected to be authenticated independently by the user before invocation
 - the Worker may pass explicit Claude SDK environment settings, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`, into the executor SDK's process environment; it must not pass the full Worker environment
 - the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
+- Kimi Code authentication is handled by the `kimi` CLI itself, such as through its OAuth token cache, API key environment, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
 - rotating an executor's provider credential is a user-side operation that does not require rewriting any existing Workflow history

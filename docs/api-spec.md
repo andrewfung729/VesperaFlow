@@ -208,9 +208,10 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 `executor` identifies the resolved coding-agent runtime that will perform this task's runs. MVP supports:
 
 - `claude_code` — Claude Agent SDK
+- `kimi_code` — Kimi CLI text transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
-Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex`, `opencode`, and CLI subprocess execution are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
+Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `codex` and `opencode` are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
 
 `target_working_directory` is the absolute existing directory where the executor performs user work. It is distinct from the per-run artifact workspace used by VesperaFlow to store summaries and transcripts.
 
@@ -305,7 +306,7 @@ are reported by the Worker when a Claude Code task runs.
 
 Query params:
 
-- `executor`: `claude_code` or `debug_printer`; defaults to `claude_code`
+- `executor`: `claude_code`, `kimi_code`, or `debug_printer`; defaults to `claude_code`
 - `target_working_directory`: absolute target workspace path to validate
 
 Response:
@@ -315,9 +316,9 @@ Response:
 Behavior:
 
 - `debug_printer` returns available without a target workspace
-- `claude_code` validates that the target workspace is an existing absolute
-  directory visible to the API process
-- live Claude Code auth/configuration checks are intentionally not performed by
+- `claude_code` and `kimi_code` validate that the target workspace is an existing absolute
+  directory visible to the API process; `kimi_code` also verifies that the `kimi` binary is on `PATH`
+- live executor auth/configuration checks are intentionally not performed by
   the API because executor invocation belongs to Worker Activities
 
 ## 6. Template Endpoints
@@ -523,7 +524,7 @@ Validation:
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
 - `schedule.schedule_type` must match `execution_mode`
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
-- `executor`, if provided, must be `claude_code` or `debug_printer`; if omitted the template default or install default is used
+- `executor`, if provided, must be `claude_code`, `kimi_code`, or `debug_printer`; if omitted the template default or install default is used
 - if the target working directory is invalid, the endpoint returns `422 validation_error`
 - recurring Temporal Schedule fires materialize a product run in the first Workflow Activity, keyed by `(schedule_id, occurrence_key)`
 - SDK import, authentication, and runtime configuration failures are reported by the Worker on run start

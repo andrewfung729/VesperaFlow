@@ -42,8 +42,8 @@ The VS Code task `dev: worker` runs the same command.
 
 Environment variables use the `VESPERAFLOW_` prefix:
 
-- `VESPERAFLOW_EXECUTOR_ADAPTER`: `auto`, `router`, `debug_printer`, or
-  `claude_code`.
+- `VESPERAFLOW_EXECUTOR_ADAPTER`: `auto`, `router`, `debug_printer`,
+  `claude_code`, or `kimi_code`.
 - `VESPERAFLOW_CLAUDE_ENV`: optional JSON object of explicit SDK env values.
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`: optional
   Claude SDK env values loaded from the process environment or root `.env`.
@@ -58,6 +58,12 @@ Claude Code runs with `permission_mode="bypassPermissions"` and loads
 `user`, `project`, and `local` setting sources. It writes full executor output
 under the run artifact directory while storing only a short normalized summary
 on the run.
+
+Kimi Code runs via the `kimi` CLI in non-interactive text mode:
+`--print --final-message-only --work-dir <target> --yolo`. It requires the
+`kimi` binary to be on `PATH` and a valid `KIMI_API_KEY` or cached OAuth token
+to be available through the CLI's own configuration. It writes
+`kimi-output.txt` and `kimi-result.json` under the run artifact directory.
 
 ## Tests
 

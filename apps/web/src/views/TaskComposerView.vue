@@ -27,6 +27,7 @@ const route = useRoute()
 const executorOptions: Array<{ label: string; value: ExecutorName }> = [
   { label: 'Debug Printer', value: 'debug_printer' },
   { label: 'Claude Code', value: 'claude_code' },
+  { label: 'Kimi Code', value: 'kimi_code' },
 ]
 
 const title = ref('')
@@ -74,7 +75,7 @@ const canSave = computed(
 )
 const executorStatusText = computed(() => {
   if (executor.value === 'debug_printer') return 'Debug printer is available.'
-  if (!executorPreflight.value) return 'Claude Code has not been checked for this target.'
+  if (!executorPreflight.value) return `${executorOptions.find((o) => o.value === executor.value)?.label ?? 'Executor'} has not been checked for this target.`
   return executorPreflight.value.message
 })
 const executorStatusClass = computed(() => {
@@ -168,7 +169,7 @@ async function submitTask() {
   isSaving.value = true
   errorMessage.value = null
   try {
-    if (executor.value === 'claude_code') {
+    if (executor.value === 'claude_code' || executor.value === 'kimi_code') {
       const preflight = await checkExecutor()
       if (preflight?.status === 'unavailable') {
         errorMessage.value = preflight.message
@@ -224,7 +225,7 @@ async function checkExecutor(): Promise<ExecutorPreflightResult | null> {
   }
   if (!targetWorkingDirectory.value.trim().startsWith('/')) {
     executorPreflight.value = {
-      executor: 'claude_code',
+      executor: executor.value,
       status: 'unavailable',
       code: 'executor_workspace_unavailable',
       message: 'Target directory must be an existing absolute directory.',
@@ -438,7 +439,7 @@ function resetScheduleForMode(mode: ExecutionMode) {
             {{ executorStatusText }}
           </div>
           <button
-            v-if="executor === 'claude_code'"
+            v-if="executor === 'claude_code' || executor === 'kimi_code'"
             class="min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
             :disabled="isCheckingExecutor || targetWorkingDirectory.trim().length === 0"

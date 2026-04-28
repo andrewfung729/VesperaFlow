@@ -2,10 +2,12 @@ import asyncio
 import inspect
 import json
 import os
+import signal
 import subprocess
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from vesperaflow_core import ExecutionSnapshot, ExecutorName, RunStatus
@@ -18,6 +20,7 @@ from vesperaflow_worker.executors import (
 from vesperaflow_worker.executors.claude_code import ClaudeCodeExecutor
 from vesperaflow_worker.executors.debug import DebugPrinterExecutor
 from vesperaflow_worker.executors.factory import build_executor
+from vesperaflow_worker.executors.kimi_code import KimiCodeExecutor
 from vesperaflow_worker.executors.router import ExecutorRouter
 from vesperaflow_worker.settings import DEFAULT_CLAUDE_ENV, WorkerSettings
 
@@ -44,6 +47,45 @@ def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
                 "print(json.dumps({"
                 "'root_loaded': root_loaded, "
                 "'workflow_loaded': 'claude_agent_sdk' in sys.modules"
+                "}))"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    loaded: dict[str, bool] = json.loads(
+        check.stdout.strip().splitlines()[-1],
+    )
+
+    assert loaded == {"root_loaded": False, "workflow_loaded": False}
+
+
+def test_worker_package_and_workflows_do_not_import_kimi_code_module() -> None:
+    env = os.environ.copy()
+    pythonpath = os.pathsep.join(
+        [
+            str(Path.cwd() / "packages/core/src"),
+            str(Path.cwd() / "apps/worker/src"),
+            env.get("PYTHONPATH", ""),
+        ]
+    )
+    env["PYTHONPATH"] = pythonpath
+    check = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib, json, sys; "
+                "import vesperaflow_worker; "
+                "mod = 'vesperaflow_worker.executors.kimi_code'; "
+                "root_loaded = mod in sys.modules; "
+                "importlib.import_module('vesperaflow_worker.workflows'); "
+                "print(json.dumps({"
+                "'root_loaded': root_loaded, "
+                "'workflow_loaded': mod in sys.modules"
                 "}))"
             ),
         ],
@@ -210,6 +252,7 @@ async def test_executor_router_rejects_unknown_executor(
     router = ExecutorRouter(
         claude_code=DebugPrinterExecutor(),
         debug_printer=DebugPrinterExecutor(),
+        kimi_code=DebugPrinterExecutor(),
     )
     invalid_snapshot = snapshot.model_copy(update={"executor": "unknown"})
 
@@ -356,6 +399,185 @@ async def test_claude_code_executor_interrupts_on_cancellation(
     assert sdk.clients[0].interrupted is True
 
 
+def test_executor_factory_builds_kimi_code_without_function_body_import() -> None:
+    executor = build_executor("kimi_code")
+    source = inspect.getsource(build_executor)
+
+    assert isinstance(executor, KimiCodeExecutor)
+    assert "from .kimi_code import" not in source
+
+
+@pytest.mark.asyncio
+async def test_executor_router_dispatches_kimi_code(
+    snapshot: ExecutionSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    kimi_snapshot = snapshot.model_copy(update={"executor": ExecutorName.KIMI_CODE})
+    executor = build_executor("auto")
+
+    outcome = await executor.execute(kimi_snapshot)
+
+    # KimiCodeExecutor fails because 'kimi' binary is not on PATH,
+    # but routing must reach it.
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_kimi_code_executor_runs_subprocess_and_writes_artifact(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    proc = _fake_subprocess(
+        stdout_lines=[b"Done from Kimi\n"],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+
+    def fake_which(_cmd: str) -> str:
+        return "/usr/bin/kimi"
+
+    monkeypatch.setattr("shutil.which", fake_which)
+    executor = KimiCodeExecutor()
+    kimi_snapshot = snapshot.model_copy(
+        update={
+            "executor": ExecutorName.KIMI_CODE,
+            "working_directory": str(run_dir),
+            "target_working_directory": str(target_dir),
+        }
+    )
+
+    outcome = await executor.execute(kimi_snapshot)
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.terminal_code == "kimi_code_completed"
+    assert outcome.result_summary == "Done from Kimi"
+    assert outcome.result_artifact_ref is not None
+    assert Path(outcome.result_artifact_ref).read_text() == "Done from Kimi"
+    result = cast(
+        dict[str, object],
+        json.loads((run_dir / "kimi-result.json").read_text()),
+    )
+    assert result == {"stdout": "Done from Kimi", "stderr": []}
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    assert args[0].endswith("kimi")
+    assert args[1:] == (
+        "--print",
+        "--final-message-only",
+        "--work-dir",
+        str(target_dir.resolve()),
+        "--yolo",
+    )
+    assert proc.stdin_data is not None
+    assert proc.stdin_data.decode("utf-8") == "Do work\n"
+
+
+@pytest.mark.asyncio
+async def test_kimi_code_executor_rejects_invalid_workspace(
+    snapshot: ExecutionSnapshot,
+) -> None:
+    outcome = await KimiCodeExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.KIMI_CODE,
+                "target_working_directory": "/tmp/does-not-exist-vespera",
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_kimi_code_executor_rejects_missing_binary(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = KimiCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.KIMI_CODE,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_kimi_code_executor_maps_nonzero_exit_to_failure(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        stderr_lines=[b"kimi: error: api key invalid\n"],
+        returncode=1,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/kimi")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = KimiCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.KIMI_CODE,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_authenticated"
+
+
+@pytest.mark.asyncio
+async def test_kimi_code_executor_cancels_on_cancelled_error(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        cancel_on_stdout=True,
+        returncode=-signal.SIGINT,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/kimi")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = KimiCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.KIMI_CODE,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.CANCELED
+    assert outcome.terminal_code == "canceled"
+
+
 @pytest.fixture
 def snapshot() -> ExecutionSnapshot:
     from datetime import UTC, datetime
@@ -483,3 +705,112 @@ def _fake_sdk(
         client_factory,
     )
     return sdk
+
+
+class FakeStreamWriter:
+    def __init__(self) -> None:
+        self._data: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self._data.append(data)
+
+    async def drain(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def data(self) -> bytes:
+        return b"".join(self._data)
+
+
+class FakeStreamReader:
+    def __init__(self, lines: list[bytes]) -> None:
+        self._lines = iter(lines)
+
+    async def readline(self) -> bytes:
+        try:
+            return next(self._lines)
+        except StopIteration:
+            return b""
+
+
+class FakeCancellingStreamReader(FakeStreamReader):
+    async def readline(self) -> bytes:
+        raise asyncio.CancelledError
+
+
+class FakeSubprocess:
+    def __init__(
+        self,
+        *,
+        stdout_lines: list[bytes],
+        stderr_lines: list[bytes] | None = None,
+        returncode: int = 0,
+        cancel_on_stdout: bool = False,
+    ) -> None:
+        self.stdout_lines = stdout_lines
+        self.stderr_lines = stderr_lines or []
+        self._returncode = returncode
+        self.cancel_on_stdout = cancel_on_stdout
+        self.calls: list[dict[str, object]] = []
+        self.stdin: FakeStreamWriter | None = None
+        self.stdout: FakeStreamReader | None = None
+        self.stderr: FakeStreamReader | None = None
+        self.pid = 12345
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    async def wait(self) -> int:
+        return self._returncode
+
+    @property
+    def stdin_data(self) -> bytes | None:
+        return self.stdin.data if self.stdin is not None else None
+
+    async def _factory(
+        self,
+        *args: str,
+        **kwargs: object,
+    ) -> "FakeSubprocess":
+        self.calls.append({"args": args, "kwargs": kwargs})
+        self.stdin = FakeStreamWriter()
+        if self.cancel_on_stdout:
+            self.stdout = FakeCancellingStreamReader(self.stdout_lines)
+        else:
+            self.stdout = FakeStreamReader(self.stdout_lines)
+        self.stderr = FakeStreamReader(self.stderr_lines)
+        returncode = kwargs.get("returncode")
+        if isinstance(returncode, int):
+            self._returncode = returncode
+        return self
+
+    @property
+    def factory(self) -> "FakeSubprocessFactory":
+        return FakeSubprocessFactory(self)
+
+
+class FakeSubprocessFactory:
+    def __init__(self, proc: FakeSubprocess) -> None:
+        self._proc = proc
+
+    async def __call__(self, *args: str, **kwargs: object) -> FakeSubprocess:
+        return await self._proc._factory(*args, **kwargs)
+
+
+def _fake_subprocess(
+    *,
+    stdout_lines: list[bytes],
+    stderr_lines: list[bytes] | None = None,
+    returncode: int = 0,
+    cancel_on_stdout: bool = False,
+) -> FakeSubprocess:
+    return FakeSubprocess(
+        stdout_lines=stdout_lines,
+        stderr_lines=stderr_lines,
+        returncode=returncode,
+        cancel_on_stdout=cancel_on_stdout,
+    )

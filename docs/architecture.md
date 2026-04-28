@@ -338,10 +338,10 @@ This component delegates a planned task to an external coding-agent runtime invo
 Primary responsibilities:
 
 - translate task content into a normalized invocation of the configured executor
-- invoke the executor inside the run's working directory through its official SDK in VesperaFlow's Worker process
-- observe and persist the executor's progress signals from the SDK event stream
+- invoke the executor inside the run's working directory through its official SDK or CLI transport in VesperaFlow's Worker process
+- observe and persist the executor's progress signals when the SDK or CLI transport exposes them
 - observe the executor's terminal outcome and translate it to backend-owned run states
-- propagate cancellation into the executor using its native SDK cancellation mechanism
+- propagate cancellation into the executor using its native cancellation mechanism
 
 By isolating executor logic behind a stable adapter, the system avoids coupling task planning to any single agent runtime or LLM provider.
 
@@ -349,28 +349,29 @@ By isolating executor logic behind a stable adapter, the system avoids coupling 
 
 MVP supports these executors:
 
-- `claude-code` — Anthropic's Claude Code, invoked via the Claude Agent SDK
+- `claude_code` — Anthropic's Claude Code, invoked via the Claude Agent SDK
+- `kimi_code` — Moonshot AI's Kimi Code, invoked via the `kimi` CLI text transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
-`codex` and `opencode` are post-MVP candidates. CLI subprocess execution is also post-MVP and is not a fallback path for the first release.
+`codex`, `opencode`, and additional executor integrations are post-MVP candidates.
 
 Executor selection is resolved at task creation time from the install-level default, an optional template default, or the task creation request. MVP stores the resolved executor on the task so every run can be traced to the executor that was intended when the task was created.
 
 #### Adapter Interface Shape
 
-The adapter is invoked from executor Activities with a small, stable SDK-oriented contract:
+The adapter is invoked from executor Activities with a small, stable executor-oriented contract:
 
 - Input: an execution snapshot containing `run_id`, the selected executor name, normalized instructions, the run's working directory, optional executor-specific parameters, and an idempotency key derived from `run_id`
-- Output: a normalized execution outcome containing terminal status (`completed` / `failed`), a short `result_summary`, optional `result_artifact_ref` (path to files written inside the working directory), a terminal-outcome code from the SDK, and a `failure_reason` category when not successful
-- Cancellation: the adapter must translate an Activity cancellation into the executor's native SDK cancellation mechanism and must not retry after a cancellation signal
+- Output: a normalized execution outcome containing terminal status (`completed` / `failed`), a short `result_summary`, optional `result_artifact_ref` (path to files written inside the working directory), a terminal-outcome code from the executor, and a `failure_reason` category when not successful
+- Cancellation: the adapter must translate an Activity cancellation into the executor's native cancellation mechanism and must not retry after a cancellation signal
 
-Executor-specific details (SDK client construction, SDK event framing, file layout conventions, and the executor's own authentication with its upstream provider) remain inside the adapter and are not exposed to the Workflow. Concrete executor modules may import their SDK at module top level, but those modules must only be reachable from Worker startup or Activity-only paths; package roots, Workflow modules, and lightweight facades must stay SDK-free for Temporal sandbox imports.
+Executor-specific details (SDK client construction, CLI process management, event framing, file layout conventions, and the executor's own authentication with its upstream provider) remain inside the adapter and are not exposed to the Workflow. Concrete executor modules may import their SDK at module top level, but those modules must only be reachable from Worker startup or Activity-only paths; package roots, Workflow modules, and lightweight facades must stay SDK-free for Temporal sandbox imports.
 
 #### Non-Goals
 
-- the adapter does not call LLM APIs directly; the executor SDK makes those calls
-- the adapter does not implement prompt construction, tool selection, tool calling, memory, or streaming agent logic; those live in the executor SDK
-- the adapter does not manage LLM provider credentials; the executor is expected to be authenticated by the user through its SDK-supported mechanism before VesperaFlow invokes it
+- the adapter does not call LLM APIs directly; the executor runtime makes those calls
+- the adapter does not implement prompt construction, tool selection, tool calling, memory, or streaming agent logic; those live in the executor runtime
+- the adapter does not manage LLM provider credentials; the executor is expected to be authenticated by the user through its supported mechanism before VesperaFlow invokes it
 
 ### 6.5 Local Data Store
 
@@ -822,8 +823,8 @@ These items were previously open and are now architectural decisions for MVP:
 - A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
-- MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code` and `debug_printer`.
-- The API preflight checks target working-directory access. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
+- MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code`, `kimi_code`, and `debug_printer`.
+- The API preflight checks target working-directory access. It also checks `kimi` binary availability for `kimi_code`. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
 - The Claude Agent SDK compatibility policy is dependency-lock driven: the Worker pins the validated SDK version and imports it normally instead of reimplementing package-version or optional-import policy at runtime.

@@ -61,22 +61,23 @@ A Temporal concept for a unit of work with side effects. VesperaFlow organizes A
 
 ### Executor
 
-An external coding-agent runtime that performs the AI work for a task. VesperaFlow invokes the executor inside a run-scoped working directory and does not implement any agent runtime itself. MVP supports SDK-based invocation only. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
+An external coding-agent runtime that performs the AI work for a task. VesperaFlow invokes the executor inside a run-scoped working directory and does not implement any agent runtime itself. MVP supports SDK-based and CLI-based invocation depending on the executor. See `docs/adr/002-execution-engine-choice.md` and `docs/architecture.md` §6.4.
 
 Supported executor for MVP:
 
-- `claude-code` — Anthropic's Claude Code, via the Claude Agent SDK
+- `claude_code` — Anthropic's Claude Code, via the Claude Agent SDK
+- `kimi_code` — Moonshot AI's Kimi Code, via the `kimi` CLI text transport
 - `debug_printer` — local runtime simulator for end-to-end workflow testing
 
-`codex`, `opencode`, and CLI subprocess integration are post-MVP candidates.
+`codex`, `opencode`, and additional executor integrations are post-MVP candidates.
 
 ### Executor Adapter
 
-The thin VesperaFlow component that invokes an `Executor` by calling into its SDK in-process, observes progress, captures the terminal outcome, and normalizes it into backend-owned run states. The adapter isolates executor-specific SDK APIs and event formats from the rest of the system. Defined in `docs/architecture.md` §6.4 and driven by `execute_agent_run` in `docs/temporal-architecture.md` §5.2.
+The thin VesperaFlow component that invokes an `Executor` by calling into its SDK in-process or spawning its CLI transport, observes progress, captures the terminal outcome, and normalizes it into backend-owned run states. The adapter isolates executor-specific APIs, process handling, and event formats from the rest of the system. Defined in `docs/architecture.md` §6.4 and driven by `execute_agent_run` in `docs/temporal-architecture.md` §5.2.
 
 ### Provider (upstream)
 
-The LLM service that an `Executor` talks to when it runs, such as Anthropic for the MVP Claude Code executor. VesperaFlow itself never calls an LLM provider API and never handles provider credentials; those concerns belong entirely to the executor SDK and the user who installed it.
+The LLM service that an `Executor` talks to when it runs, such as Anthropic for Claude Code or Moonshot AI for Kimi Code. VesperaFlow itself never calls an LLM provider API and never handles provider credentials; those concerns belong entirely to the executor runtime and the user who installed it.
 
 ### Temporal Schedule
 

@@ -18,20 +18,22 @@ this index to find the smallest document that answers the current question.
 - `temporal-architecture.md`: Workflow, Activity, Schedule, task queue, retry,
   idempotency, and replay policy.
 - `api-spec.md`: application-facing API contract.
-- `local-full-stack-runbook.md`: local Postgres, Temporal, API, Worker, and web
-  smoke path for one-time `debug_printer` execution.
+- `local-full-stack-runbook.md`: local Postgres, Temporal, API, Worker, web,
+  and opt-in live executor smoke paths.
 - `adr/`: accepted architecture decisions and rationale.
 
 ## ADR Index
 
 - `adr/001-local-first.md`: local-first scope and operational boundaries.
 - `adr/002-execution-engine-choice.md`: Temporal as the sole scheduler and
-  Claude Agent SDK as the MVP executor integration.
+  executor integration modes (SDK and CLI transport).
 - `adr/003-task-schedule-run-separation.md`: separation of Task, Schedule, Run,
   and OccurrenceOverride concepts.
 - `adr/004-security-posture.md`: local secret handling and security posture.
 - `adr/005-derived-view-states.md`: UI view states derived from backend
   semantics instead of independent labels.
+- `adr/006-kimi-code-executor.md`: Kimi Code text CLI transport decision and
+  trade-offs.
 
 ## Agent Operating Context
 

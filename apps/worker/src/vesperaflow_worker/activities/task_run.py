@@ -1,5 +1,7 @@
 """TaskRunActivities Temporal activity definitions."""
 
+import asyncio
+from contextlib import suppress
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -74,6 +76,7 @@ class TaskRunActivities:
     async def execute_agent_run(self, payload: TaskRunInput) -> ExecutorOutcome:
         if isinstance(payload, dict):
             payload = TaskRunInput.model_validate(payload)
+        heartbeat_task = asyncio.create_task(_heartbeat_loop(interval_seconds=60))
         try:
             return await self._executor.execute(payload.execution_snapshot)
         except ExecutorUnavailableError as exc:
@@ -88,6 +91,10 @@ class TaskRunActivities:
                 failure_reason=str(exc),
                 terminal_code="executor_error",
             )
+        finally:
+            _ = heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
 
     @activity.defn(name="mark_run_completed")
     async def mark_run_completed(self, run_id: str, result_summary: str | None) -> None:
@@ -129,3 +136,18 @@ class TaskRunActivities:
 
     async def close(self) -> None:
         await self._engine.dispose()
+
+
+async def _heartbeat_loop(interval_seconds: float = 60.0) -> None:
+    """Send Temporal activity heartbeats at a fixed interval.
+
+    The interval should be well below the activity's *heartbeat_timeout*
+    (currently 5 minutes in ``TaskRunWorkflow``) so that long-running
+    executor invocations are not mistaken for dead activities.
+    """
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            activity.heartbeat()
+        except asyncio.CancelledError:
+            break

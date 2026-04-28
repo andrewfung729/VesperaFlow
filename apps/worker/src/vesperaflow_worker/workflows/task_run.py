@@ -86,7 +86,7 @@ class TaskRunWorkflow:
                 "execute_agent_run",
                 execution_payload,
                 schedule_to_close_timeout=timedelta(hours=6),
-                heartbeat_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(minutes=30),
             ),
         )
         if isinstance(outcome, dict):

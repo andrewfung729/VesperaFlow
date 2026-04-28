@@ -1,5 +1,6 @@
 """Executor availability routes."""
 
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -29,6 +30,10 @@ async def preflight_executor(
                 message="Debug printer executor is available",
             ).model_dump()
         )
+    if executor is ExecutorName.KIMI_CODE:
+        return DataEnvelope(
+            data=_kimi_code_preflight(target_working_directory).model_dump()
+        )
     return DataEnvelope(
         data=_claude_code_preflight(target_working_directory).model_dump()
     )
@@ -40,14 +45,43 @@ def _claude_code_preflight(
     workspace = _existing_directory(target_working_directory)
     if workspace is None:
         return _result(
+            executor=ExecutorName.CLAUDE_CODE,
             status=ExecutorPreflightStatus.UNAVAILABLE,
             code="executor_workspace_unavailable",
             message="target_working_directory must be an existing absolute directory",
         )
     return _result(
+        executor=ExecutorName.CLAUDE_CODE,
         status=ExecutorPreflightStatus.AVAILABLE,
         code="executor_preflight_passed",
         message="Claude Code target workspace is available",
+        details={"live": False},
+    )
+
+
+def _kimi_code_preflight(
+    target_working_directory: str | None,
+) -> ExecutorPreflightResult:
+    workspace = _existing_directory(target_working_directory)
+    if workspace is None:
+        return _result(
+            executor=ExecutorName.KIMI_CODE,
+            status=ExecutorPreflightStatus.UNAVAILABLE,
+            code="executor_workspace_unavailable",
+            message="target_working_directory must be an existing absolute directory",
+        )
+    if shutil.which("kimi") is None:
+        return _result(
+            executor=ExecutorName.KIMI_CODE,
+            status=ExecutorPreflightStatus.UNAVAILABLE,
+            code="executor_not_available",
+            message="Kimi Code CLI is not available on PATH",
+        )
+    return _result(
+        executor=ExecutorName.KIMI_CODE,
+        status=ExecutorPreflightStatus.AVAILABLE,
+        code="executor_preflight_passed",
+        message="Kimi Code target workspace is available",
         details={"live": False},
     )
 
@@ -63,13 +97,14 @@ def _existing_directory(value: str | None) -> Path | None:
 
 def _result(
     *,
+    executor: ExecutorName,
     status: ExecutorPreflightStatus,
     code: str,
     message: str,
     details: dict[str, str | bool | None] | None = None,
 ) -> ExecutorPreflightResult:
     return ExecutorPreflightResult(
-        executor=ExecutorName.CLAUDE_CODE,
+        executor=executor,
         status=status,
         code=code,
         message=message,

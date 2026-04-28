@@ -40,7 +40,7 @@ Candidates considered:
 
 Building and maintaining an agent runtime is a substantial product in its own right: prompt construction, tool selection, tool invocation, memory, streaming, safety controls, model pinning, rate-limit handling, cost accounting. These are solved and continuously improved by the existing coding-agent ecosystem and its SDKs. Reimplementing them inside VesperaFlow would duplicate work and lag behind upstream.
 
-SDK integration gives VesperaFlow structured, typed event streams, first-class cancellation, and cleaner dependency management than shelling out to a binary. CLI integration remains a possible future adapter strategy, but it is not part of MVP because subprocess semantics would add a second cancellation, logging, and error-classification path before the product has proven the core scheduling loop.
+SDK integration gives VesperaFlow structured, typed event streams, first-class cancellation, and cleaner dependency management than shelling out to a binary. CLI integration is also supported when an executor exposes its stable automation surface through the official CLI rather than a Python SDK; the adapter must still normalize cancellation, logging, artifacts, and error classification behind the same executor contract.
 
 Users who benefit from VesperaFlow already have subscriptions and configured credentials for at least one coding-agent runtime. Delegating execution to that runtime means VesperaFlow never handles provider credentials, never maintains prompt scaffolding, and inherits whatever capability upgrades the SDK ships.
 
@@ -66,32 +66,33 @@ If Temporal cannot express a future scheduling requirement cleanly, the answer i
 
 VesperaFlow will not implement an AI agent runtime. VesperaFlow will not call LLM APIs directly. All AI execution is delegated to an external coding-agent runtime invoked from a Temporal Activity.
 
-MVP supports one integration mode at the adapter layer:
+MVP supports two integration modes at the adapter layer:
 
 - **SDK integration**: VesperaFlow imports the executor's official SDK into the Worker process and drives the agent through that SDK. Progress events, tool-call traces, cancellation tokens, and typed terminal outcomes come from the SDK.
+- **CLI transport**: VesperaFlow spawns the executor's official CLI binary in a documented non-interactive mode. This is architecturally equivalent to SDK integration—VesperaFlow does not own the agent loop, prompts, or tool-calling logic—and is used when an executor's stable official transport is the CLI rather than an in-process SDK.
 
-Supported executor for MVP:
+Supported executors for MVP:
 
-- `claude-code` — Anthropic's Claude Code, via the Claude Agent SDK
+- `claude-code` — Anthropic's Claude Code, via the Claude Agent SDK (SDK integration)
+- `kimi_code` — Moonshot AI's Kimi Code, via the `kimi` CLI non-interactive text transport
 - `debug_printer` — local runtime simulator for end-to-end workflow testing
 
-`codex`, `opencode`, and CLI subprocess integrations are post-MVP candidates. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
+`codex`, `opencode`, and additional executor integrations are post-MVP candidates. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
 
 - accepts VesperaFlow's normalized instructions
 - performs the AI work against its own configured upstream LLM provider
 - writes output artifacts into the run's working directory
 - reports terminal success or failure through a normalized outcome
-- supports cancellation through its SDK-native mechanism
+- supports cancellation through its native mechanism (SDK cancel token or process signal)
 
 Executor and integration-mode selection:
 
-- MVP supports install-level defaults of `claude_code` or `debug_printer`
-- templates may optionally declare a default executor; valid resolved values are `claude_code` and `debug_printer`
+- MVP supports install-level defaults of `claude_code`, `kimi_code`, or `debug_printer`
+- templates may optionally declare a default executor; valid resolved values are `claude_code`, `kimi_code`, and `debug_printer`
 - the domain model stores the resolved executor on `Task.executor` for traceability and future multi-executor support
-- integration mode is not configurable in MVP; SDK is the only supported mode
+- integration mode is selected by the executor adapter and is not configurable per task in MVP
 - the configured default is recorded in environment configuration, not in the database
 - per-task UI switching is available for choosing between the supported MVP executors
-- CLI subprocess integration is deferred and should be introduced only if an executor cannot provide a stable SDK or if process isolation becomes a concrete requirement
 - the Claude Agent SDK dependency pin and lockfile are the source of truth for the validated SDK version; runtime preflight verifies importability and optional live execution instead of reimplementing version policy
 - one-time deferred tasks use one dedicated Temporal Schedule per product `Schedule`; VesperaFlow does not use a shared dispatcher Schedule for MVP
 
@@ -103,15 +104,15 @@ Positive:
 - recurring schedules map cleanly to Temporal Schedules
 - VesperaFlow does not maintain any prompt engineering, tool-calling loop, or model-specific code
 - VesperaFlow never holds LLM provider credentials; each executor authenticates itself against its upstream service
-- the user keeps using the Claude Code capability and subscription they already rely on
-- capability improvements in the Claude Agent SDK flow through to VesperaFlow with minimal adapter changes
+- the user keeps using the coding-agent capabilities and subscriptions they already rely on
+- capability improvements in the executor runtime flow through to VesperaFlow with minimal adapter changes
 - SDK integration gives better observability and cancellation than subprocess integration
 
 Negative:
 
 - MVP gains a nontrivial operational component (Temporal server) that must run locally
 - Workflow code must follow determinism rules and versioning discipline
-- VesperaFlow depends on the presence and correct local installation of the supported Claude Agent SDK runtime
-- cancellation, timeout, and output semantics are initially coupled to the Claude Agent SDK; later executors must conform to the normalized adapter contract
+- VesperaFlow depends on the presence and correct local installation of the supported executor runtime
+- cancellation, timeout, and output semantics vary by executor and must conform to the normalized adapter contract
 - importing a third-party agent SDK in-process couples the Worker's Python dependency graph to that SDK's version; the adapter must isolate this coupling
 - observability of the agent's internal behavior is limited to what the SDK surfaces; VesperaFlow cannot inspect provider API calls directly

@@ -11,6 +11,7 @@ from .base import ExecutorAdapter, ExecutorUnavailableError
 @dataclass(slots=True)
 class ExecutorRouter(ExecutorAdapter):
     claude_code: ExecutorAdapter
+    kimi_code: ExecutorAdapter
     debug_printer: ExecutorAdapter
 
     @override
@@ -19,4 +20,6 @@ class ExecutorRouter(ExecutorAdapter):
             return await self.claude_code.execute(snapshot)
         if snapshot.executor is ExecutorName.DEBUG_PRINTER:
             return await self.debug_printer.execute(snapshot)
+        if snapshot.executor is ExecutorName.KIMI_CODE:
+            return await self.kimi_code.execute(snapshot)
         raise ExecutorUnavailableError(f"unknown executor: {snapshot.executor}")
