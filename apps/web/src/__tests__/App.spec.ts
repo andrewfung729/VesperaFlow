@@ -340,6 +340,33 @@ describe('App', () => {
     )
   })
 
+  it('checks Codex availability before creating a Codex task', async () => {
+    const fetchMock = stubFetch()
+    const { wrapper } = await mountAppAt('/compose')
+
+    await wrapper.get('input[placeholder="Nightly Deep Research"]').setValue('Codex Task')
+    await wrapper.get('textarea').setValue('Run this with Codex.')
+    const targetInput = wrapper
+      .findAll('input[type="text"]')
+      .find((input) => input.attributes('placeholder') === '/Users/you/project')
+    if (!targetInput) throw new Error('Expected target directory input to render')
+    await targetInput.setValue('/tmp')
+    const executorSelect = wrapper.findAll('select')[1]
+    if (!executorSelect) throw new Error('Expected executor select to render')
+    await executorSelect.setValue('codex')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/executors/preflight?executor=codex&target_working_directory=%2Ftmp'),
+      expect.any(Object),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('navigates to task detail from a board card', async () => {
     stubFetch()
     const { router, wrapper } = await mountAppAt('/board')

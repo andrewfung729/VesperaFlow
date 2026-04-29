@@ -200,6 +200,19 @@ async def test_create_task_accepts_debug_printer_executor(
 
 
 @pytest.mark.asyncio
+async def test_create_task_accepts_codex_executor(
+    client: AsyncClient,
+) -> None:
+    payload = _create_payload()
+    payload["executor"] = "codex"
+
+    response = await client.post("/api/v1/tasks", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["data"]["task"]["executor"] == "codex"
+
+
+@pytest.mark.asyncio
 async def test_executor_preflight_classifies_workspace_unavailable(
     client: AsyncClient,
 ) -> None:
@@ -235,6 +248,73 @@ async def test_executor_preflight_accepts_existing_workspace(
     assert body["status"] == "available"
     assert body["code"] == "executor_preflight_passed"
     assert body["details"] == {"live": False}
+
+
+@pytest.mark.asyncio
+async def test_codex_preflight_accepts_existing_workspace(
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "codex",
+            "target_working_directory": str(tmp_path),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["executor"] == "codex"
+    assert body["status"] == "available"
+    assert body["code"] == "executor_preflight_passed"
+    assert body["details"] == {"live": False}
+
+
+@pytest.mark.asyncio
+async def test_codex_preflight_rejects_missing_workspace(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "codex",
+            "target_working_directory": "/tmp/does-not-exist-vespera",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["status"] == "unavailable"
+    assert body["code"] == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_codex_preflight_rejects_missing_binary(
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "codex",
+            "target_working_directory": str(tmp_path),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["status"] == "unavailable"
+    assert body["code"] == "executor_not_available"
 
 
 @pytest.mark.asyncio
@@ -668,6 +748,19 @@ async def test_create_task_with_template_uses_template_default_executor(
     task = response.json()["data"]["task"]
     assert task["template_id"] == template["template_id"]
     assert task["executor"] == "debug_printer"
+
+
+@pytest.mark.asyncio
+async def test_template_creation_accepts_codex_default_executor(
+    client: AsyncClient,
+) -> None:
+    payload = _template_payload()
+    payload["default_executor"] = "codex"
+
+    response = await client.post("/api/v1/templates", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["data"]["default_executor"] == "codex"
 
 
 @pytest.mark.asyncio

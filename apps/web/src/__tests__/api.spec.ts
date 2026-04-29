@@ -78,16 +78,16 @@ describe('api', () => {
     })
   })
 
-  it('requests executor preflight with the target workspace', async () => {
+  it('requests Codex preflight with the target workspace', async () => {
     const fetchMock = vi.fn<typeof fetch>(
       async () =>
         new Response(
           JSON.stringify({
             data: {
-              executor: 'claude_code',
+              executor: 'codex',
               status: 'available',
               code: 'executor_preflight_passed',
-              message: 'Claude Code target workspace is available',
+              message: 'Codex target workspace is available',
               details: { live: false },
             },
           }),
@@ -97,14 +97,14 @@ describe('api', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await preflightExecutor({
-      executor: 'claude_code',
+      executor: 'codex',
       target_working_directory: '/tmp/project',
     })
 
     expect(result.status).toBe('available')
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(
-        '/executors/preflight?executor=claude_code&target_working_directory=%2Ftmp%2Fproject',
+        '/executors/preflight?executor=codex&target_working_directory=%2Ftmp%2Fproject',
       ),
       expect.any(Object),
     )

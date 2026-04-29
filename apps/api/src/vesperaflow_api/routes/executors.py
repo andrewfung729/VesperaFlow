@@ -34,6 +34,10 @@ async def preflight_executor(
         return DataEnvelope(
             data=_kimi_code_preflight(target_working_directory).model_dump()
         )
+    if executor is ExecutorName.CODEX:
+        return DataEnvelope(
+            data=_codex_preflight(target_working_directory).model_dump()
+        )
     return DataEnvelope(
         data=_claude_code_preflight(target_working_directory).model_dump()
     )
@@ -82,6 +86,33 @@ def _kimi_code_preflight(
         status=ExecutorPreflightStatus.AVAILABLE,
         code="executor_preflight_passed",
         message="Kimi Code target workspace is available",
+        details={"live": False},
+    )
+
+
+def _codex_preflight(
+    target_working_directory: str | None,
+) -> ExecutorPreflightResult:
+    workspace = _existing_directory(target_working_directory)
+    if workspace is None:
+        return _result(
+            executor=ExecutorName.CODEX,
+            status=ExecutorPreflightStatus.UNAVAILABLE,
+            code="executor_workspace_unavailable",
+            message="target_working_directory must be an existing absolute directory",
+        )
+    if shutil.which("codex") is None:
+        return _result(
+            executor=ExecutorName.CODEX,
+            status=ExecutorPreflightStatus.UNAVAILABLE,
+            code="executor_not_available",
+            message="Codex CLI is not available on PATH",
+        )
+    return _result(
+        executor=ExecutorName.CODEX,
+        status=ExecutorPreflightStatus.AVAILABLE,
+        code="executor_preflight_passed",
+        message="Codex target workspace is available",
         details={"live": False},
     )
 

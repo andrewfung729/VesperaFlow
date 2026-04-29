@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-04-28. Update this whenever a major area improves or
+_Last updated: 2026-04-29. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -21,10 +21,10 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/Claude/Kimi/debug executor contracts, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, Claude Code executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, Claude Code executor tests, Codex CLI JSONL executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
 | `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, Kimi text CLI executor alignment, and local full-stack runbooks are now present. |
@@ -38,7 +38,7 @@ Update this file when any of these change:
 - [x] Integration tests requiring the full Postgres/Temporal stack are opt-in and
       local-only; they will not become a required CI gate for MVP.
 - [ ] Web E2E coverage includes the MVP navigation path, but remains smoke-level.
-- [ ] Authenticated Claude Code and Kimi Code live smokes are opt-in local
+- [ ] Authenticated Claude Code, Codex, and Kimi Code live smokes are opt-in local
       verification paths and are not automated CI gates.
 - [ ] Calendar, history, and recurring todo latest-run/context paths are
       implemented for materialized recurring runs, but live recurring stack
@@ -100,3 +100,6 @@ Update this file when any of these change:
 - 2026-04-28: Aligned Kimi Code documentation with the implemented text CLI
   transport, added a Kimi live smoke runbook, and synchronized executor status
   notes across architecture, API, Temporal, MVP progress, and quality docs.
+- 2026-04-29: Added Codex CLI `codex exec` as a first-class executor behind
+  the Worker adapter boundary, including API preflight, web selectors, mocked
+  Worker/API/web coverage, and refreshed executor documentation.

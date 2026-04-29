@@ -13,6 +13,8 @@ Activities.
 - Worker settings live in `src/vesperaflow_worker/settings.py`.
 - `claude_code` invokes the Python Claude Agent SDK from an Activity, using the
   task's target working directory as SDK `cwd`.
+- `codex` invokes Codex CLI through non-interactive `codex exec --json` from an
+  Activity, using the task's target working directory as CLI `cwd`.
 
 ## Temporal Rules
 
@@ -43,7 +45,7 @@ The VS Code task `dev: worker` runs the same command.
 Environment variables use the `VESPERAFLOW_` prefix:
 
 - `VESPERAFLOW_EXECUTOR_ADAPTER`: `auto`, `router`, `debug_printer`,
-  `claude_code`, or `kimi_code`.
+  `claude_code`, `codex`, or `kimi_code`.
 - `VESPERAFLOW_CLAUDE_ENV`: optional JSON object of explicit SDK env values.
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`: optional
   Claude SDK env values loaded from the process environment or root `.env`.
@@ -64,6 +66,13 @@ Kimi Code runs via the `kimi` CLI in non-interactive text mode:
 `kimi` binary to be on `PATH` and a valid `KIMI_API_KEY` or cached OAuth token
 to be available through the CLI's own configuration. It writes
 `kimi-output.txt` and `kimi-result.json` under the run artifact directory.
+
+Codex runs via the `codex` CLI in non-interactive exec mode with `--json`,
+`--output-last-message`, `--skip-git-repo-check`, `-C <target>`,
+`--sandbox workspace-write`, and stdin prompt input. It requires the `codex`
+binary to be on `PATH` and authenticated/configured through Codex CLI itself.
+It writes `codex-last-message.txt`, `codex-events.jsonl`, and
+`codex-stderr.txt` under the run artifact directory.
 
 ## Tests
 

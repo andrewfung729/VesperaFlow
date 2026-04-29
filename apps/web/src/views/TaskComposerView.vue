@@ -27,6 +27,7 @@ const route = useRoute()
 const executorOptions: Array<{ label: string; value: ExecutorName }> = [
   { label: 'Debug Printer', value: 'debug_printer' },
   { label: 'Claude Code', value: 'claude_code' },
+  { label: 'Codex', value: 'codex' },
   { label: 'Kimi Code', value: 'kimi_code' },
 ]
 
@@ -170,7 +171,7 @@ async function submitTask() {
   isSaving.value = true
   errorMessage.value = null
   try {
-    if (executor.value === 'claude_code' || executor.value === 'kimi_code') {
+    if (executor.value !== 'debug_printer') {
       const preflight = await checkExecutor()
       if (preflight?.status === 'unavailable') {
         errorMessage.value = preflight.message
@@ -453,7 +454,7 @@ function resetScheduleForMode(mode: ExecutionMode) {
             {{ executorStatusText }}
           </div>
           <button
-            v-if="executor === 'claude_code' || executor === 'kimi_code'"
+            v-if="executor !== 'debug_printer'"
             class="min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
             :disabled="isCheckingExecutor || targetWorkingDirectory.trim().length === 0"

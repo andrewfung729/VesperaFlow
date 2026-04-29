@@ -350,10 +350,11 @@ By isolating executor logic behind a stable adapter, the system avoids coupling 
 MVP supports these executors:
 
 - `claude_code` — Anthropic's Claude Code, invoked via the Claude Agent SDK
+- `codex` — OpenAI Codex CLI, invoked via non-interactive `codex exec`
 - `kimi_code` — Moonshot AI's Kimi Code, invoked via the `kimi` CLI text transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
-`codex`, `opencode`, and additional executor integrations are post-MVP candidates.
+`opencode` and additional executor integrations are post-MVP candidates.
 
 Executor selection is resolved at task creation time from the install-level default, an optional template default, or the task creation request. MVP stores the resolved executor on the task so every run can be traced to the executor that was intended when the task was created.
 
@@ -810,7 +811,7 @@ The architecture should remain operable by one user on one machine with minimal 
 These topics are tracked as ADRs rather than remaining implicit:
 
 - `docs/adr/001-local-first.md` — why the product is local-first (scoped)
-- `docs/adr/002-execution-engine-choice.md` — why Temporal is the sole scheduling system and why MVP uses the Claude Agent SDK as the only executor integration
+- `docs/adr/002-execution-engine-choice.md` — why Temporal is the sole scheduling system and why executor runtimes stay behind Worker adapters
 - `docs/adr/003-task-schedule-run-separation.md` — why task, schedule, and run are separate domain objects
 - `docs/adr/004-security-posture.md` — MVP secrets handling and future authz extension
 - `docs/adr/005-derived-view-states.md` — why kanban state is derived from backend semantics rather than UI-only labels
@@ -823,8 +824,8 @@ These items were previously open and are now architectural decisions for MVP:
 - A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
-- MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code`, `kimi_code`, and `debug_printer`.
-- The API preflight checks target working-directory access. It also checks `kimi` binary availability for `kimi_code`. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
+- MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code`, `codex`, `kimi_code`, and `debug_printer`.
+- The API preflight checks target working-directory access. It also checks `codex` binary availability for `codex` and `kimi` binary availability for `kimi_code`. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
 - The Claude Agent SDK compatibility policy is dependency-lock driven: the Worker pins the validated SDK version and imports it normally instead of reimplementing package-version or optional-import policy at runtime.

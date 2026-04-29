@@ -13,6 +13,7 @@ class ExecutionMode(StrEnum):
 
 class ExecutorName(StrEnum):
     CLAUDE_CODE = "claude_code"
+    CODEX = "codex"
     KIMI_CODE = "kimi_code"
     DEBUG_PRINTER = "debug_printer"
 

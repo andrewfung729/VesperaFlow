@@ -57,6 +57,7 @@ const hours = Array.from({ length: 24 }, (_, hour) => hour)
 const executorOptions: Array<{ label: string; value: ExecutorName }> = [
   { label: 'Debug Printer', value: 'debug_printer' },
   { label: 'Claude Code', value: 'claude_code' },
+  { label: 'Codex', value: 'codex' },
   { label: 'Kimi Code', value: 'kimi_code' },
 ]
 const visibleRange = computed(() => rangeForMode(viewMode.value, anchorDate.value))

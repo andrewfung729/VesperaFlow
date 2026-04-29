@@ -1,6 +1,6 @@
 # VesperaFlow MVP Progress
 
-_Last updated: 2026-04-27. Update this whenever product scope or implementation
+_Last updated: 2026-04-29. Update this whenever product scope or implementation
 status changes._
 
 This is the implementation truth table for the MVP described in
@@ -30,15 +30,16 @@ Status meanings:
 
 VesperaFlow MVP is functionally complete. One-time tasks, history, templates,
 recurring lifecycle commands, recurring todo, calendar visibility, and
-occurrence overrides are wired through the owning layers. Claude Code and Kimi
-Code executor preflight, runtime classification, and artifacts are implemented;
-authenticated live executor smokes are opt-in local verification paths.
+occurrence overrides are wired through the owning layers. Claude Code, Codex,
+and Kimi Code executor preflight, runtime classification, and artifacts are
+implemented; authenticated live executor smokes are opt-in local verification
+paths.
 
 ## Feature Progress
 
 | MVP Feature | Status | Current Implementation Evidence | Remaining Gap |
 |---|---|---|---|
-| Create one-time deferred task | Partial | API route and repository create a task, single-run schedule, planned run, target working directory, and Temporal Schedule; web composer creates one-time tasks and gates Claude Code task creation through executor preflight; an opt-in full-stack `debug_printer` smoke test covers local Postgres, Temporal, API, Worker, and persisted run state. Run-now endpoint and UI button allow triggering a planned one-time task immediately. | Need a recorded live success path for the selected production executor. Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
+| Create one-time deferred task | Partial | API route and repository create a task, single-run schedule, planned run, target working directory, and Temporal Schedule; web composer creates one-time tasks and gates Claude Code, Codex, and Kimi Code task creation through executor preflight; an opt-in full-stack `debug_printer` smoke test covers local Postgres, Temporal, API, Worker, and persisted run state. Run-now endpoint and UI button allow triggering a planned one-time task immediately. | Need a recorded live success path for the selected production executor. Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
 | Create recurring scheduled task | Partial | Store/API now create recurring tasks with one active `recurring_rule` schedule, validate RRULE/timezone inputs, create/update/pause/resume/cancel the matching Temporal Schedule, lazily materialize each schedule-fired occurrence into an idempotent run via `occurrence_key`, expose recurring tasks in the recurring todo view, project recurring occurrences into calendar, and support single-occurrence overrides. Repository, API, replay, web unit, and web smoke coverage exercise the core lifecycle, todo read model, calendar projection, and override commands. The end-to-end path was manually verified on the local stack. | Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
 | Review planned and completed work | Partial | Task detail returns task, schedule, latest run, and runs; one-time board groups tasks by status; `/api/v1/views/history` and the web History route show completed/failed runs across tasks with status and execution-mode filters; `/api/v1/views/recurring-todo` and the web recurring todo route show active/paused recurring commitments with latest-run context; `/api/v1/views/calendar` and the web Calendar route show one-time and recurring planned work across day/week/month views. Recurring materialized runs use the same run/history model. | Broaden web behavior coverage beyond smoke-level. |
 | Separate planning from execution | Partial | One-time task creation stores intent and a planned run before execution; recurring task creation stores the parent definition before Temporal fires, and the first Workflow Activity materializes occurrence runs without DB access in Workflow code. Occurrence overrides are PostgreSQL state, canceled occurrences are skipped by the existing first persistence Activity, and moved later occurrences wait on a Temporal Workflow timer. | Add stronger live integration coverage. |
@@ -47,7 +48,7 @@ authenticated live executor smokes are opt-in local verification paths.
 | One-time kanban view | Done | `/api/v1/views/kanban` supports an `include_canceled` query parameter (default `false`) aligned with UX rules; `KanbanBoardView.vue` has a "Show canceled" toggle, loading spinner, global empty state, and per-column empty states. Web/API tests cover the default hidden-canceled and explicit shown-canceled paths. | Future hardening can add drag-and-drop or more advanced filtering, but the MVP kanban lifecycle is wired. |
 | Recurring todo view | Done | Store read model lists recurring tasks only, with active schedules sorted by `next_run_at` before paused schedules sorted by recent update; `/api/v1/views/recurring-todo` exposes latest-run context; the web route groups scheduled and paused items, links to task detail, and supports pause/resume from the list. Repository, API, web unit, and Playwright smoke coverage exist. | Future hardening can add richer recurrence copy. |
 | History view for run review | Done | Store history query, `/api/v1/views/history`, and `HistoryView.vue` list completed/failed runs in reverse finished order, filter by outcome and execution mode, and link items back to task detail with selected run context. Repository, API, web unit, and Playwright smoke coverage exist. | Recurring runs will appear through the same read model once M3 materializes them. |
-| Executor integration | Done | Worker workflow, activities, executor router, debug printer, Claude Agent SDK invocation, Kimi CLI text invocation, API workspace preflight endpoints for both executors, and composer preflight UX exist; Claude and Kimi output artifacts and auth, misconfiguration, workspace, and execution failure classifications are covered with mocked Worker/API/web tests. Authenticated live executor smokes are documented as opt-in local verification paths. | Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
+| Executor integration | Done | Worker workflow, activities, executor router, debug printer, Claude Agent SDK invocation, Codex CLI JSONL invocation, Kimi CLI text invocation, API workspace preflight endpoints for production executors, and composer preflight UX exist; Claude, Codex, and Kimi output artifacts and auth, misconfiguration, workspace, and execution failure classifications are covered with mocked Worker/API/web tests. Authenticated live executor smokes are documented as opt-in local verification paths. | Full-stack smoke stays opt-in and local-only; it will not become a required CI gate for MVP. |
 | Temporal production hardening | Partial | One-time and recurring Temporal Schedule client paths exist; repo check enforces Temporal as sole scheduler; `TaskRunWorkflow` has replay coverage for completed, failed, canceled, and pre-execution-canceled paths. | Add rollout/versioning discipline. Live recurring full-stack smoke was manually verified on the local stack. |
 
 ## Layer Readiness
@@ -58,7 +59,7 @@ authenticated live executor smokes are opt-in local verification paths.
 | Core domain package | Partial | Shared enums, contracts, IDs, recurrence validation, occurrence-key helpers, occurrence edit enums, status derivation, and template default validation exist. |
 | Store | Partial | Task, schedule, run, template, and occurrence override tables exist, including target working directory, terminal-run history index, recurring run `occurrence_key` idempotency, template archive support, copy-on-instantiate repository coverage, calendar projection, and scoped occurrence overrides. |
 | API | Partial | One-time and recurring task lifecycle endpoints, occurrence update/cancel endpoints, schedule/run/detail, kanban with optional canceled visibility, history, recurring todo, calendar, executor preflight, and template CRUD/archive/instantiate endpoints exist. |
-| Worker | Partial | TaskRunWorkflow, activities, debug printer, Claude Agent SDK executor, Kimi CLI text executor, recurring materialization, and import-hygiene/replay coverage exist; authenticated live executor and recurring smokes are opt-in local verification paths. |
+| Worker | Partial | TaskRunWorkflow, activities, debug printer, Claude Agent SDK executor, Codex CLI executor, Kimi CLI text executor, recurring materialization, and import-hygiene/replay coverage exist; authenticated live executor and recurring smokes are opt-in local verification paths. |
 | Web | Partial | Composer, one-time board with canceled toggle and empty states, task detail, history, recurring todo, day/week/month calendar with item and creation modals, template management, template target-directory prefill, executor selection, executor preflight visibility, and target directory capture exist. |
 | Verification | Partial | Unit/API/web smoke checks exist; generated facts are present; replay coverage exists for `TaskRunWorkflow`; opt-in full-stack one-time smoke exists for local Postgres/Temporal/API/Worker; Playwright covers the MVP navigation path with mocked API data. | Full-stack smoke is intentionally opt-in and local-only; it is not a required CI gate for MVP. |
 
@@ -70,7 +71,7 @@ MVP is complete. Future work beyond MVP should be planned in new active plans.
 
 - The MVP scope in docs is broader than the implemented product surface; new
   agents should not assume every specified endpoint or view exists.
-- Claude Agent SDK and Kimi CLI text executors, runtime classification, and
+- Claude Agent SDK, Codex CLI, and Kimi CLI text executors, runtime classification, and
   authenticated live executor smoke paths exist; they are not in automated CI
   coverage.
 - Calendar and occurrence override semantics are implemented in the

@@ -206,10 +206,11 @@ Executor Activities delegate AI execution to an external coding-agent runtime in
 Supported executor:
 
 - `claude_code` via the Claude Agent SDK
+- `codex` via Codex CLI `codex exec --json`
 - `kimi_code` via the `kimi` CLI text transport
 - `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
 
-`codex`, `opencode`, and additional executor integrations are post-MVP candidates.
+`opencode` and additional executor integrations are post-MVP candidates.
 
 Candidate Activities:
 
@@ -238,6 +239,7 @@ Secrets handling rules for Executor Activities:
 - VesperaFlow does not store or manage LLM provider credentials; the executor runtime is expected to be authenticated independently by the user before invocation
 - the Worker may pass explicit Claude SDK environment settings, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`, into the executor SDK's process environment; it must not pass the full Worker environment
 - the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
+- Codex authentication and configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
 - Kimi Code authentication is handled by the `kimi` CLI itself, such as through its OAuth token cache, API key environment, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
@@ -444,6 +446,12 @@ Claude Agent SDK compatibility policy:
 - The Worker dependency pin and lockfile are the source of truth for the validated SDK version.
 - API preflight verifies workspace access; live SDK behavior is verified through the normal task execution path.
 - SDK upgrades should update the dependency pin, lockfile, adapter tests, and live smoke record together.
+
+CLI executor compatibility policy:
+
+- Codex uses `codex exec --json --output-last-message --skip-git-repo-check -C <target> --sandbox workspace-write -` from a Worker Activity.
+- CLI adapters capture stdout/stderr and executor-owned summary artifacts under the run artifact directory instead of passing bulky streams through Workflow history.
+- CLI version or transport changes should update adapter tests, docs, and any local live smoke record together.
 
 ## 12. Testing And Verification
 

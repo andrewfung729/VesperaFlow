@@ -18,6 +18,7 @@ from vesperaflow_worker.executors import (
     claude_code as claude_code_module,
 )
 from vesperaflow_worker.executors.claude_code import ClaudeCodeExecutor
+from vesperaflow_worker.executors.codex_cli import CodexExecutor
 from vesperaflow_worker.executors.debug import DebugPrinterExecutor
 from vesperaflow_worker.executors.factory import build_executor
 from vesperaflow_worker.executors.kimi_code import KimiCodeExecutor
@@ -81,6 +82,45 @@ def test_worker_package_and_workflows_do_not_import_kimi_code_module() -> None:
                 "import importlib, json, sys; "
                 "import vesperaflow_worker; "
                 "mod = 'vesperaflow_worker.executors.kimi_code'; "
+                "root_loaded = mod in sys.modules; "
+                "importlib.import_module('vesperaflow_worker.workflows'); "
+                "print(json.dumps({"
+                "'root_loaded': root_loaded, "
+                "'workflow_loaded': mod in sys.modules"
+                "}))"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    loaded: dict[str, bool] = json.loads(
+        check.stdout.strip().splitlines()[-1],
+    )
+
+    assert loaded == {"root_loaded": False, "workflow_loaded": False}
+
+
+def test_worker_package_and_workflows_do_not_import_codex_cli_module() -> None:
+    env = os.environ.copy()
+    pythonpath = os.pathsep.join(
+        [
+            str(Path.cwd() / "packages/core/src"),
+            str(Path.cwd() / "apps/worker/src"),
+            env.get("PYTHONPATH", ""),
+        ]
+    )
+    env["PYTHONPATH"] = pythonpath
+    check = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib, json, sys; "
+                "import vesperaflow_worker; "
+                "mod = 'vesperaflow_worker.executors.codex_cli'; "
                 "root_loaded = mod in sys.modules; "
                 "importlib.import_module('vesperaflow_worker.workflows'); "
                 "print(json.dumps({"
@@ -243,6 +283,7 @@ async def test_executor_router_rejects_unknown_executor(
 ) -> None:
     router = ExecutorRouter(
         claude_code=DebugPrinterExecutor(),
+        codex=DebugPrinterExecutor(),
         debug_printer=DebugPrinterExecutor(),
         kimi_code=DebugPrinterExecutor(),
     )
@@ -399,6 +440,14 @@ def test_executor_factory_builds_kimi_code_without_function_body_import() -> Non
     assert "from .kimi_code import" not in source
 
 
+def test_executor_factory_builds_codex_without_function_body_import() -> None:
+    executor = build_executor("codex")
+    source = inspect.getsource(build_executor)
+
+    assert isinstance(executor, CodexExecutor)
+    assert "from .codex_cli import" not in source
+
+
 @pytest.mark.asyncio
 async def test_executor_router_dispatches_kimi_code(
     snapshot: ExecutionSnapshot,
@@ -412,6 +461,21 @@ async def test_executor_router_dispatches_kimi_code(
 
     # KimiCodeExecutor fails because 'kimi' binary is not on PATH,
     # but routing must reach it.
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_executor_router_dispatches_codex(
+    snapshot: ExecutionSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    codex_snapshot = snapshot.model_copy(update={"executor": ExecutorName.CODEX})
+    executor = build_executor("auto")
+
+    outcome = await executor.execute(codex_snapshot)
+
     assert outcome.terminal_status is RunStatus.FAILED
     assert outcome.terminal_code == "executor_not_available"
 
@@ -561,6 +625,203 @@ async def test_kimi_code_executor_cancels_on_cancelled_error(
         snapshot.model_copy(
             update={
                 "executor": ExecutorName.KIMI_CODE,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.CANCELED
+    assert outcome.terminal_code == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_runs_subprocess_and_writes_artifacts(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    proc = _fake_subprocess(
+        stdout_lines=[
+            b'{"msg":"turn.started"}\n',
+            b'{"msg":"agent_message","message":"Done from Codex"}\n',
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    executor = CodexExecutor()
+    codex_snapshot = snapshot.model_copy(
+        update={
+            "executor": ExecutorName.CODEX,
+            "working_directory": str(run_dir),
+            "target_working_directory": str(target_dir),
+        }
+    )
+
+    outcome = await executor.execute(codex_snapshot)
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.terminal_code == "codex_completed"
+    assert outcome.result_summary == "Done from Codex"
+    assert outcome.result_artifact_ref == str(run_dir / "codex-last-message.txt")
+    assert (run_dir / "codex-last-message.txt").read_text() == "Done from Codex"
+    assert (run_dir / "codex-events.jsonl").read_text() == (
+        '{"msg":"turn.started"}\n'
+        '{"msg":"agent_message","message":"Done from Codex"}\n'
+    )
+    assert (run_dir / "codex-stderr.txt").read_text() == ""
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    assert args[0].endswith("codex")
+    assert args[1:] == (
+        "exec",
+        "--json",
+        "--output-last-message",
+        str(run_dir / "codex-last-message.txt"),
+        "--skip-git-repo-check",
+        "-C",
+        str(target_dir.resolve()),
+        "--sandbox",
+        "workspace-write",
+        "-",
+    )
+    assert proc.stdin_data is not None
+    assert proc.stdin_data.decode("utf-8") == "Do work\n"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_rejects_invalid_workspace(
+    snapshot: ExecutionSnapshot,
+) -> None:
+    outcome = await CodexExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "target_working_directory": "/tmp/does-not-exist-vespera",
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_rejects_missing_binary(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = CodexExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_maps_nonzero_auth_exit_to_failure(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        stderr_lines=[b"codex: login required\n"],
+        returncode=1,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = CodexExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_authenticated"
+    assert (tmp_path / "run" / "codex-stderr.txt").read_text() == (
+        "codex: login required\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_maps_turn_failed_jsonl_to_failure(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[
+            b'{"msg":"turn.started"}\n',
+            b'{"msg":"turn.failed","error":{"message":"model unavailable"}}\n',
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = CodexExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_error"
+    assert outcome.failure_reason == "model unavailable"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_cancels_on_cancelled_error(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        cancel_on_stdout=True,
+        returncode=-signal.SIGINT,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = CodexExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "working_directory": str(tmp_path / "run"),
                 "target_working_directory": str(target_dir),
             }
         )
