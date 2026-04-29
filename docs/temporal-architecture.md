@@ -118,7 +118,8 @@ Model:
 Rules:
 
 - Pause and resume use Temporal Schedule pause and unpause operations.
-- Updating the recurrence updates both PostgreSQL schedule truth and the linked Temporal Schedule.
+- Updating the recurrence or recurring task run parameters updates both
+  PostgreSQL truth and the linked Temporal Schedule action.
 - Canceling the recurring series cancels future Temporal Schedule actions without deleting historical runs.
 - `Skip This Occurrence` is represented by `OccurrenceOverride`; the corresponding Workflow may still start, but its first persistence Activity must detect the override and complete as a no-op without invoking the executor.
 

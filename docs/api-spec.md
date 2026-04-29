@@ -657,12 +657,17 @@ Validation:
 
 Purpose:
 
-- update recurring rule for future occurrences
+- update recurring rule and run parameters for future occurrences
 
 Request:
 
 ```json
 {
+  "version": 3,
+  "title": "Weekday repo triage",
+  "instruction_source": "Review stale issues and open a short summary.",
+  "target_working_directory": "/Users/you/project",
+  "executor": "codex",
   "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;BYHOUR=8;BYMINUTE=0",
   "recurrence_timezone": "Asia/Hong_Kong"
 }
@@ -674,6 +679,8 @@ Validation:
 - recurrence rule must be valid
 - recurrence frequency must not exceed once per 15 minutes
 - if `recurrence_timezone` is omitted the server keeps the prior value
+- if `target_working_directory` is provided it must be an absolute existing directory
+- if `executor` is provided it must be one of the supported executor names
 
 ### 8.4 Pause Recurring Schedule
 
@@ -971,6 +978,7 @@ Behavior:
 Purpose:
 
 - provide a single resource for task inspection from calendar, kanban, recurring todo, or list surfaces
+- include only the latest run summary; run lists are fetched through run/history endpoints
 
 Response:
 
@@ -979,23 +987,16 @@ Response:
   "data": {
     "task": {},
     "schedule": {},
-    "template": null,
-    "recent_runs": [],
-    "current_actions": [
-      "edit",
-      "cancel",
-      "reschedule"
-    ]
+    "latest_run": null
   }
 }
 ```
 
 Behavior:
 
-- `current_actions` are derived from task and schedule state
 - recurring tasks may include relevant occurrence override context when requested from calendar
 - recurring-task actions are derived from conservative task lifecycle states (`scheduled` or `paused`) plus latest run outcome context
-- `recent_runs` returns the latest 10 runs in reverse chronological order; full history is paged through run and history endpoints
+- full run history is paged through run and history endpoints
 - archived tasks remain readable through this endpoint by id, but are omitted from default active list endpoints unless `include_archived` is provided
 
 Optional query params:
@@ -1114,5 +1115,5 @@ Recurring run failure note:
 
 - Calendar drag-reschedule is not part of MVP. All calendar rescheduling uses explicit task, schedule, or occurrence edit endpoints.
 - If drag-reschedule is added later, it should call the same schedule or occurrence mutation endpoints instead of introducing a drag-specific API.
-- Task detail includes the latest 10 runs inline and delegates longer history to paged run/history endpoints.
+- Task detail includes only the latest run summary; run lists are loaded through paged run/history endpoints.
 - `If-Match` or request-body `version` is required for all mutations of existing resources, even in the single-user local MVP.

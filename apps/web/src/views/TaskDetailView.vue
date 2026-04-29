@@ -5,9 +5,11 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   cancelTask,
   getTaskDetail,
+  getTaskRuns,
   rescheduleTask,
   updateRecurringSchedule,
   updateTask,
+  type ExecutorName,
   type Run,
   type TaskDetail,
 } from '@/api'
@@ -15,12 +17,14 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import MarkdownReader from '@/components/MarkdownReader.vue'
 import RecurrenceEditor from '@/components/RecurrenceEditor.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
+import SelectField from '@/components/SelectField.vue'
 import TextArea from '@/components/TextArea.vue'
 import TextInput from '@/components/TextInput.vue'
 import UiButton from '@/components/UiButton.vue'
 import { useRecurringTaskActions } from '@/composables/useRecurringTaskActions'
 import { formatDateTime, isFutureLocal, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { executionModeLabel } from '@/lib/executionModeDisplay'
+import { executorOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 import {
   browserRecurrenceTimezone,
@@ -52,6 +56,8 @@ const isScheduleActionPending = ref(false)
 const isEditingTask = ref(false)
 const editTitle = ref('')
 const editInstructions = ref('')
+const editExecutor = ref<ExecutorName>('debug_printer')
+const editTargetWorkingDirectory = ref('')
 const selectedRunId = computed(() => {
   const value = route.query.runId
   return typeof value === 'string' ? value : null
@@ -62,7 +68,7 @@ const selectedOccurrenceAt = computed(() => {
 })
 const selectedRun = computed(() => {
   const matchingRun = taskRuns.value.find((run) => run.run_id === selectedRunId.value)
-  return matchingRun ?? taskRuns.value[0] ?? null
+  return matchingRun ?? taskRuns.value[0] ?? selectedDetail.value?.latest_run ?? null
 })
 const isRecurringTask = computed(() => selectedDetail.value?.task.execution_mode === 'recurring')
 const isTaskEditable = computed(() => {
@@ -94,7 +100,12 @@ async function loadTaskDetail() {
   errorMessage.value = null
   try {
     selectedDetail.value = await getTaskDetail(props.taskId)
-    taskRuns.value = selectedDetail.value.runs
+    if (selectedDetail.value.task.execution_mode === 'one_time') {
+      const runsResponse = await getTaskRuns(props.taskId)
+      taskRuns.value = runsResponse.data
+    } else {
+      taskRuns.value = []
+    }
     rescheduleAt.value = selectedDetail.value.schedule?.planned_at
       ? toDateTimeLocal(selectedDetail.value.schedule.planned_at)
       : ''
@@ -134,6 +145,8 @@ function startEditTask() {
   if (!selectedDetail.value) return
   editTitle.value = selectedDetail.value.task.title
   editInstructions.value = selectedDetail.value.task.instruction_source
+  editExecutor.value = selectedDetail.value.task.executor
+  editTargetWorkingDirectory.value = selectedDetail.value.task.target_working_directory ?? ''
   isEditingTask.value = true
 }
 
@@ -141,6 +154,8 @@ function cancelEditTask() {
   isEditingTask.value = false
   editTitle.value = ''
   editInstructions.value = ''
+  editExecutor.value = 'debug_printer'
+  editTargetWorkingDirectory.value = ''
 }
 
 async function submitTaskUpdate() {
@@ -151,12 +166,32 @@ async function submitTaskUpdate() {
     errorMessage.value = 'Title and instructions are required.'
     return
   }
+  const targetWorkingDirectory = editTargetWorkingDirectory.value.trim()
+  if (isRecurringTask.value && targetWorkingDirectory.length === 0) {
+    errorMessage.value = 'Target directory is required.'
+    return
+  }
   try {
-    await updateTask(props.taskId, {
-      version: selectedDetail.value.task.version,
-      title,
-      instruction_source: instructionSource,
-    })
+    if (isRecurringTask.value && selectedDetail.value.schedule) {
+      await updateRecurringSchedule(
+        props.taskId,
+        selectedDetail.value.schedule.version,
+        selectedDetail.value.schedule.recurrence_rule ?? '',
+        selectedDetail.value.schedule.recurrence_timezone ?? browserRecurrenceTimezone(),
+        {
+          title,
+          instruction_source: instructionSource,
+          target_working_directory: targetWorkingDirectory,
+          executor: editExecutor.value,
+        },
+      )
+    } else {
+      await updateTask(props.taskId, {
+        version: selectedDetail.value.task.version,
+        title,
+        instruction_source: instructionSource,
+      })
+    }
     isEditingTask.value = false
     await loadTaskDetail()
   } catch (error) {
@@ -248,10 +283,24 @@ async function openRunArchive() {
           <template v-if="isEditingTask">
             <TextInput v-model="editTitle" label="Title" />
             <TextArea v-model="editInstructions" class="mt-4" label="Instructions" rows="9" />
+            <template v-if="isRecurringTask">
+              <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <SelectField v-model="editExecutor" label="Executor" :options="executorOptions" />
+                <TextInput
+                  v-model="editTargetWorkingDirectory"
+                  label="Target Directory"
+                  placeholder="/Users/you/project"
+                />
+              </div>
+            </template>
             <div class="mt-4 flex flex-wrap gap-3">
               <UiButton
                 variant="primary"
-                :disabled="!editTitle.trim() || !editInstructions.trim()"
+                :disabled="
+                  !editTitle.trim() ||
+                  !editInstructions.trim() ||
+                  (isRecurringTask && !editTargetWorkingDirectory.trim())
+                "
                 @click="submitTaskUpdate"
               >
                 Save Changes

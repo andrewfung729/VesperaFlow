@@ -600,19 +600,33 @@ describe('App', () => {
     if (!textarea.exists()) throw new Error('Expected textarea to render')
     await textarea.setValue('Updated recurring instructions.')
 
+    const targetInput = wrapper
+      .findAll('input[type="text"]')
+      .find((input) => input.attributes('placeholder') === '/Users/you/project')
+    if (!targetInput) throw new Error('Expected target directory input to render')
+    await targetInput.setValue('/tmp/updated-project')
+
+    const executorSelect = wrapper.find('select')
+    if (!executorSelect.exists()) throw new Error('Expected executor select to render')
+    await executorSelect.setValue('codex')
+
     const saveButton = wrapper.findAll('button').find((button) => button.text() === 'Save Changes')
     if (!saveButton) throw new Error('Expected Save Changes button to render')
     await saveButton.trigger('click')
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/tasks/task-recurring-1'),
+      expect.stringContaining('/tasks/task-recurring-1/schedule'),
       expect.objectContaining({
         method: 'PATCH',
         body: JSON.stringify({
-          version: 1,
+          version: 2,
           title: 'Updated Recurring Task',
           instruction_source: 'Updated recurring instructions.',
+          target_working_directory: '/tmp/updated-project',
+          executor: 'codex',
+          recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+          recurrence_timezone: 'Asia/Hong_Kong',
         }),
       }),
     )
@@ -680,6 +694,8 @@ function stubFetch(options: StubFetchOptions = {}) {
   let task1Instruction = 'Run this later.'
   let taskRecurring1Title = 'Active Recurring'
   let taskRecurring1Instruction = 'Run this on a recurring schedule.'
+  let taskRecurring1TargetDirectory = '/tmp'
+  let taskRecurring1Executor = 'debug_printer'
 
   const historyItems = options.historyItems ?? [
     {
@@ -871,11 +887,23 @@ function stubFetch(options: StubFetchOptions = {}) {
     }
 
     if (url.includes('/tasks/task-recurring-1/schedule') && method === 'PATCH') {
+      const requestBody = JSON.parse(String(init?.body))
+      taskRecurring1Title = requestBody.title ?? taskRecurring1Title
+      taskRecurring1Instruction = requestBody.instruction_source ?? taskRecurring1Instruction
+      taskRecurring1TargetDirectory =
+        requestBody.target_working_directory ?? taskRecurring1TargetDirectory
+      taskRecurring1Executor = requestBody.executor ?? taskRecurring1Executor
       return jsonResponse({
-        task: recurringTaskResponse('task-recurring-1', 'Active Recurring'),
+        task: {
+          ...recurringTaskResponse('task-recurring-1', taskRecurring1Title),
+          instruction_source: taskRecurring1Instruction,
+          target_working_directory: taskRecurring1TargetDirectory,
+          executor: taskRecurring1Executor,
+        },
         schedule: recurringScheduleResponse('task-recurring-1', {
           version: 3,
-          recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=15',
+          recurrence_rule:
+            requestBody.recurrence_rule ?? 'RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=15',
         }),
         run: null,
       })
@@ -952,11 +980,18 @@ function stubFetch(options: StubFetchOptions = {}) {
         taskId === 'task-recurring-1'
           ? taskRecurring1Instruction
           : 'Run this on a recurring schedule.'
+      const targetDirectory =
+        taskId === 'task-recurring-1' ? taskRecurring1TargetDirectory : '/tmp'
+      const executor = taskId === 'task-recurring-1' ? taskRecurring1Executor : 'debug_printer'
       return jsonResponse({
-        task: { ...recurringTaskResponse(taskId, title), instruction_source: instruction },
+        task: {
+          ...recurringTaskResponse(taskId, title),
+          instruction_source: instruction,
+          target_working_directory: targetDirectory,
+          executor,
+        },
         schedule: recurringScheduleResponse(taskId),
         latest_run: recurringRunResponses(taskId)[0],
-        runs: recurringRunResponses(taskId),
       })
     }
 
@@ -997,7 +1032,6 @@ function stubFetch(options: StubFetchOptions = {}) {
           failure_reason: 'Executor failed',
           occurrence_key: null,
         },
-        runs: oneTimeRunResponses('task-1'),
       })
     }
 
@@ -1038,7 +1072,6 @@ function stubFetch(options: StubFetchOptions = {}) {
           failure_reason: null,
           occurrence_key: null,
         },
-        runs: completedRunResponses('task-completed'),
       })
     }
 

@@ -377,15 +377,31 @@ async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
         f"/api/v1/tasks/{task['task_id']}/schedule",
         json={
             "version": schedule["version"],
+            "title": "Updated recurring research",
+            "instruction_source": "Find repo updates.",
+            "target_working_directory": str(Path.cwd()),
+            "executor": "codex",
             "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=30",
             "recurrence_timezone": "Asia/Hong_Kong",
         },
     )
     assert updated.status_code == 200
-    updated_schedule: dict[str, Any] = updated.json()["data"]["schedule"]
+    updated_data: dict[str, Any] = updated.json()["data"]
+    updated_task: dict[str, Any] = updated_data["task"]
+    updated_schedule: dict[str, Any] = updated_data["schedule"]
+    assert updated_task["title"] == "Updated recurring research"
+    assert updated_task["instruction_source"] == "Find repo updates."
+    assert updated_task["target_working_directory"] == str(Path.cwd())
+    assert updated_task["executor"] == "codex"
     assert updated_schedule["recurrence_rule"] == (
         "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=8;BYMINUTE=30"
     )
+
+    detail = await client.get(f"/api/v1/tasks/{task['task_id']}/detail")
+    assert detail.status_code == 200
+    detail_data: dict[str, Any] = detail.json()["data"]
+    assert detail_data["task"]["executor"] == "codex"
+    assert "runs" not in detail_data
 
     paused = await client.post(
         f"/api/v1/tasks/{task['task_id']}/schedule/pause",
@@ -416,6 +432,26 @@ async def test_recurring_task_lifecycle(api_context: ApiTestContext) -> None:
     assert canceled.status_code == 200
     assert canceled.json()["data"]["task"]["task_status"] == "canceled"
     assert canceled.json()["data"]["schedule"]["schedule_status"] == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_recurring_update_rejects_relative_target_directory(
+    client: AsyncClient,
+) -> None:
+    created = await client.post("/api/v1/tasks", json=_recurring_payload())
+    assert created.status_code == 201
+    data: dict[str, Any] = created.json()["data"]
+
+    response = await client.patch(
+        f"/api/v1/tasks/{data['task']['task_id']}/schedule",
+        json={
+            "version": data["schedule"]["version"],
+            "target_working_directory": "relative/path",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 @pytest.mark.asyncio

@@ -161,7 +161,6 @@ async function stubApi(page: Page) {
               version: 1,
             },
             latest_run: null,
-            runs: [],
           },
         },
       })
@@ -206,7 +205,6 @@ async function stubApi(page: Page) {
               version: 1,
             },
             latest_run: recurringRunResponse(),
-            runs: [recurringRunResponse()],
           },
         },
       })

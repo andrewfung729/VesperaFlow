@@ -70,7 +70,6 @@ export interface TaskDetail {
   task: Task
   schedule: Schedule | null
   latest_run: Run | null
-  runs: Run[]
 }
 
 export interface KanbanCard {
@@ -449,11 +448,18 @@ export async function updateRecurringSchedule(
   version: number,
   recurrenceRule: string,
   recurrenceTimezone: string,
+  taskUpdates: {
+    title?: string
+    instruction_source?: string
+    target_working_directory?: string
+    executor?: ExecutorName
+  } = {},
 ): Promise<TaskBundle> {
   return request<TaskBundle>(`/tasks/${taskId}/schedule`, {
     method: 'PATCH',
     body: JSON.stringify({
       version,
+      ...taskUpdates,
       recurrence_rule: recurrenceRule,
       recurrence_timezone: recurrenceTimezone,
     }),

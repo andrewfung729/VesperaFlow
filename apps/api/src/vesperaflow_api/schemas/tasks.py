@@ -64,6 +64,10 @@ class TaskUpdateRequest(BaseModel):
 class ScheduleUpdateRequest(BaseModel):
     version: int | None = None
     planned_at: datetime | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=240)
+    instruction_source: str | None = Field(default=None, min_length=1)
+    target_working_directory: str | None = Field(default=None, min_length=1)
+    executor: ExecutorName | None = None
     recurrence_rule: str | None = None
     recurrence_timezone: str | None = None
 
@@ -174,7 +178,6 @@ class TaskDetailResponse(BaseModel):
     task: TaskResponse
     schedule: ScheduleResponse | None
     latest_run: RunResponse | None
-    runs: list[RunResponse]
 
     @classmethod
     def from_detail(cls, detail: TaskDetail) -> "TaskDetailResponse":
@@ -188,7 +191,6 @@ class TaskDetailResponse(BaseModel):
             latest_run=RunResponse.from_model(detail.latest_run)
             if detail.latest_run
             else None,
-            runs=[RunResponse.from_model(run) for run in detail.runs],
         )
 
 

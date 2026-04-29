@@ -473,7 +473,8 @@ Does not own:
 ### 9.3 Schedule Editing
 
 - A single-run schedule may be rescheduled before the run starts
-- A recurring schedule may have its future recurrence changed while preserving historical runs
+- A recurring schedule may have its future recurrence, executor, target working
+  directory, title, or instruction changed while preserving historical runs
 - Editing a recurring task from calendar must support two scopes: `this_occurrence_only` and `this_and_future`
 - Schedule edits must not mutate already-finished runs
 

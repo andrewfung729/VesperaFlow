@@ -226,6 +226,11 @@ async def update_schedule(
             recurrence_timezone = (
                 payload.recurrence_timezone or current_schedule.recurrence_timezone
             )
+            target_working_directory = (
+                require_existing_absolute_directory(payload.target_working_directory)
+                if payload.target_working_directory is not None
+                else None
+            )
             if recurrence_rule is None or recurrence_timezone is None:
                 raise ValueError(
                     "recurring schedule updates require "
@@ -237,6 +242,10 @@ async def update_schedule(
                 version=version,
                 recurrence_rule=recurrence_rule,
                 recurrence_timezone=recurrence_timezone,
+                title=payload.title,
+                instruction_source=payload.instruction_source,
+                target_working_directory=target_working_directory,
+                executor=payload.executor,
             )
             schedule_ref = await scheduler.replace_recurring_schedule(
                 task=bundle.task,

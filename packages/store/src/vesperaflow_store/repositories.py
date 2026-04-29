@@ -50,7 +50,6 @@ class TaskDetail:
     task: Task
     schedule: Schedule | None
     latest_run: Run | None
-    runs: list[Run]
 
 
 @dataclass(frozen=True, slots=True)
@@ -802,9 +801,8 @@ async def update_recurring_occurrence_scope(
 async def get_task_detail(session: AsyncSession, task_id: str) -> TaskDetail:
     task = await get_task(session, task_id)
     schedule = await get_schedule_for_task(session, task_id)
-    runs = await list_runs_for_task(session, task_id)
-    latest_run = runs[0] if runs else None
-    return TaskDetail(task=task, schedule=schedule, latest_run=latest_run, runs=runs)
+    latest_run = await get_latest_run(session, task_id)
+    return TaskDetail(task=task, schedule=schedule, latest_run=latest_run)
 
 
 async def list_tasks(
@@ -997,6 +995,10 @@ async def update_recurring_task_schedule(
     version: int,
     recurrence_rule: str,
     recurrence_timezone: str,
+    title: str | None = None,
+    instruction_source: str | None = None,
+    target_working_directory: str | None = None,
+    executor: ExecutorName | None = None,
 ) -> TaskBundle:
     task = await get_task(session, task_id)
     schedule = await get_schedule_for_task(session, task_id)
@@ -1009,6 +1011,14 @@ async def update_recurring_task_schedule(
     )
 
     now = utc_now()
+    if title is not None:
+        task.title = title
+    if instruction_source is not None:
+        task.instruction_source = instruction_source
+    if target_working_directory is not None:
+        task.target_working_directory = target_working_directory
+    if executor is not None:
+        task.executor = executor
     schedule.recurrence_rule = recurrence_rule
     schedule.recurrence_timezone = recurrence_timezone
     schedule.next_run_at = (
@@ -1335,7 +1345,6 @@ async def get_one_time_kanban(
             task=task,
             schedule=schedule,
             latest_run=latest_run[0] if latest_run else None,
-            runs=latest_run,
         )
         if task.task_status is TaskStatus.RUNNING:
             board["running"].append(detail)
