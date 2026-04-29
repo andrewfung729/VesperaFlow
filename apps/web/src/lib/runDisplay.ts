@@ -1,8 +1,34 @@
 import type { Run, RunStatus } from '@/api'
 import { formatDateTime } from '@/lib/dateTime'
 
-export function runOutcome(run: Run | null | undefined): string {
-  return run?.result_summary ?? run?.failure_reason ?? 'No summary recorded.'
+export const runStatusOptions: Array<{ label: string; value: RunStatus }> = [
+  { label: 'Planned', value: 'planned' },
+  { label: 'Queued', value: 'queued' },
+  { label: 'Running', value: 'running' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Failed', value: 'failed' },
+  { label: 'Canceled', value: 'canceled' },
+]
+
+export interface RunOutcomeSource {
+  result_summary?: string | null
+  failure_reason?: string | null
+  run_status?: RunStatus | null
+  latest_run_outcome?: RunStatus | null
+}
+
+export function runOutcome(
+  run: RunOutcomeSource | null | undefined,
+  fallback: string = 'No summary recorded.',
+): string {
+  return run?.result_summary ?? run?.failure_reason ?? fallback
+}
+
+export function runOutcomeSummary(
+  run: RunOutcomeSource | null | undefined,
+  fallback: string = 'No summary',
+): string {
+  return runOutcome(run, runStatusLabel(runStatusValue(run)) ?? fallback)
 }
 
 export function occurrenceLabel(run: Run): string {
@@ -28,6 +54,15 @@ export function statusBadgeClass(status: RunStatus): string {
     case 'planned':
       return 'border-indigo-200 bg-indigo-50 text-indigo-800'
   }
+}
+
+export function runStatusLabel(status: RunStatus | null | undefined): string | null {
+  if (!status) return null
+  return runStatusOptions.find((option) => option.value === status)?.label ?? status
+}
+
+function runStatusValue(run: RunOutcomeSource | null | undefined): RunStatus | null | undefined {
+  return run?.run_status ?? run?.latest_run_outcome
 }
 
 export function runDuration(run: Run): string {

@@ -3,8 +3,16 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { getHistory, type ExecutionMode, type HistoryItem } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import ExecutionModeBadge from '@/components/ExecutionModeBadge.vue'
+import PageStatePanel from '@/components/PageStatePanel.vue'
+import RunStatusBadge from '@/components/RunStatusBadge.vue'
+import SelectField from '@/components/SelectField.vue'
+import UiButton from '@/components/UiButton.vue'
 import { formatDateTime } from '@/lib/dateTime'
+import { executionModeOptions } from '@/lib/executionModeDisplay'
 import { readableError } from '@/lib/errors'
+import { runOutcomeSummary } from '@/lib/runDisplay'
 
 const router = useRouter()
 
@@ -14,6 +22,10 @@ const isLoadingHistory = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusFilter = ref<HistoryItem['run_status'] | ''>('')
 const modeFilter = ref<ExecutionMode | ''>('')
+const terminalStatusOptions: Array<{ label: string; value: HistoryItem['run_status'] }> = [
+  { label: 'Completed', value: 'completed' },
+  { label: 'Failed', value: 'failed' },
+]
 
 onMounted(() => {
   void refreshHistory()
@@ -57,12 +69,7 @@ async function openHistoryItem(item: HistoryItem) {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-7xl">
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -78,55 +85,38 @@ async function openHistoryItem(item: HistoryItem) {
           <p class="m-0 text-sm text-slate-500 dark:text-slate-400">{{ total }} terminal runs</p>
         </div>
         <div class="flex flex-wrap items-end gap-3">
-          <label class="grid gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
-            <span>Status</span>
-            <select
-              v-model="statusFilter"
-              class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              @change="refreshHistory"
-            >
-              <option value="">All</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-            </select>
-          </label>
-          <label class="grid gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
-            <span>Mode</span>
-            <select
-              v-model="modeFilter"
-              class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              @change="refreshHistory"
-            >
-              <option value="">All</option>
-              <option value="one_time">One-Time</option>
-              <option value="recurring">Recurring</option>
-            </select>
-          </label>
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+          <SelectField
+            v-model="statusFilter"
+            compact
+            label="Status"
+            :options="terminalStatusOptions"
+            empty-label="All"
+            @change="refreshHistory"
+          />
+          <SelectField
+            v-model="modeFilter"
+            compact
+            label="Mode"
+            :options="executionModeOptions"
+            empty-label="All"
+            @change="refreshHistory"
+          />
+          <UiButton
             :disabled="isLoadingHistory"
             @click="refreshHistory"
           >
             Refresh
-          </button>
+          </UiButton>
         </div>
       </div>
 
-      <div
-        v-if="isLoadingHistory"
-        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7 text-slate-600 dark:text-slate-400"
-      >
-        Loading history...
-      </div>
-      <div
+      <PageStatePanel v-if="isLoadingHistory" spacious title="Loading history..." />
+      <PageStatePanel
         v-else-if="items.length === 0"
-        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7"
-      >
-        <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">
-          No completed or failed runs
-        </h3>
-        <p class="mb-0 text-slate-600 dark:text-slate-400">Terminal task runs will appear here.</p>
-      </div>
+        spacious
+        title="No completed or failed runs"
+        message="Terminal task runs will appear here."
+      />
       <div
         v-else
         class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
@@ -157,29 +147,18 @@ async function openHistoryItem(item: HistoryItem) {
                   {{ item.title }}
                 </button>
               </td>
-              <td class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">
-                {{ item.run_status }}
+              <td class="px-4 py-3">
+                <RunStatusBadge :status="item.run_status" />
               </td>
               <td class="px-4 py-3 text-slate-600 dark:text-slate-400">
-                <span
-                  v-if="item.execution_mode === 'recurring'"
-                  class="inline-flex rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase"
-                >
-                  Recurring
-                </span>
-                <span
-                  v-else
-                  class="inline-flex rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase"
-                >
-                  One-Time
-                </span>
+                <ExecutionModeBadge :mode="item.execution_mode" />
               </td>
               <td class="px-4 py-3 text-slate-600 dark:text-slate-400">
                 {{ formatDateTime(item.finished_at) }}
               </td>
               <td class="px-4 py-3 max-w-xs text-slate-600 dark:text-slate-400">
                 <div class="line-clamp-2 wrap-anywhere">
-                  {{ item.result_summary ?? item.failure_reason ?? 'No summary' }}
+                  {{ runOutcomeSummary(item, 'No summary') }}
                 </div>
               </td>
             </tr>

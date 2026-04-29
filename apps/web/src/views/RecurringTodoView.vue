@@ -2,29 +2,37 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import {
-  getRecurringTodo,
-  pauseRecurringTask,
-  resumeRecurringTask,
-  runTaskNow,
-  type RecurringTodoItem,
-} from '@/api'
+import { getRecurringTodo, type RecurringTodoItem } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import PageStatePanel from '@/components/PageStatePanel.vue'
+import RunStatusBadge from '@/components/RunStatusBadge.vue'
+import UiButton from '@/components/UiButton.vue'
+import { useRecurringTaskActions } from '@/composables/useRecurringTaskActions'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 import { recurrenceSummary as summarizeRecurrence } from '@/lib/recurrence'
+import { runOutcomeSummary } from '@/lib/runDisplay'
 
 const router = useRouter()
 
 const items = ref<RecurringTodoItem[]>([])
 const total = ref(0)
 const isLoadingTodo = ref(false)
-const actionTaskId = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
 
 const scheduledItems = computed(() =>
   items.value.filter((item) => item.schedule_status === 'active'),
 )
 const pausedItems = computed(() => items.value.filter((item) => item.schedule_status === 'paused'))
+
+const {
+  actionTaskId,
+  pauseTask,
+  resumeTask,
+  runNowTask,
+} = useRecurringTaskActions(refreshTodo, (message) => {
+  errorMessage.value = message
+})
 
 onMounted(() => {
   void refreshTodo()
@@ -70,44 +78,15 @@ async function editRecurrence(item: RecurringTodoItem) {
 }
 
 async function pauseItem(item: RecurringTodoItem) {
-  actionTaskId.value = item.task_id
-  errorMessage.value = null
-  try {
-    await pauseRecurringTask(item.task_id, item.schedule_version)
-    await refreshTodo()
-  } catch (error) {
-    errorMessage.value = readableError(error)
-  } finally {
-    actionTaskId.value = null
-  }
+  await pauseTask(item.task_id, item.schedule_version)
 }
 
 async function resumeItem(item: RecurringTodoItem) {
-  actionTaskId.value = item.task_id
-  errorMessage.value = null
-  try {
-    await resumeRecurringTask(item.task_id, item.schedule_version)
-    await refreshTodo()
-  } catch (error) {
-    errorMessage.value = readableError(error)
-  } finally {
-    actionTaskId.value = null
-  }
+  await resumeTask(item.task_id, item.schedule_version)
 }
 
 async function runNowItem(item: RecurringTodoItem) {
-  actionTaskId.value = item.task_id
-  errorMessage.value = null
-  try {
-    const confirmed = window.confirm(`Run "${item.title}" immediately?`)
-    if (!confirmed) return
-    await runTaskNow(item.task_id)
-    await refreshTodo()
-  } catch (error) {
-    errorMessage.value = readableError(error)
-  } finally {
-    actionTaskId.value = null
-  }
+  await runNowTask(item.task_id, item.title)
 }
 
 function recurrenceSummary(item: RecurringTodoItem): string {
@@ -115,19 +94,13 @@ function recurrenceSummary(item: RecurringTodoItem): string {
 }
 
 function latestOutcome(item: RecurringTodoItem): string {
-  if (!item.latest_run_outcome) return 'No runs yet'
-  return item.result_summary ?? item.failure_reason ?? item.latest_run_outcome
+  return runOutcomeSummary(item, 'No runs yet')
 }
 </script>
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-7xl">
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -142,36 +115,20 @@ function latestOutcome(item: RecurringTodoItem): string {
           </h2>
           <p class="m-0 text-sm text-slate-500 dark:text-slate-400">{{ total }} ongoing tasks</p>
         </div>
-        <button
-          class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+        <UiButton
           :disabled="isLoadingTodo"
           @click="refreshTodo"
         >
           Refresh
-        </button>
+        </UiButton>
       </div>
 
-      <div
-        v-if="isLoadingTodo"
-        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7 text-slate-600 dark:text-slate-400"
-      >
-        Loading recurring tasks...
-      </div>
-      <div
-        v-else-if="items.length === 0"
-        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7"
-      >
-        <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">
-          No recurring tasks yet
-        </h3>
-        <button
-          class="mt-4 min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
-          type="button"
-          @click="createRecurringTask"
-        >
+      <PageStatePanel v-if="isLoadingTodo" spacious title="Loading recurring tasks..." />
+      <PageStatePanel v-else-if="items.length === 0" spacious title="No recurring tasks yet">
+        <UiButton class="mt-4" variant="primary" @click="createRecurringTask">
           Create Recurring Task
-        </button>
-      </div>
+        </UiButton>
+      </PageStatePanel>
       <div v-else class="grid gap-7">
         <section v-if="scheduledItems.length > 0">
           <h3 class="m-0 mb-3 text-lg font-bold text-slate-950 dark:text-slate-50">Scheduled</h3>
@@ -211,50 +168,45 @@ function latestOutcome(item: RecurringTodoItem): string {
                     {{ formatDateTime(item.next_run_at) }}
                   </td>
                   <td class="px-4 py-3 max-w-xs text-slate-600 dark:text-slate-400">
-                    <span
-                      v-if="item.latest_run_outcome === 'failed'"
-                      class="mb-1 inline-flex rounded-md bg-red-50 dark:bg-red-950/30 px-2 py-1 font-semibold text-red-700 dark:text-red-300"
-                    >
-                      Failed
-                    </span>
+                    <RunStatusBadge
+                      v-if="item.latest_run_outcome"
+                      class="mb-1"
+                      :status="item.latest_run_outcome"
+                    />
                     <div class="line-clamp-2 wrap-anywhere">
                       {{ latestOutcome(item) }}
                     </div>
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="viewRuns(item)"
                       >
                         View Runs
-                      </button>
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      </UiButton>
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="runNowItem(item)"
                       >
                         Run Now
-                      </button>
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      </UiButton>
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="editRecurrence(item)"
                       >
                         Edit
-                      </button>
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      </UiButton>
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="pauseItem(item)"
                       >
                         Pause
-                      </button>
+                      </UiButton>
                     </div>
                   </td>
                 </tr>
@@ -297,42 +249,38 @@ function latestOutcome(item: RecurringTodoItem): string {
                     {{ recurrenceSummary(item) }}
                   </td>
                   <td class="px-4 py-3 max-w-xs text-slate-600 dark:text-slate-400">
-                    <span
-                      v-if="item.latest_run_outcome === 'failed'"
-                      class="mb-1 inline-flex rounded-md bg-red-50 dark:bg-red-950/30 px-2 py-1 font-semibold text-red-700 dark:text-red-300"
-                    >
-                      Failed
-                    </span>
+                    <RunStatusBadge
+                      v-if="item.latest_run_outcome"
+                      class="mb-1"
+                      :status="item.latest_run_outcome"
+                    />
                     <div class="line-clamp-2 wrap-anywhere">
                       {{ latestOutcome(item) }}
                     </div>
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex justify-end gap-2">
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="viewRuns(item)"
                       >
                         View Runs
-                      </button>
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      </UiButton>
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="editRecurrence(item)"
                       >
                         Edit
-                      </button>
-                      <button
-                        class="min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-                        type="button"
+                      </UiButton>
+                      <UiButton
+                        size="sm"
                         :disabled="actionTaskId === item.task_id"
                         @click="resumeItem(item)"
                       >
                         Resume
-                      </button>
+                      </UiButton>
                     </div>
                   </td>
                 </tr>

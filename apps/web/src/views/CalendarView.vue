@@ -10,6 +10,12 @@ import {
   type CalendarItem,
   type ExecutorName,
 } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import PageStatePanel from '@/components/PageStatePanel.vue'
+import SelectField from '@/components/SelectField.vue'
+import TextArea from '@/components/TextArea.vue'
+import TextInput from '@/components/TextInput.vue'
+import UiButton from '@/components/UiButton.vue'
 import {
   defaultDateTimeLocal,
   formatDateTime,
@@ -17,6 +23,8 @@ import {
   toDateTimeLocal,
   toIsoWithOffset,
 } from '@/lib/dateTime'
+import { executionModeCalendarClass, executionModeLabel } from '@/lib/executionModeDisplay'
+import { executorOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 
 type CalendarViewMode = 'day' | 'week' | 'month'
@@ -54,12 +62,6 @@ const newTaskTargetDirectory = ref('')
 const newTaskExecutor = ref<ExecutorName>('debug_printer')
 
 const hours = Array.from({ length: 24 }, (_, hour) => hour)
-const executorOptions: Array<{ label: string; value: ExecutorName }> = [
-  { label: 'Debug Printer', value: 'debug_printer' },
-  { label: 'Claude Code', value: 'claude_code' },
-  { label: 'Codex', value: 'codex' },
-  { label: 'Kimi Code', value: 'kimi_code' },
-]
 const visibleRange = computed(() => rangeForMode(viewMode.value, anchorDate.value))
 const rangeLabel = computed(() =>
   labelForRange(viewMode.value, visibleRange.value, anchorDate.value),
@@ -321,10 +323,6 @@ function overlapLabel(item: CalendarItem): string {
   return count > 1 ? `${count} overlapping` : 'No overlap'
 }
 
-function modeLabel(item: CalendarItem): string {
-  return item.execution_mode === 'recurring' ? 'Recurring' : 'One-time'
-}
-
 function viewModeLabel(mode: CalendarViewMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1)
 }
@@ -444,12 +442,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-7xl">
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -485,30 +478,27 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             </button>
           </div>
           <div class="flex items-center gap-2">
-            <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            <UiButton
+              class="px-3"
               :disabled="isLoading"
-              type="button"
               @click="movePeriod(-1)"
             >
               Previous
-            </button>
-            <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            </UiButton>
+            <UiButton
+              class="px-3"
               :disabled="isLoading"
-              type="button"
               @click="moveToToday"
             >
               Today
-            </button>
-            <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            </UiButton>
+            <UiButton
+              class="px-3"
               :disabled="isLoading"
-              type="button"
               @click="movePeriod(1)"
             >
               Next
-            </button>
+            </UiButton>
           </div>
           <label
             class="flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300"
@@ -516,38 +506,25 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             <input v-model="includeCompleted" type="checkbox" />
             <span>Completed</span>
           </label>
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+          <UiButton
             :disabled="isLoading"
-            type="button"
             @click="refreshCalendar"
           >
             Refresh
-          </button>
+          </UiButton>
         </div>
       </div>
 
-      <div
-        v-if="isLoading"
-        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7 text-slate-600 dark:text-slate-400"
-      >
-        Loading calendar items...
-      </div>
-      <div
+      <PageStatePanel v-if="isLoading" spacious title="Loading calendar items..." />
+      <PageStatePanel
         v-else-if="items.length === 0"
-        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
+        class="mb-4"
+        title="No upcoming AI work scheduled"
       >
-        <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">
-          No upcoming AI work scheduled
-        </h3>
-        <button
-          class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
-          type="button"
-          @click="openAddTaskModal(new Date())"
-        >
+        <UiButton variant="primary" @click="openAddTaskModal(new Date())">
           Create Task
-        </button>
-      </div>
+        </UiButton>
+      </PageStatePanel>
       <div v-if="!isLoading" class="grid gap-4">
         <div
           v-if="viewMode === 'month'"
@@ -602,11 +579,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                   v-for="item in itemsForDay(day).slice(0, 3)"
                   :key="item.calendar_item_id"
                   class="rounded-md border px-2 py-1 text-xs shadow-xs transition hover:-translate-y-px hover:shadow-sm"
-                  :class="
-                    item.execution_mode === 'recurring'
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200'
-                      : 'border-teal-200 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-200'
-                  "
+                  :class="executionModeCalendarClass(item.execution_mode)"
                   :aria-label="`${itemTime(item)} ${item.title}`"
                   role="button"
                   tabindex="0"
@@ -620,7 +593,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                     <span
                       class="rounded bg-white/80 px-1.5 py-0.5 font-semibold dark:bg-slate-900/80"
                     >
-                      {{ modeLabel(item) }}
+                      {{ executionModeLabel(item.execution_mode) }}
                     </span>
                     <span
                       v-if="item.is_occurrence_override"
@@ -696,11 +669,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                   v-for="item in itemsForHour(day, hour)"
                   :key="item.calendar_item_id"
                   class="rounded-md border p-2 shadow-xs transition hover:-translate-y-px hover:shadow-sm"
-                  :class="
-                    item.execution_mode === 'recurring'
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200'
-                      : 'border-teal-200 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-200'
-                  "
+                  :class="executionModeCalendarClass(item.execution_mode)"
                   :aria-label="`${itemTime(item)} ${item.title}`"
                   role="button"
                   tabindex="0"
@@ -716,7 +685,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                     <span
                       class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold dark:bg-slate-900/80"
                     >
-                      {{ modeLabel(item) }}
+                      {{ executionModeLabel(item.execution_mode) }}
                     </span>
                     <span
                       v-if="item.is_occurrence_override"
@@ -767,7 +736,8 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                 {{ item.title }}
               </span>
               <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                {{ formatDateTime(item.occurrence_at) }} · {{ modeLabel(item) }}
+                {{ formatDateTime(item.occurrence_at) }} ·
+                {{ executionModeLabel(item.execution_mode) }}
               </span>
             </article>
           </div>
@@ -791,7 +761,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             <p
               class="m-0 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
             >
-              {{ modeLabel(selectedItem) }}
+              {{ executionModeLabel(selectedItem.execution_mode) }}
             </p>
             <h3
               id="calendar-item-title"
@@ -800,13 +770,9 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               {{ selectedItem.title }}
             </h3>
           </div>
-          <button
-            class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50"
-            type="button"
-            @click="closeItemModal"
-          >
+          <UiButton size="sm" @click="closeItemModal">
             Close
-          </button>
+          </UiButton>
         </div>
         <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
           <dt class="font-semibold text-slate-500 dark:text-slate-400">Time</dt>
@@ -831,31 +797,24 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </dd>
         </dl>
         <div class="flex flex-wrap gap-2">
-          <button
-            class="min-h-10 rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
-            type="button"
-            @click="openSelectedTask"
-          >
+          <UiButton variant="primary" @click="openSelectedTask">
             Detail
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             v-if="selectedItem.execution_mode === 'recurring'"
-            class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="actionItemId === selectedItem.calendar_item_id"
-            type="button"
             @click="editSelectedItem"
           >
             Edit Occurrence
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             v-if="selectedItem.execution_mode === 'recurring'"
-            class="min-h-10 rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-4 font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+            variant="danger"
             :disabled="actionItemId === selectedItem.calendar_item_id"
-            type="button"
             @click="skipSelectedItem"
           >
             Skip Occurrence
-          </button>
+          </UiButton>
         </div>
       </section>
     </div>
@@ -884,13 +843,9 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               {{ editingItem.title }} · {{ formatDateTime(editingItem.occurrence_at) }}
             </p>
           </div>
-          <button
-            class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50"
-            type="button"
-            @click="editingItem = null"
-          >
+          <UiButton size="sm" @click="editingItem = null">
             Cancel
-          </button>
+          </UiButton>
         </div>
         <fieldset class="m-0 grid gap-2 border-0 p-0">
           <legend class="font-semibold text-slate-700 dark:text-slate-300">Scope</legend>
@@ -921,31 +876,20 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             </button>
           </div>
         </fieldset>
-        <label
+        <TextInput
           v-if="editScope === 'this_occurrence_only'"
-          class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300"
-        >
-          <span>Occurrence Time</span>
-          <input
-            v-model="occurrencePlannedAt"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="datetime-local"
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Instructions</span>
-          <textarea
-            v-model="occurrenceInstruction"
-            class="min-h-24 w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-          />
-        </label>
-        <button
-          class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+          v-model="occurrencePlannedAt"
+          label="Occurrence Time"
+          type="datetime-local"
+        />
+        <TextArea v-model="occurrenceInstruction" label="Instructions" min-height />
+        <UiButton
+          variant="primary"
           :disabled="actionItemId === editingItem.calendar_item_id"
           type="submit"
         >
           Save
-        </button>
+        </UiButton>
       </form>
     </div>
 
@@ -975,66 +919,31 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               New Calendar Task
             </h3>
           </div>
-          <button
-            class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50"
-            type="button"
-            @click="closeAddTaskModal"
-          >
+          <UiButton size="sm" @click="closeAddTaskModal">
             Cancel
-          </button>
+          </UiButton>
         </div>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Title</span>
-          <input
-            v-model="newTaskTitle"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="text"
-            placeholder="Run benchmark report"
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Instructions</span>
-          <textarea
-            v-model="newTaskInstructions"
-            class="min-h-24 w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            placeholder="Describe the AI work to run later..."
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Execution Time</span>
-          <input
-            v-model="newTaskPlannedAt"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="datetime-local"
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Target Directory</span>
-          <input
-            v-model="newTaskTargetDirectory"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="text"
-            placeholder="/Users/you/project"
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Executor</span>
-          <select
-            v-model="newTaskExecutor"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-          >
-            <option v-for="option in executorOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-        <button
-          class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+        <TextInput v-model="newTaskTitle" label="Title" placeholder="Run benchmark report" />
+        <TextArea
+          v-model="newTaskInstructions"
+          label="Instructions"
+          min-height
+          placeholder="Describe the AI work to run later..."
+        />
+        <TextInput v-model="newTaskPlannedAt" label="Execution Time" type="datetime-local" />
+        <TextInput
+          v-model="newTaskTargetDirectory"
+          label="Target Directory"
+          placeholder="/Users/you/project"
+        />
+        <SelectField v-model="newTaskExecutor" label="Executor" :options="executorOptions" />
+        <UiButton
+          variant="primary"
           :disabled="!canCreateTask || isCreatingTask"
           type="submit"
         >
           {{ isCreatingTask ? 'Saving...' : 'Save Task' }}
-        </button>
+        </UiButton>
       </form>
     </div>
   </div>

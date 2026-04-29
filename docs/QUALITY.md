@@ -25,7 +25,7 @@ Update this file when any of these change:
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
 | `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, Claude Code executor tests, Codex CLI JSONL executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
-| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; UI behavior coverage is still shallow. |
+| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, Kimi text CLI executor alignment, and local full-stack runbooks are now present. |
 
@@ -103,3 +103,6 @@ Update this file when any of these change:
 - 2026-04-29: Added Codex CLI `codex exec` as a first-class executor behind
   the Worker adapter boundary, including API preflight, web selectors, mocked
   Worker/API/web coverage, and refreshed executor documentation.
+- 2026-04-29: Consolidated repeated apps/web alert, form, recurrence editor,
+  execution/status badge, recurring action, and page state patterns into shared
+  components, helpers, and composables.

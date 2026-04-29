@@ -11,25 +11,25 @@ import {
   type ExecutorName,
   type TaskTemplate,
 } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import RecurrenceEditor from '@/components/RecurrenceEditor.vue'
+import SelectField from '@/components/SelectField.vue'
+import TextArea from '@/components/TextArea.vue'
+import TextInput from '@/components/TextInput.vue'
+import UiButton from '@/components/UiButton.vue'
 import { defaultDateTimeLocal, isFutureLocal, toIsoWithOffset } from '@/lib/dateTime'
+import { executionModeLabel, executionModeOptions } from '@/lib/executionModeDisplay'
+import { executorLabel, executorOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 import {
   browserRecurrenceTimezone,
   buildRecurrenceRule,
-  recurrencePreview,
   type RecurrenceCadence,
   type WeekdayCode,
-  weekdayOptions,
 } from '@/lib/recurrence'
 
 const router = useRouter()
 const route = useRoute()
-const executorOptions: Array<{ label: string; value: ExecutorName }> = [
-  { label: 'Debug Printer', value: 'debug_printer' },
-  { label: 'Claude Code', value: 'claude_code' },
-  { label: 'Codex', value: 'codex' },
-  { label: 'Kimi Code', value: 'kimi_code' },
-]
 
 const title = ref('')
 const instructions = ref('')
@@ -54,18 +54,13 @@ const selectedTemplate = computed(() => {
     templates.value.find((template) => template.template_id === selectedTemplateId.value) ?? null
   )
 })
+const templateOptions = computed(() =>
+  templates.value.map((template) => ({ label: template.name, value: template.template_id })),
+)
 const recurrenceIsValid = computed(
   () =>
     recurrenceTime.value.length > 0 &&
     (recurrenceCadence.value === 'daily' || recurrenceWeekdays.value.length > 0),
-)
-const recurrencePreviewText = computed(() =>
-  recurrencePreview(
-    recurrenceCadence.value,
-    recurrenceTime.value,
-    recurrenceWeekdays.value,
-    timezoneLabel,
-  ),
 )
 const canSave = computed(
   () =>
@@ -77,7 +72,7 @@ const canSave = computed(
 const executorStatusText = computed(() => {
   if (executor.value === 'debug_printer') return 'Debug printer is available.'
   if (!executorPreflight.value)
-    return `${executorOptions.find((o) => o.value === executor.value)?.label ?? 'Executor'} has not been checked for this target.`
+    return `${executorLabel(executor.value)} has not been checked for this target.`
   return executorPreflight.value.message
 })
 const executorStatusClass = computed(() => {
@@ -146,18 +141,6 @@ function applySelectedTemplate() {
     selectedTemplate.value.default_target_working_directory || targetWorkingDirectory.value
   executor.value = selectedTemplate.value.default_executor || executor.value
   executorPreflight.value = null
-}
-
-function toggleWeekday(day: WeekdayCode) {
-  if (recurrenceWeekdays.value.includes(day)) {
-    recurrenceWeekdays.value = recurrenceWeekdays.value.filter((value) => value !== day)
-    return
-  }
-  recurrenceWeekdays.value = [...recurrenceWeekdays.value, day].sort(
-    (left, right) =>
-      weekdayOptions.findIndex((option) => option.value === left) -
-      weekdayOptions.findIndex((option) => option.value === right),
-  )
 }
 
 async function submitTask() {
@@ -285,12 +268,7 @@ function resetScheduleForMode(mode: ExecutionMode) {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-3xl">
       <div class="mb-6">
@@ -302,149 +280,61 @@ function resetScheduleForMode(mode: ExecutionMode) {
         </h2>
       </div>
       <form class="grid gap-5" @submit.prevent="submitTask">
-        <label
+        <SelectField
           v-if="templates.length > 0"
-          class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300"
-        >
-          <span>Template</span>
-          <select
-            v-model="selectedTemplateId"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            @change="applySelectedTemplate"
-          >
-            <option value="">Blank task</option>
-            <option
-              v-for="template in templates"
-              :key="template.template_id"
-              :value="template.template_id"
-            >
-              {{ template.name }}
-            </option>
-          </select>
-        </label>
+          v-model="selectedTemplateId"
+          label="Template"
+          :options="templateOptions"
+          empty-label="Blank task"
+          @change="applySelectedTemplate"
+        />
         <div class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Mode</span>
           <div
             class="grid grid-cols-2 gap-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-1"
           >
             <button
+              v-for="option in executionModeOptions"
+              :key="option.value"
               class="min-h-10 rounded-md border px-3 font-semibold transition"
               :class="
-                executionMode === 'one_time'
+                executionMode === option.value
                   ? 'border-teal-700 bg-white text-teal-800 shadow-xs'
                   : 'border-transparent text-slate-600 hover:bg-white'
               "
               type="button"
-              @click="changeExecutionMode('one_time')"
+              @click="changeExecutionMode(option.value)"
             >
-              One-Time
-            </button>
-            <button
-              class="min-h-10 rounded-md border px-3 font-semibold transition"
-              :class="
-                executionMode === 'recurring'
-                  ? 'border-teal-700 bg-white text-teal-800 shadow-xs'
-                  : 'border-transparent text-slate-600 hover:bg-white'
-              "
-              type="button"
-              @click="changeExecutionMode('recurring')"
-            >
-              Recurring
+              {{ executionModeLabel(option.value) }}
             </button>
           </div>
         </div>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Title</span>
-          <input
-            v-model="title"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="text"
-            placeholder="Nightly Deep Research"
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Instructions</span>
-          <textarea
-            v-model="instructions"
-            class="w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            rows="9"
-            placeholder="Describe the AI work to run later..."
-          />
-        </label>
-        <label
+        <TextInput v-model="title" label="Title" placeholder="Nightly Deep Research" />
+        <TextArea
+          v-model="instructions"
+          label="Instructions"
+          rows="9"
+          placeholder="Describe the AI work to run later..."
+        />
+        <TextInput
           v-if="executionMode === 'one_time'"
-          class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300"
-        >
-          <span>Execution Time</span>
-          <input
-            v-model="plannedAt"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="datetime-local"
-          />
-        </label>
-        <div
+          v-model="plannedAt"
+          label="Execution Time"
+          type="datetime-local"
+        />
+        <RecurrenceEditor
           v-else
-          class="grid gap-4 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
-        >
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Cadence</span>
-            <select
-              v-model="recurrenceCadence"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </label>
-          <fieldset v-if="recurrenceCadence === 'weekly'" class="m-0 grid gap-2 border-0 p-0">
-            <legend class="mb-1 font-semibold text-slate-700 dark:text-slate-300">Weekdays</legend>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="day in weekdayOptions"
-                :key="day.value"
-                class="min-h-9 rounded-md border px-3 text-sm font-semibold transition"
-                :class="
-                  recurrenceWeekdays.includes(day.value)
-                    ? 'border-teal-700 bg-teal-50 text-teal-800'
-                    : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700'
-                "
-                type="button"
-                @click="toggleWeekday(day.value)"
-              >
-                {{ day.label }}
-              </button>
-            </div>
-          </fieldset>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Run Time</span>
-            <input
-              v-model="recurrenceTime"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="time"
-            />
-          </label>
-          <p class="m-0 text-sm text-slate-500 dark:text-slate-400">{{ recurrencePreviewText }}</p>
-        </div>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Target Directory</span>
-          <input
-            v-model="targetWorkingDirectory"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            type="text"
-            placeholder="/Users/you/project"
-          />
-        </label>
-        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-          <span>Executor</span>
-          <select
-            v-model="executor"
-            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-          >
-            <option v-for="option in executorOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
+          v-model:cadence="recurrenceCadence"
+          v-model:time="recurrenceTime"
+          v-model:weekdays="recurrenceWeekdays"
+          :timezone="timezoneLabel"
+        />
+        <TextInput
+          v-model="targetWorkingDirectory"
+          label="Target Directory"
+          placeholder="/Users/you/project"
+        />
+        <SelectField v-model="executor" label="Executor" :options="executorOptions" />
         <div class="grid gap-2">
           <div
             class="rounded-md border px-3 py-2 text-sm font-medium"
@@ -453,24 +343,24 @@ function resetScheduleForMode(mode: ExecutionMode) {
           >
             {{ executorStatusText }}
           </div>
-          <button
+          <UiButton
             v-if="executor !== 'debug_printer'"
-            class="min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-            type="button"
+            class="w-fit"
             :disabled="isCheckingExecutor || targetWorkingDirectory.trim().length === 0"
             @click="checkExecutor"
           >
             {{ isCheckingExecutor ? 'Checking...' : 'Check Executor' }}
-          </button>
+          </UiButton>
         </div>
         <p class="m-0 text-sm text-slate-500 dark:text-slate-400">Timezone: {{ timezoneLabel }}</p>
-        <button
-          class="min-h-10 w-fit cursor-pointer rounded-md border border-transparent bg-teal-700 px-5 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+        <UiButton
+          class="w-fit px-5"
           type="submit"
+          variant="primary"
           :disabled="!canSave || isSaving"
         >
           {{ isSaving ? 'Saving...' : 'Save Task' }}
-        </button>
+        </UiButton>
       </form>
     </section>
   </div>

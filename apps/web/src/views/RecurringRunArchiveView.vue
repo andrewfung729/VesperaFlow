@@ -3,10 +3,15 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { getTaskDetail, getTaskRuns, type Run, type RunStatus, type TaskDetail } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import PageStatePanel from '@/components/PageStatePanel.vue'
+import RunStatusBadge from '@/components/RunStatusBadge.vue'
+import SelectField from '@/components/SelectField.vue'
+import UiButton from '@/components/UiButton.vue'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 import { recurrenceSummary } from '@/lib/recurrence'
-import { occurrenceLabel, runOutcome, statusBadgeClass } from '@/lib/runDisplay'
+import { occurrenceLabel, runOutcome, runStatusOptions } from '@/lib/runDisplay'
 
 const props = defineProps<{
   taskId: string
@@ -19,6 +24,9 @@ const runs = ref<Run[]>([])
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusFilter = ref<RunStatus | ''>('')
+const archiveStatusOptions = runStatusOptions.filter((option) =>
+  ['completed', 'failed', 'running', 'planned'].includes(option.value),
+)
 
 const filteredRuns = computed(() => {
   if (!statusFilter.value) return runs.value
@@ -67,13 +75,7 @@ async function openRun(run: Run) {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-      role="alert"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-5xl">
       <div v-if="selectedDetail" class="grid gap-6">
@@ -94,13 +96,9 @@ async function openRun(run: Run) {
                 {{ runs.length }} recorded occurrences
               </p>
             </div>
-            <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50"
-              type="button"
-              @click="openTaskDetail"
-            >
+            <UiButton @click="openTaskDetail">
               Task Detail
-            </button>
+            </UiButton>
           </div>
 
           <dl class="m-0 mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -130,13 +128,7 @@ async function openRun(run: Run) {
             <div>
               <dt class="font-bold text-slate-500 dark:text-slate-400">Latest Status</dt>
               <dd class="m-0">
-                <span
-                  v-if="latestRun"
-                  class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
-                  :class="statusBadgeClass(latestRun.run_status)"
-                >
-                  {{ latestRun.run_status }}
-                </span>
+                <RunStatusBadge v-if="latestRun" :status="latestRun.run_status" />
                 <span v-else class="text-slate-500 dark:text-slate-400">No runs yet</span>
               </dd>
             </div>
@@ -148,19 +140,13 @@ async function openRun(run: Run) {
             <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">Occurrences</h3>
             <p class="m-0 text-sm text-slate-500 dark:text-slate-400">Newest first</p>
           </div>
-          <label class="grid gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
-            <span>Status</span>
-            <select
-              v-model="statusFilter"
-              class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            >
-              <option value="">All</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="running">Running</option>
-              <option value="planned">Planned</option>
-            </select>
-          </label>
+          <SelectField
+            v-model="statusFilter"
+            compact
+            label="Status"
+            :options="archiveStatusOptions"
+            empty-label="All"
+          />
         </div>
 
         <div v-if="filteredRuns.length > 0" class="grid gap-3">
@@ -180,54 +166,36 @@ async function openRun(run: Run) {
                   {{ formatDateTime(run.finished_at) }}
                 </p>
               </div>
-              <span
-                class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
-                :class="statusBadgeClass(run.run_status)"
-              >
-                {{ run.run_status }}
-              </span>
+              <RunStatusBadge :status="run.run_status" />
             </div>
             <p
               class="mt-3 mb-0 text-sm text-slate-600 dark:text-slate-400 line-clamp-2 wrap-anywhere"
             >
               {{ runOutcome(run) }}
             </p>
-            <button
-              class="mt-3 min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
-              type="button"
-              @click="openRun(run)"
-            >
+            <UiButton class="mt-3" size="sm" @click="openRun(run)">
               Read Outcome
-            </button>
+            </UiButton>
           </article>
         </div>
 
-        <div
+        <PageStatePanel
           v-else
-          class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6"
-        >
-          <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">No matching runs</h3>
-          <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {{
-              statusFilter
-                ? 'No occurrences match the selected status.'
-                : 'This recurring series has not recorded any runs yet.'
-            }}
-          </p>
-        </div>
+          title="No matching runs"
+          :message="
+            statusFilter
+              ? 'No occurrences match the selected status.'
+              : 'This recurring series has not recorded any runs yet.'
+          "
+        />
       </div>
 
-      <div
+      <PageStatePanel
         v-else
-        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7"
-      >
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
-          {{ isLoading ? 'Loading run archive...' : 'Run archive unavailable' }}
-        </h2>
-        <p class="m-0 mt-1 text-slate-600 dark:text-slate-400">
-          {{ isLoading ? 'Loading recorded occurrences.' : 'Open a recurring task first.' }}
-        </p>
-      </div>
+        spacious
+        :title="isLoading ? 'Loading run archive...' : 'Run archive unavailable'"
+        :message="isLoading ? 'Loading recorded occurrences.' : 'Open a recurring task first.'"
+      />
     </section>
   </div>
 </template>

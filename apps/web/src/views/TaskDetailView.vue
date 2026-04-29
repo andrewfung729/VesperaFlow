@@ -5,29 +5,32 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   cancelTask,
   getTaskDetail,
-  pauseRecurringTask,
   rescheduleTask,
-  resumeRecurringTask,
-  runTaskNow,
   updateRecurringSchedule,
   updateTask,
   type Run,
   type TaskDetail,
 } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import MarkdownReader from '@/components/MarkdownReader.vue'
+import RecurrenceEditor from '@/components/RecurrenceEditor.vue'
+import RunStatusBadge from '@/components/RunStatusBadge.vue'
+import TextArea from '@/components/TextArea.vue'
+import TextInput from '@/components/TextInput.vue'
+import UiButton from '@/components/UiButton.vue'
+import { useRecurringTaskActions } from '@/composables/useRecurringTaskActions'
 import { formatDateTime, isFutureLocal, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
+import { executionModeLabel } from '@/lib/executionModeDisplay'
 import { readableError } from '@/lib/errors'
 import {
   browserRecurrenceTimezone,
   buildRecurrenceRule,
   parseRecurrenceRule,
-  recurrencePreview,
   recurrenceSummary,
-  weekdayOptions,
   type RecurrenceCadence,
   type WeekdayCode,
 } from '@/lib/recurrence'
-import { runOutcome, statusBadgeClass } from '@/lib/runDisplay'
+import { runOutcome, runOutcomeSummary } from '@/lib/runDisplay'
 
 const props = defineProps<{
   taskId: string
@@ -68,14 +71,14 @@ const isTaskEditable = computed(() => {
     status !== undefined && status !== 'archived' && status !== 'running' && status !== 'completed'
   )
 })
-const recurrencePreviewText = computed(() =>
-  recurrencePreview(
-    recurrenceCadence.value,
-    recurrenceTime.value,
-    recurrenceWeekdays.value,
-    recurrenceTimezone.value,
-  ),
-)
+const {
+  isActionPending: isRecurringActionPending,
+  pauseTask,
+  resumeTask,
+  runNowTask,
+} = useRecurringTaskActions(loadTaskDetail, (message) => {
+  errorMessage.value = message
+})
 
 watch(
   () => props.taskId,
@@ -187,42 +190,17 @@ async function submitRecurrenceUpdate() {
 
 async function submitPause() {
   if (!selectedDetail.value?.schedule) return
-  isScheduleActionPending.value = true
-  errorMessage.value = null
-  try {
-    await pauseRecurringTask(props.taskId, selectedDetail.value.schedule.version)
-    await loadTaskDetail()
-  } catch (error) {
-    errorMessage.value = readableError(error)
-  } finally {
-    isScheduleActionPending.value = false
-  }
+  await pauseTask(props.taskId, selectedDetail.value.schedule.version)
 }
 
 async function submitResume() {
   if (!selectedDetail.value?.schedule) return
-  isScheduleActionPending.value = true
-  errorMessage.value = null
-  try {
-    await resumeRecurringTask(props.taskId, selectedDetail.value.schedule.version)
-    await loadTaskDetail()
-  } catch (error) {
-    errorMessage.value = readableError(error)
-  } finally {
-    isScheduleActionPending.value = false
-  }
+  await resumeTask(props.taskId, selectedDetail.value.schedule.version)
 }
 
 async function submitRunNow() {
   if (!selectedDetail.value?.task) return
-  const confirmed = window.confirm(`Run "${selectedDetail.value.task.title}" immediately?`)
-  if (!confirmed) return
-  try {
-    await runTaskNow(props.taskId)
-    await loadTaskDetail()
-  } catch (error) {
-    errorMessage.value = readableError(error)
-  }
+  await runNowTask(props.taskId, selectedDetail.value.task.title)
 }
 
 async function submitCancel() {
@@ -236,18 +214,6 @@ async function submitCancel() {
   } catch (error) {
     errorMessage.value = readableError(error)
   }
-}
-
-function toggleWeekday(day: WeekdayCode) {
-  if (recurrenceWeekdays.value.includes(day)) {
-    recurrenceWeekdays.value = recurrenceWeekdays.value.filter((value) => value !== day)
-    return
-  }
-  recurrenceWeekdays.value = [...recurrenceWeekdays.value, day].sort(
-    (left, right) =>
-      weekdayOptions.findIndex((option) => option.value === left) -
-      weekdayOptions.findIndex((option) => option.value === right),
-  )
 }
 
 function resetRecurrenceForm() {
@@ -266,12 +232,7 @@ async function openRunArchive() {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-7xl">
       <div
@@ -285,36 +246,19 @@ async function openRunArchive() {
             Task Detail
           </p>
           <template v-if="isEditingTask">
-            <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-              <span>Title</span>
-              <input
-                v-model="editTitle"
-                class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-                type="text"
-              />
-            </label>
-            <label class="mt-4 grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-              <span>Instructions</span>
-              <textarea
-                v-model="editInstructions"
-                class="w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-                rows="9"
-              />
-            </label>
+            <TextInput v-model="editTitle" label="Title" />
+            <TextArea v-model="editInstructions" class="mt-4" label="Instructions" rows="9" />
             <div class="mt-4 flex flex-wrap gap-3">
-              <button
-                class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+              <UiButton
+                variant="primary"
                 :disabled="!editTitle.trim() || !editInstructions.trim()"
                 @click="submitTaskUpdate"
               >
                 Save Changes
-              </button>
-              <button
-                class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50"
-                @click="cancelEditTask"
-              >
+              </UiButton>
+              <UiButton @click="cancelEditTask">
                 Cancel
-              </button>
+              </UiButton>
             </div>
           </template>
           <template v-else>
@@ -322,7 +266,8 @@ async function openRunArchive() {
               {{ selectedDetail.task.title }}
             </h2>
             <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
-              {{ selectedDetail.task.execution_mode }} · {{ selectedDetail.task.task_status }} ·
+              {{ executionModeLabel(selectedDetail.task.execution_mode) }} ·
+              {{ selectedDetail.task.task_status }} ·
               {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
             </p>
             <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
@@ -335,13 +280,13 @@ async function openRunArchive() {
               class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-sm text-slate-900 dark:text-slate-100 wrap-anywhere"
               >{{ selectedDetail.task.instruction_source }}</pre
             >
-            <button
+            <UiButton
               v-if="isTaskEditable"
-              class="mt-4 min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50"
+              class="mt-4 w-fit"
               @click="startEditTask"
             >
               Edit Task
-            </button>
+            </UiButton>
           </template>
           <section
             v-if="isRecurringTask"
@@ -354,13 +299,9 @@ async function openRunArchive() {
                   Read each recurring outcome in a focused single-column reader.
                 </p>
               </div>
-              <button
-                class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
-                type="button"
-                @click="openRunArchive"
-              >
+              <UiButton variant="primary" @click="openRunArchive">
                 Open Run Archive
-              </button>
+              </UiButton>
             </div>
           </section>
           <section v-else class="mt-6">
@@ -375,12 +316,7 @@ async function openRunArchive() {
                 <h4 class="m-0 text-base font-bold text-slate-950 dark:text-slate-50">
                   {{ selectedRun.run_id }}
                 </h4>
-                <span
-                  class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
-                  :class="statusBadgeClass(selectedRun.run_status)"
-                >
-                  {{ selectedRun.run_status }}
-                </span>
+                <RunStatusBadge :status="selectedRun.run_status" />
               </div>
               <dl class="m-0 mb-4 grid gap-3 text-sm sm:grid-cols-3">
                 <div>
@@ -461,19 +397,13 @@ async function openRunArchive() {
                   : 'border-slate-200 bg-white text-slate-600'
               "
             >
-              <span
+              <RunStatusBadge
                 v-if="selectedDetail.latest_run"
-                class="mb-1 inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
-                :class="statusBadgeClass(selectedDetail.latest_run.run_status)"
-              >
-                {{ selectedDetail.latest_run.run_status }}
-              </span>
+                class="mb-1"
+                :status="selectedDetail.latest_run.run_status"
+              />
               <span class="block">
-                {{
-                  selectedDetail.latest_run?.result_summary ??
-                  selectedDetail.latest_run?.failure_reason ??
-                  'Pending'
-                }}
+                {{ runOutcomeSummary(selectedDetail.latest_run, 'Pending') }}
               </span>
             </dd>
             <template v-if="selectedRun && !isRecurringTask">
@@ -481,8 +411,7 @@ async function openRunArchive() {
               <dd
                 class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 dark:text-slate-400 line-clamp-3"
               >
-                {{ selectedRun.run_status }} ·
-                {{ selectedRun.result_summary ?? selectedRun.failure_reason ?? 'No summary' }}
+                {{ selectedRun.run_status }} · {{ runOutcomeSummary(selectedRun, 'No summary') }}
               </dd>
             </template>
             <template v-if="selectedOccurrenceAt">
@@ -494,122 +423,76 @@ async function openRunArchive() {
               </dd>
             </template>
           </dl>
-          <button
+          <UiButton
             v-if="
               selectedDetail.schedule?.schedule_status === 'active' &&
               (isRecurringTask ||
                 (selectedDetail.task.task_status === 'scheduled' &&
                   selectedDetail.latest_run?.run_status === 'planned'))
             "
-            class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+            variant="primary"
+            :disabled="isRecurringActionPending"
             @click="submitRunNow"
           >
             Run Now
-          </button>
+          </UiButton>
           <template v-if="!isRecurringTask">
-            <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-              <span>Reschedule</span>
-              <input
-                v-model="rescheduleAt"
-                class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-                type="datetime-local"
-              />
-            </label>
-            <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            <TextInput v-model="rescheduleAt" label="Reschedule" type="datetime-local" />
+            <UiButton
               :disabled="!selectedDetail.schedule"
               @click="submitReschedule"
             >
               Reschedule
-            </button>
+            </UiButton>
           </template>
           <template v-else>
-            <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
-              :disabled="!selectedDetail.schedule || isScheduleActionPending"
+            <UiButton
+              :disabled="!selectedDetail.schedule || isScheduleActionPending || isRecurringActionPending"
               @click="isEditingRecurrence = !isEditingRecurrence"
             >
               {{ isEditingRecurrence ? 'Close Recurrence Editor' : 'Edit Recurrence' }}
-            </button>
+            </UiButton>
             <form
               v-if="isEditingRecurrence"
-              class="grid gap-4 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
+              class="grid gap-4"
               @submit.prevent="submitRecurrenceUpdate"
             >
-              <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-                <span>Cadence</span>
-                <select
-                  v-model="recurrenceCadence"
-                  class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                </select>
-              </label>
-              <fieldset v-if="recurrenceCadence === 'weekly'" class="m-0 grid gap-2 border-0 p-0">
-                <legend class="mb-1 font-semibold text-slate-700 dark:text-slate-300">
-                  Weekdays
-                </legend>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="day in weekdayOptions"
-                    :key="day.value"
-                    class="min-h-9 rounded-md border px-3 text-sm font-semibold transition"
-                    :class="
-                      recurrenceWeekdays.includes(day.value)
-                        ? 'border-teal-700 bg-teal-50 text-teal-800'
-                        : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700'
-                    "
-                    type="button"
-                    @click="toggleWeekday(day.value)"
-                  >
-                    {{ day.label }}
-                  </button>
-                </div>
-              </fieldset>
-              <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-                <span>Run Time</span>
-                <input
-                  v-model="recurrenceTime"
-                  class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-                  type="time"
-                />
-              </label>
-              <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
-                {{ recurrencePreviewText }}
-              </p>
-              <button
-                class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+              <RecurrenceEditor
+                v-model:cadence="recurrenceCadence"
+                v-model:time="recurrenceTime"
+                v-model:weekdays="recurrenceWeekdays"
+                :timezone="recurrenceTimezone"
+              />
+              <UiButton
+                variant="primary"
                 :disabled="isScheduleActionPending"
                 type="submit"
               >
                 {{ isScheduleActionPending ? 'Saving...' : 'Save Recurrence' }}
-              </button>
+              </UiButton>
             </form>
-            <button
+            <UiButton
               v-if="selectedDetail.schedule?.schedule_status === 'active'"
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
-              :disabled="isScheduleActionPending"
+              :disabled="isRecurringActionPending"
               @click="submitPause"
             >
               Pause
-            </button>
-            <button
+            </UiButton>
+            <UiButton
               v-if="selectedDetail.schedule?.schedule_status === 'paused'"
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
-              :disabled="isScheduleActionPending"
+              :disabled="isRecurringActionPending"
               @click="submitResume"
             >
               Resume
-            </button>
+            </UiButton>
           </template>
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-4 font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+          <UiButton
+            variant="danger"
             :disabled="!selectedDetail.schedule"
             @click="submitCancel"
           >
             {{ isRecurringTask ? 'Cancel Series' : 'Cancel Task' }}
-          </button>
+          </UiButton>
         </aside>
       </div>
       <div

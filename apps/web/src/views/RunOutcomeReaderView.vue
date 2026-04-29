@@ -3,11 +3,15 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { getTaskDetail, getTaskRuns, type Run, type TaskDetail } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
 import MarkdownReader from '@/components/MarkdownReader.vue'
+import PageStatePanel from '@/components/PageStatePanel.vue'
+import RunStatusBadge from '@/components/RunStatusBadge.vue'
+import UiButton from '@/components/UiButton.vue'
 import { useReaderPreference, type ReaderFontSize } from '@/composables/useReaderPreference'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
-import { occurrenceLabel, runDuration, runOutcome, statusBadgeClass } from '@/lib/runDisplay'
+import { occurrenceLabel, runDuration, runOutcome } from '@/lib/runDisplay'
 
 const props = defineProps<{
   taskId: string
@@ -100,13 +104,7 @@ function cycleFontSize(direction: 'down' | 'up') {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
-      role="alert"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-none">
       <div
@@ -114,38 +112,29 @@ function cycleFontSize(direction: 'down' | 'up') {
       >
         <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap gap-2">
-            <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              type="button"
-              @click="openArchive"
-            >
+            <UiButton size="sm" @click="openArchive">
               Back to Archive
-            </button>
-            <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              type="button"
+            </UiButton>
+            <UiButton
+              size="sm"
               :disabled="!previousRun"
               @click="openRun(previousRun)"
             >
               Previous Run
-            </button>
-            <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              type="button"
+            </UiButton>
+            <UiButton
+              size="sm"
               :disabled="!nextRun"
               @click="openRun(nextRun)"
             >
               Next Run
-            </button>
+            </UiButton>
           </div>
           <div class="flex items-center gap-2">
-            <span
+            <RunStatusBadge
               v-if="selectedRun"
-              class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
-              :class="statusBadgeClass(selectedRun.run_status)"
-            >
-              {{ selectedRun.run_status }}
-            </span>
+              :status="selectedRun.run_status"
+            />
             <div
               class="inline-flex items-center rounded-md border border-slate-300 bg-white shadow-xs dark:border-slate-600 dark:bg-slate-800"
             >
@@ -171,9 +160,8 @@ function cycleFontSize(direction: 'down' | 'up') {
                 A+
               </button>
             </div>
-            <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              type="button"
+            <UiButton
+              size="sm"
               :disabled="!selectedRun"
               @click="copyOutcome"
             >
@@ -184,7 +172,7 @@ function cycleFontSize(direction: 'down' | 'up') {
                     ? 'Copy Failed'
                     : 'Copy Outcome'
               }}
-            </button>
+            </UiButton>
           </div>
         </div>
       </div>
@@ -230,12 +218,7 @@ function cycleFontSize(direction: 'down' | 'up') {
             <div>
               <dt class="font-bold text-slate-500 dark:text-slate-400">Status</dt>
               <dd class="m-0">
-                <span
-                  class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
-                  :class="statusBadgeClass(selectedRun.run_status)"
-                >
-                  {{ selectedRun.run_status }}
-                </span>
+                <RunStatusBadge :status="selectedRun.run_status" />
               </dd>
             </div>
           </dl>
@@ -254,40 +237,32 @@ function cycleFontSize(direction: 'down' | 'up') {
         </div>
 
         <footer class="mx-auto mt-6 flex w-full max-w-[88ch] flex-wrap justify-between gap-3">
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            type="button"
+          <UiButton
             :disabled="!previousRun"
             @click="openRun(previousRun)"
           >
             Previous Run
-          </button>
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            type="button"
+          </UiButton>
+          <UiButton
             :disabled="!nextRun"
             @click="openRun(nextRun)"
           >
             Next Run
-          </button>
+          </UiButton>
         </footer>
       </article>
 
-      <div
+      <PageStatePanel
         v-else
         class="mx-auto max-w-5xl rounded-md border border-slate-200 bg-white p-7 dark:border-slate-700 dark:bg-slate-900"
-      >
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
-          {{ isLoading ? 'Loading outcome...' : 'Outcome unavailable' }}
-        </h2>
-        <p class="m-0 mt-1 text-slate-600 dark:text-slate-400">
-          {{
-            isLoading
-              ? 'Loading the selected run outcome.'
-              : 'This run was not found in the recurring task archive.'
-          }}
-        </p>
-      </div>
+        spacious
+        :title="isLoading ? 'Loading outcome...' : 'Outcome unavailable'"
+        :message="
+          isLoading
+            ? 'Loading the selected run outcome.'
+            : 'This run was not found in the recurring task archive.'
+        "
+      />
     </section>
   </div>
 </template>

@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { getKanban, type KanbanBoard } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import UiButton from '@/components/UiButton.vue'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 
@@ -49,12 +51,7 @@ function emptyColumns(): KanbanBoard['columns'] {
 
 <template>
   <div>
-    <div
-      v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section class="max-w-7xl">
       <div class="mb-6 flex items-center justify-between gap-4">
@@ -80,13 +77,12 @@ function emptyColumns(): KanbanBoard['columns'] {
             />
             Show canceled
           </label>
-          <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+          <UiButton
             :disabled="isLoadingBoard"
             @click="refreshBoard"
           >
             Refresh
-          </button>
+          </UiButton>
         </div>
       </div>
 

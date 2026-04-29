@@ -10,15 +10,15 @@ import {
   type ExecutorName,
   type TaskTemplate,
 } from '@/api'
+import ErrorAlert from '@/components/ErrorAlert.vue'
+import SelectField from '@/components/SelectField.vue'
+import TextArea from '@/components/TextArea.vue'
+import TextInput from '@/components/TextInput.vue'
+import UiButton from '@/components/UiButton.vue'
+import { executorOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 
 const router = useRouter()
-const executorOptions: Array<{ label: string; value: ExecutorName }> = [
-  { label: 'Debug Printer', value: 'debug_printer' },
-  { label: 'Claude Code', value: 'claude_code' },
-  { label: 'Codex', value: 'codex' },
-  { label: 'Kimi Code', value: 'kimi_code' },
-]
 const installDefaultExecutor = '' as const
 
 const templates = ref<TaskTemplate[]>([])
@@ -127,12 +127,7 @@ async function useTemplate(template: TaskTemplate) {
 
 <template>
   <div class="grid max-w-6xl gap-7">
-    <div
-      v-if="errorMessage"
-      class="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
-    >
-      {{ errorMessage }}
-    </div>
+    <ErrorAlert :message="errorMessage" />
 
     <section>
       <div class="mb-6">
@@ -194,27 +189,15 @@ async function useTemplate(template: TaskTemplate) {
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex justify-end gap-2">
-                    <button
-                      class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
-                      type="button"
-                      @click="useTemplate(template)"
-                    >
+                    <UiButton size="sm" @click="useTemplate(template)">
                       Use
-                    </button>
-                    <button
-                      class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
-                      type="button"
-                      @click="editTemplate(template)"
-                    >
+                    </UiButton>
+                    <UiButton size="sm" @click="editTemplate(template)">
                       Edit
-                    </button>
-                    <button
-                      class="min-h-9 rounded-md border border-red-200 dark:border-red-800 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-red-700 dark:text-red-300 transition hover:border-red-400 hover:bg-red-50"
-                      type="button"
-                      @click="archiveSelected(template)"
-                    >
+                    </UiButton>
+                    <UiButton size="sm" variant="danger" @click="archiveSelected(template)">
                       Archive
-                    </button>
+                    </UiButton>
                   </div>
                 </td>
               </tr>
@@ -226,79 +209,42 @@ async function useTemplate(template: TaskTemplate) {
           <h3 class="m-0 text-lg font-bold tracking-normal text-slate-950 dark:text-slate-50">
             {{ editingTemplate ? 'Edit Template' : 'New Template' }}
           </h3>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Name</span>
-            <input
-              v-model="name"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="text"
-              placeholder="Nightly Research"
-            />
-          </label>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Default Task Title</span>
-            <input
-              v-model="defaultTaskTitle"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="text"
-              placeholder="Nightly Research Run"
-            />
-          </label>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Description</span>
-            <input
-              v-model="description"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="text"
-              placeholder="Reusable research workflow"
-            />
-          </label>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Optional Target Directory</span>
-            <input
-              v-model="defaultTargetWorkingDirectory"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              type="text"
-              placeholder="/Users/you/project"
-            />
-          </label>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Instructions</span>
-            <textarea
-              v-model="instructions"
-              class="w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-              rows="8"
-              placeholder="Describe the reusable AI work..."
-            />
-          </label>
-          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Default Executor</span>
-            <select
-              v-model="defaultExecutor"
-              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
-            >
-              <option :value="installDefaultExecutor">Install default</option>
-              <option v-for="option in executorOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
+          <TextInput v-model="name" label="Name" placeholder="Nightly Research" />
+          <TextInput
+            v-model="defaultTaskTitle"
+            label="Default Task Title"
+            placeholder="Nightly Research Run"
+          />
+          <TextInput
+            v-model="description"
+            label="Description"
+            placeholder="Reusable research workflow"
+          />
+          <TextInput
+            v-model="defaultTargetWorkingDirectory"
+            label="Optional Target Directory"
+            placeholder="/Users/you/project"
+          />
+          <TextArea
+            v-model="instructions"
+            label="Instructions"
+            rows="8"
+            placeholder="Describe the reusable AI work..."
+          />
+          <SelectField
+            v-model="defaultExecutor"
+            label="Default Executor"
+            :options="executorOptions"
+            empty-label="Install default"
+            :empty-value="installDefaultExecutor"
+          />
           <div class="flex gap-2">
-            <button
-              class="min-h-10 rounded-md border border-transparent bg-teal-700 px-5 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
-              type="submit"
-              :disabled="!canSave || isSaving"
-            >
+            <UiButton type="submit" variant="primary" :disabled="!canSave || isSaving">
               {{ isSaving ? 'Saving...' : editingTemplate ? 'Save Changes' : 'Create Template' }}
-            </button>
-            <button
-              v-if="editingTemplate"
-              class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
-              type="button"
-              @click="resetForm"
-            >
+            </UiButton>
+            <UiButton v-if="editingTemplate" @click="resetForm">
               Cancel
-            </button>
+            </UiButton>
           </div>
         </form>
       </div>
