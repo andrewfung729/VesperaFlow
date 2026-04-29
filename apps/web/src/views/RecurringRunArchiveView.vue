@@ -69,7 +69,7 @@ async function openRun(run: Run) {
   <div>
     <div
       v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
       role="alert"
     >
       {{ errorMessage }}
@@ -77,17 +77,25 @@ async function openRun(run: Run) {
 
     <section class="max-w-5xl">
       <div v-if="selectedDetail" class="grid gap-6">
-        <div class="rounded-md border border-slate-200 bg-white p-5">
+        <div
+          class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5"
+        >
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">
+              <p
+                class="mb-2 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
+              >
                 {{ selectedDetail.task.title }}
               </p>
-              <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">Run Archive</h2>
-              <p class="m-0 mt-1 text-sm text-slate-500">{{ runs.length }} recorded occurrences</p>
+              <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
+                Run Archive
+              </h2>
+              <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {{ runs.length }} recorded occurrences
+              </p>
             </div>
             <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50"
               type="button"
               @click="openTaskDetail"
             >
@@ -97,8 +105,8 @@ async function openRun(run: Run) {
 
           <dl class="m-0 mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <dt class="font-bold text-slate-500">Cadence</dt>
-              <dd class="m-0 text-slate-800">
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Cadence</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">
                 {{
                   recurrenceSummary(
                     selectedDetail.schedule?.recurrence_rule,
@@ -108,19 +116,19 @@ async function openRun(run: Run) {
               </dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Timezone</dt>
-              <dd class="m-0 text-slate-800">
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Timezone</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">
                 {{ selectedDetail.schedule?.recurrence_timezone ?? 'none' }}
               </dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Next Run</dt>
-              <dd class="m-0 text-slate-800">
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Next Run</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">
                 {{ formatDateTime(selectedDetail.schedule?.next_run_at ?? null) }}
               </dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Latest Status</dt>
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Latest Status</dt>
               <dd class="m-0">
                 <span
                   v-if="latestRun"
@@ -129,7 +137,7 @@ async function openRun(run: Run) {
                 >
                   {{ latestRun.run_status }}
                 </span>
-                <span v-else class="text-slate-500">No runs yet</span>
+                <span v-else class="text-slate-500 dark:text-slate-400">No runs yet</span>
               </dd>
             </div>
           </dl>
@@ -137,14 +145,14 @@ async function openRun(run: Run) {
 
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h3 class="m-0 text-lg font-bold text-slate-950">Occurrences</h3>
-            <p class="m-0 text-sm text-slate-500">Newest first</p>
+            <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">Occurrences</h3>
+            <p class="m-0 text-sm text-slate-500 dark:text-slate-400">Newest first</p>
           </div>
-          <label class="grid gap-1 text-sm font-semibold text-slate-700">
+          <label class="grid gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
             <span>Status</span>
             <select
               v-model="statusFilter"
-              class="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             >
               <option value="">All</option>
               <option value="completed">Completed</option>
@@ -159,14 +167,14 @@ async function openRun(run: Run) {
           <article
             v-for="run in filteredRuns"
             :key="run.run_id"
-            class="rounded-md border border-slate-200 bg-white p-4 transition-colors hover:border-teal-300"
+            class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 transition-colors hover:border-teal-300"
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h4 class="m-0 text-base font-bold text-slate-950">
+                <h4 class="m-0 text-base font-bold text-slate-950 dark:text-slate-50">
                   {{ occurrenceLabel(run) }}
                 </h4>
-                <p class="m-0 mt-1 text-sm text-slate-500">
+                <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
                   Planned {{ formatDateTime(run.planned_start_at) }} · Started
                   {{ formatDateTime(run.actual_start_at) }} · Finished
                   {{ formatDateTime(run.finished_at) }}
@@ -179,11 +187,13 @@ async function openRun(run: Run) {
                 {{ run.run_status }}
               </span>
             </div>
-            <p class="mt-3 mb-0 text-sm text-slate-600 line-clamp-2 wrap-anywhere">
+            <p
+              class="mt-3 mb-0 text-sm text-slate-600 dark:text-slate-400 line-clamp-2 wrap-anywhere"
+            >
               {{ runOutcome(run) }}
             </p>
             <button
-              class="mt-3 min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800"
+              class="mt-3 min-h-9 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
               type="button"
               @click="openRun(run)"
             >
@@ -192,9 +202,12 @@ async function openRun(run: Run) {
           </article>
         </div>
 
-        <div v-else class="rounded-md border border-slate-200 bg-white p-6">
-          <h3 class="m-0 text-lg font-bold text-slate-950">No matching runs</h3>
-          <p class="m-0 mt-1 text-sm text-slate-500">
+        <div
+          v-else
+          class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6"
+        >
+          <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">No matching runs</h3>
+          <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
             {{
               statusFilter
                 ? 'No occurrences match the selected status.'
@@ -204,11 +217,14 @@ async function openRun(run: Run) {
         </div>
       </div>
 
-      <div v-else class="rounded-md border border-slate-200 bg-white p-7">
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
+      <div
+        v-else
+        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7"
+      >
+        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
           {{ isLoading ? 'Loading run archive...' : 'Run archive unavailable' }}
         </h2>
-        <p class="m-0 mt-1 text-slate-600">
+        <p class="m-0 mt-1 text-slate-600 dark:text-slate-400">
           {{ isLoading ? 'Loading recorded occurrences.' : 'Open a recurring task first.' }}
         </p>
       </div>

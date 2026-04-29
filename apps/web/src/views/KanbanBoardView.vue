@@ -51,7 +51,7 @@ function emptyColumns(): KanbanBoard['columns'] {
   <div>
     <div
       v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
     >
       {{ errorMessage }}
     </div>
@@ -59,21 +59,29 @@ function emptyColumns(): KanbanBoard['columns'] {
     <section class="max-w-7xl">
       <div class="mb-6 flex items-center justify-between gap-4">
         <div>
-          <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Board</p>
-          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">One-Time Tasks</h2>
+          <p
+            class="mb-2 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
+          >
+            Board
+          </p>
+          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
+            One-Time Tasks
+          </h2>
         </div>
         <div class="flex items-center gap-3">
-          <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <label
+            class="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-300"
+          >
             <input
               v-model="includeCanceled"
               type="checkbox"
-              class="h-4 w-4 cursor-pointer rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+              class="h-4 w-4 cursor-pointer rounded border-slate-300 dark:border-slate-600 text-teal-700 dark:text-teal-400 focus:ring-teal-600"
               @change="refreshBoard"
             />
             Show canceled
           </label>
           <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="isLoadingBoard"
             @click="refreshBoard"
           >
@@ -84,44 +92,53 @@ function emptyColumns(): KanbanBoard['columns'] {
 
       <div
         v-if="isLoadingBoard"
-        class="flex items-center justify-center py-16 text-sm text-slate-500"
+        class="flex items-center justify-center py-16 text-sm text-slate-500 dark:text-slate-400"
       >
         <span
-          class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-teal-600"
+          class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 dark:border-slate-600 border-t-teal-600"
         ></span>
         Loading board…
       </div>
 
       <div
         v-else-if="totalCards === 0"
-        class="rounded-md border border-dashed border-slate-300 bg-slate-50 py-16 text-center"
+        class="rounded-md border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 py-16 text-center"
       >
-        <p class="text-lg font-semibold text-slate-700">No one-time tasks yet</p>
-        <p class="mt-1 text-sm text-slate-500">Create a task from the composer to see it here.</p>
+        <p class="text-lg font-semibold text-slate-700 dark:text-slate-300">
+          No one-time tasks yet
+        </p>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Create a task from the composer to see it here.
+        </p>
       </div>
 
       <div v-else class="grid grid-cols-[repeat(5,minmax(180px,1fr))] gap-3.5 overflow-x-auto">
         <section
           v-for="column in visibleColumns"
           :key="column"
-          class="min-h-96 rounded-md border border-slate-200 bg-slate-200/70 p-3"
+          class="min-h-96 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-200/70 p-3"
         >
-          <h3 class="m-0 mb-3 text-sm font-bold text-slate-700 capitalize">{{ column }}</h3>
+          <h3 class="m-0 mb-3 text-sm font-bold text-slate-700 dark:text-slate-300 capitalize">
+            {{ column }}
+          </h3>
           <button
             v-for="card in board.columns[column] ?? []"
             :key="card.card_id"
-            class="mb-2.5 grid min-h-24 w-full cursor-pointer rounded-md border border-slate-200 bg-white p-3 text-left text-slate-950 shadow-xs transition hover:border-teal-300 hover:shadow-sm"
+            class="mb-2.5 grid min-h-24 w-full cursor-pointer rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-left text-slate-950 dark:text-slate-50 shadow-xs transition hover:border-teal-300 hover:shadow-sm"
             @click="openTask(card.task_id)"
           >
             <strong class="wrap-anywhere">{{ card.title }}</strong>
-            <span class="text-sm text-slate-500 wrap-anywhere">
+            <span class="text-sm text-slate-500 dark:text-slate-400 wrap-anywhere">
               {{ formatDateTime(card.next_run_at) }}
             </span>
-            <small class="text-slate-500 wrap-anywhere">
+            <small class="text-slate-500 dark:text-slate-400 wrap-anywhere">
               {{ card.latest_run_status ?? 'planned' }}
             </small>
           </button>
-          <p v-if="(board.columns[column] ?? []).length === 0" class="text-sm text-slate-500">
+          <p
+            v-if="(board.columns[column] ?? []).length === 0"
+            class="text-sm text-slate-500 dark:text-slate-400"
+          >
             No tasks
           </p>
         </section>

@@ -128,25 +128,38 @@ async function useTemplate(template: TaskTemplate) {
   <div class="grid max-w-6xl gap-7">
     <div
       v-if="errorMessage"
-      class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
     >
       {{ errorMessage }}
     </div>
 
     <section>
       <div class="mb-6">
-        <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Templates</p>
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">Task Templates</h2>
+        <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase">
+          Templates
+        </p>
+        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
+          Task Templates
+        </h2>
       </div>
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
-          <div v-if="isLoading" class="px-4 py-8 text-sm text-slate-500">Loading templates...</div>
-          <div v-else-if="templates.length === 0" class="px-4 py-8 text-sm text-slate-500">
+        <div
+          class="overflow-hidden rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+        >
+          <div v-if="isLoading" class="px-4 py-8 text-sm text-slate-500 dark:text-slate-400">
+            Loading templates...
+          </div>
+          <div
+            v-else-if="templates.length === 0"
+            class="px-4 py-8 text-sm text-slate-500 dark:text-slate-400"
+          >
             No active templates
           </div>
           <table v-else class="w-full border-collapse text-left text-sm">
-            <thead class="bg-slate-50 text-xs font-bold tracking-wide text-slate-500 uppercase">
+            <thead
+              class="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400 uppercase"
+            >
               <tr>
                 <th class="px-4 py-3">Name</th>
                 <th class="px-4 py-3">Default Title</th>
@@ -159,41 +172,43 @@ async function useTemplate(template: TaskTemplate) {
               <tr
                 v-for="template in templates"
                 :key="template.template_id"
-                class="border-t border-slate-100"
+                class="border-t border-slate-100 dark:border-slate-800"
               >
                 <td class="px-4 py-3">
-                  <div class="font-semibold text-slate-950">{{ template.name }}</div>
-                  <div class="mt-1 line-clamp-1 text-xs text-slate-500">
+                  <div class="font-semibold text-slate-950 dark:text-slate-50">
+                    {{ template.name }}
+                  </div>
+                  <div class="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
                     {{ template.description || template.instruction_source }}
                   </div>
                 </td>
-                <td class="px-4 py-3 text-slate-700">
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {{ template.default_task_title || template.name }}
                 </td>
-                <td class="px-4 py-3 text-slate-700">
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {{ template.default_target_working_directory || 'choose when creating' }}
                 </td>
-                <td class="px-4 py-3 text-slate-700">
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {{ template.default_executor || 'install default' }}
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex justify-end gap-2">
                     <button
-                      class="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800"
+                      class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
                       type="button"
                       @click="useTemplate(template)"
                     >
                       Use
                     </button>
                     <button
-                      class="min-h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800"
+                      class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
                       type="button"
                       @click="editTemplate(template)"
                     >
                       Edit
                     </button>
                     <button
-                      class="min-h-9 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-50"
+                      class="min-h-9 rounded-md border border-red-200 dark:border-red-800 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-red-700 dark:text-red-300 transition hover:border-red-400 hover:bg-red-50"
                       type="button"
                       @click="archiveSelected(template)"
                     >
@@ -207,59 +222,59 @@ async function useTemplate(template: TaskTemplate) {
         </div>
 
         <form class="grid content-start gap-4" @submit.prevent="saveTemplate">
-          <h3 class="m-0 text-lg font-bold tracking-normal text-slate-950">
+          <h3 class="m-0 text-lg font-bold tracking-normal text-slate-950 dark:text-slate-50">
             {{ editingTemplate ? 'Edit Template' : 'New Template' }}
           </h3>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Name</span>
             <input
               v-model="name"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
               type="text"
               placeholder="Nightly Research"
             />
           </label>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Default Task Title</span>
             <input
               v-model="defaultTaskTitle"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
               type="text"
               placeholder="Nightly Research Run"
             />
           </label>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Description</span>
             <input
               v-model="description"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
               type="text"
               placeholder="Reusable research workflow"
             />
           </label>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Optional Target Directory</span>
             <input
               v-model="defaultTargetWorkingDirectory"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
               type="text"
               placeholder="/Users/you/project"
             />
           </label>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Instructions</span>
             <textarea
               v-model="instructions"
-              class="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
               rows="8"
               placeholder="Describe the reusable AI work..."
             />
           </label>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Default Executor</span>
             <select
               v-model="defaultExecutor"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             >
               <option :value="installDefaultExecutor">Install default</option>
               <option v-for="option in executorOptions" :key="option.value" :value="option.value">
@@ -277,7 +292,7 @@ async function useTemplate(template: TaskTemplate) {
             </button>
             <button
               v-if="editingTemplate"
-              class="min-h-10 rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800"
+              class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
               type="button"
               @click="resetForm"
             >

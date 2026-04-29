@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { getTaskDetail, getTaskRuns, type Run, type TaskDetail } from '@/api'
 import MarkdownReader from '@/components/MarkdownReader.vue'
+import { useReaderPreference, type ReaderFontSize } from '@/composables/useReaderPreference'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 import { occurrenceLabel, runDuration, runOutcome, statusBadgeClass } from '@/lib/runDisplay'
@@ -20,6 +21,8 @@ const runs = ref<Run[]>([])
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const copyStatus = ref<'idle' | 'copied' | 'failed'>('idle')
+
+const { fontSize } = useReaderPreference()
 
 const selectedRun = computed(() => runs.value.find((run) => run.run_id === props.runId) ?? null)
 const selectedRunIndex = computed(() =>
@@ -81,13 +84,25 @@ async function copyOutcome() {
     copyStatus.value = 'failed'
   }
 }
+
+function cycleFontSize(direction: 'down' | 'up') {
+  const sizes: ReaderFontSize[] = ['sm', 'md', 'lg', 'xl']
+  const currentIndex = sizes.indexOf(fontSize.value)
+  if (direction === 'down' && currentIndex > 0) {
+    const next = sizes[currentIndex - 1]
+    if (next) fontSize.value = next
+  } else if (direction === 'up' && currentIndex < sizes.length - 1) {
+    const next = sizes[currentIndex + 1]
+    if (next) fontSize.value = next
+  }
+}
 </script>
 
 <template>
   <div>
     <div
       v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
       role="alert"
     >
       {{ errorMessage }}
@@ -95,19 +110,19 @@ async function copyOutcome() {
 
     <section class="max-w-none">
       <div
-        class="sticky top-0 z-10 -mx-6 mb-6 border-b border-slate-200 bg-slate-50/95 px-6 py-3 backdrop-blur"
+        class="sticky top-0 z-10 -mx-5 mb-6 border-b border-slate-200 bg-slate-50/95 px-5 py-3 backdrop-blur md:-mx-8 md:px-8 dark:border-slate-700 dark:bg-slate-900/95"
       >
         <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap gap-2">
             <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               type="button"
               @click="openArchive"
             >
               Back to Archive
             </button>
             <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               type="button"
               :disabled="!previousRun"
               @click="openRun(previousRun)"
@@ -115,7 +130,7 @@ async function copyOutcome() {
               Previous Run
             </button>
             <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               type="button"
               :disabled="!nextRun"
               @click="openRun(nextRun)"
@@ -131,8 +146,33 @@ async function copyOutcome() {
             >
               {{ selectedRun.run_status }}
             </span>
+            <div
+              class="inline-flex items-center rounded-md border border-slate-300 bg-white shadow-xs dark:border-slate-600 dark:bg-slate-800"
+            >
+              <button
+                class="min-h-9 cursor-pointer px-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:text-slate-200 dark:hover:bg-slate-700"
+                type="button"
+                aria-label="Decrease font size"
+                :disabled="fontSize === 'sm'"
+                @click="cycleFontSize('down')"
+              >
+                A-
+              </button>
+              <span class="px-1 text-xs font-bold text-slate-500 dark:text-slate-400">{{
+                fontSize.toUpperCase()
+              }}</span>
+              <button
+                class="min-h-9 cursor-pointer px-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:text-slate-200 dark:hover:bg-slate-700"
+                type="button"
+                aria-label="Increase font size"
+                :disabled="fontSize === 'xl'"
+                @click="cycleFontSize('up')"
+              >
+                A+
+              </button>
+            </div>
             <button
-              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               type="button"
               :disabled="!selectedRun"
               @click="copyOutcome"
@@ -150,33 +190,45 @@ async function copyOutcome() {
       </div>
 
       <article v-if="selectedDetail && selectedRun" class="mx-auto max-w-5xl">
-        <header class="mb-8 rounded-md border border-slate-200 bg-white p-5">
-          <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Outcome Reader</p>
-          <h2 class="m-0 text-3xl font-bold tracking-normal text-slate-950">
+        <header
+          class="mb-8 rounded-md border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"
+        >
+          <p
+            class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase dark:text-teal-400"
+          >
+            Outcome Reader
+          </p>
+          <h2 class="m-0 text-3xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
             {{ selectedDetail.task.title }}
           </h2>
-          <p class="m-0 mt-2 text-base font-semibold text-slate-700">
+          <p class="m-0 mt-2 text-base font-semibold text-slate-700 dark:text-slate-300">
             {{ occurrenceLabel(selectedRun) }}
           </p>
           <dl class="m-0 mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
             <div>
-              <dt class="font-bold text-slate-500">Planned</dt>
-              <dd class="m-0 text-slate-800">{{ formatDateTime(selectedRun.planned_start_at) }}</dd>
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Planned</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">
+                {{ formatDateTime(selectedRun.planned_start_at) }}
+              </dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Started</dt>
-              <dd class="m-0 text-slate-800">{{ formatDateTime(selectedRun.actual_start_at) }}</dd>
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Started</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">
+                {{ formatDateTime(selectedRun.actual_start_at) }}
+              </dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Finished</dt>
-              <dd class="m-0 text-slate-800">{{ formatDateTime(selectedRun.finished_at) }}</dd>
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Finished</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">
+                {{ formatDateTime(selectedRun.finished_at) }}
+              </dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Duration</dt>
-              <dd class="m-0 text-slate-800">{{ runDuration(selectedRun) }}</dd>
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Duration</dt>
+              <dd class="m-0 text-slate-800 dark:text-slate-200">{{ runDuration(selectedRun) }}</dd>
             </div>
             <div>
-              <dt class="font-bold text-slate-500">Status</dt>
+              <dt class="font-bold text-slate-500 dark:text-slate-400">Status</dt>
               <dd class="m-0">
                 <span
                   class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
@@ -189,7 +241,11 @@ async function copyOutcome() {
           </dl>
         </header>
 
-        <div class="mx-auto max-w-prose rounded-md border border-slate-200 bg-white p-6 sm:p-8">
+        <div
+          class="mx-auto w-full max-w-[88ch] rounded-md border border-slate-200 bg-white p-6 sm:p-8 dark:border-slate-700 dark:bg-slate-900"
+          :class="`reader-font-${fontSize}`"
+          data-testid="reader-body"
+        >
           <MarkdownReader
             :content="runOutcome(selectedRun)"
             :expandable="false"
@@ -197,9 +253,9 @@ async function copyOutcome() {
           />
         </div>
 
-        <footer class="mx-auto mt-6 flex max-w-prose flex-wrap justify-between gap-3">
+        <footer class="mx-auto mt-6 flex w-full max-w-[88ch] flex-wrap justify-between gap-3">
           <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             type="button"
             :disabled="!previousRun"
             @click="openRun(previousRun)"
@@ -207,7 +263,7 @@ async function copyOutcome() {
             Previous Run
           </button>
           <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             type="button"
             :disabled="!nextRun"
             @click="openRun(nextRun)"
@@ -217,11 +273,14 @@ async function copyOutcome() {
         </footer>
       </article>
 
-      <div v-else class="mx-auto max-w-5xl rounded-md border border-slate-200 bg-white p-7">
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
+      <div
+        v-else
+        class="mx-auto max-w-5xl rounded-md border border-slate-200 bg-white p-7 dark:border-slate-700 dark:bg-slate-900"
+      >
+        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
           {{ isLoading ? 'Loading outcome...' : 'Outcome unavailable' }}
         </h2>
-        <p class="m-0 mt-1 text-slate-600">
+        <p class="m-0 mt-1 text-slate-600 dark:text-slate-400">
           {{
             isLoading
               ? 'Loading the selected run outcome.'
@@ -235,20 +294,60 @@ async function copyOutcome() {
 
 <style scoped>
 .run-reader-content :deep(.markdown-body) {
-  font-size: 1rem;
   line-height: 1.75;
 }
 
-.run-reader-content :deep(.markdown-body h1) {
-  font-size: 1.75rem;
+.reader-font-sm .run-reader-content :deep(.markdown-body) {
+  font-size: 1rem;
 }
-
-.run-reader-content :deep(.markdown-body h2) {
+.reader-font-md .run-reader-content :deep(.markdown-body) {
+  font-size: 1.125rem;
+}
+.reader-font-lg .run-reader-content :deep(.markdown-body) {
+  font-size: 1.25rem;
+}
+.reader-font-xl .run-reader-content :deep(.markdown-body) {
   font-size: 1.375rem;
 }
 
-.run-reader-content :deep(.markdown-body h3) {
+.reader-font-sm .run-reader-content :deep(.markdown-body h1) {
+  font-size: 1.625rem;
+}
+.reader-font-sm .run-reader-content :deep(.markdown-body h2) {
+  font-size: 1.375rem;
+}
+.reader-font-sm .run-reader-content :deep(.markdown-body h3) {
   font-size: 1.125rem;
+}
+
+.reader-font-md .run-reader-content :deep(.markdown-body h1) {
+  font-size: 1.875rem;
+}
+.reader-font-md .run-reader-content :deep(.markdown-body h2) {
+  font-size: 1.5rem;
+}
+.reader-font-md .run-reader-content :deep(.markdown-body h3) {
+  font-size: 1.25rem;
+}
+
+.reader-font-lg .run-reader-content :deep(.markdown-body h1) {
+  font-size: 2rem;
+}
+.reader-font-lg .run-reader-content :deep(.markdown-body h2) {
+  font-size: 1.625rem;
+}
+.reader-font-lg .run-reader-content :deep(.markdown-body h3) {
+  font-size: 1.375rem;
+}
+
+.reader-font-xl .run-reader-content :deep(.markdown-body h1) {
+  font-size: 2.25rem;
+}
+.reader-font-xl .run-reader-content :deep(.markdown-body h2) {
+  font-size: 1.875rem;
+}
+.reader-font-xl .run-reader-content :deep(.markdown-body h3) {
+  font-size: 1.5rem;
 }
 
 .run-reader-content :deep(.markdown-body p),

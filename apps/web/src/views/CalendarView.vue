@@ -445,7 +445,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
   <div>
     <div
       v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
     >
       {{ errorMessage }}
     </div>
@@ -453,12 +453,20 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
     <section class="max-w-7xl">
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Calendar</p>
-          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">{{ rangeLabel }}</h2>
-          <p class="m-0 text-sm text-slate-500">{{ total }} planned items</p>
+          <p
+            class="mb-2 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
+          >
+            Calendar
+          </p>
+          <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
+            {{ rangeLabel }}
+          </h2>
+          <p class="m-0 text-sm text-slate-500 dark:text-slate-400">{{ total }} planned items</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <div class="inline-flex rounded-md border border-slate-300 bg-white p-1 shadow-xs">
+          <div
+            class="inline-flex rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 p-1 shadow-xs"
+          >
             <button
               v-for="mode in ['day', 'week', 'month'] as CalendarViewMode[]"
               :key="mode"
@@ -466,7 +474,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               :class="
                 viewMode === mode
                   ? 'bg-teal-700 text-white'
-                  : 'bg-transparent text-slate-700 hover:bg-slate-50'
+                  : 'bg-transparent text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
               "
               :disabled="isLoading"
               type="button"
@@ -477,7 +485,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </div>
           <div class="flex items-center gap-2">
             <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="isLoading"
               type="button"
               @click="movePeriod(-1)"
@@ -485,7 +493,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               Previous
             </button>
             <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="isLoading"
               type="button"
               @click="moveToToday"
@@ -493,7 +501,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               Today
             </button>
             <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="isLoading"
               type="button"
               @click="movePeriod(1)"
@@ -501,12 +509,14 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               Next
             </button>
           </div>
-          <label class="flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700">
+          <label
+            class="flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300"
+          >
             <input v-model="includeCompleted" type="checkbox" />
             <span>Completed</span>
           </label>
           <button
-            class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="isLoading"
             type="button"
             @click="refreshCalendar"
@@ -516,14 +526,19 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
         </div>
       </div>
 
-      <div v-if="isLoading" class="rounded-md border border-slate-200 bg-white p-7 text-slate-600">
+      <div
+        v-if="isLoading"
+        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7 text-slate-600 dark:text-slate-400"
+      >
         Loading calendar items...
       </div>
       <div
         v-else-if="items.length === 0"
-        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-4"
+        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
       >
-        <h3 class="m-0 text-lg font-bold text-slate-950">No upcoming AI work scheduled</h3>
+        <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">
+          No upcoming AI work scheduled
+        </h3>
         <button
           class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800"
           type="button"
@@ -535,13 +550,15 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
       <div v-if="!isLoading" class="grid gap-4">
         <div
           v-if="viewMode === 'month'"
-          class="hidden overflow-x-auto rounded-md border border-slate-200 bg-white md:block"
+          class="hidden overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 md:block"
         >
-          <div class="grid min-w-[920px] grid-cols-7 border-b border-slate-200 bg-slate-50">
+          <div
+            class="grid min-w-[920px] grid-cols-7 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"
+          >
             <div
               v-for="day in calendarDays.slice(0, 7)"
               :key="day.weekday"
-              class="px-3 py-2 text-xs font-bold tracking-wide text-slate-500 uppercase"
+              class="px-3 py-2 text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400 uppercase"
             >
               {{ day.weekday }}
             </div>
@@ -549,14 +566,16 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           <div
             v-for="(week, weekIndex) in monthRows"
             :key="weekIndex"
-            class="grid min-w-[920px] grid-cols-7 border-b border-slate-200 last:border-b-0"
+            class="grid min-w-[920px] grid-cols-7 border-b border-slate-200 dark:border-slate-700 last:border-b-0"
           >
             <div
               v-for="day in week"
               :key="day.key"
-              class="min-h-36 cursor-pointer border-r border-slate-200 p-2 last:border-r-0 hover:bg-teal-50/40"
+              class="min-h-36 cursor-pointer border-r border-slate-200 dark:border-slate-700 p-2 last:border-r-0 hover:bg-teal-50/40"
               :class="
-                day.isOutsideMonth ? 'bg-slate-50/70 text-slate-400' : 'bg-white text-slate-950'
+                day.isOutsideMonth
+                  ? 'bg-slate-50/70 text-slate-400 dark:bg-slate-900/50 dark:text-slate-500'
+                  : 'bg-white text-slate-950 dark:bg-slate-900 dark:text-slate-50'
               "
               :aria-label="addTaskLabel(defaultDaySlot(day))"
               role="button"
@@ -567,11 +586,15 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               <div class="mb-2 flex items-center justify-between gap-2">
                 <span
                   class="inline-flex size-7 items-center justify-center rounded-full text-sm font-bold"
-                  :class="day.isToday ? 'bg-teal-700 text-white' : 'text-slate-700'"
+                  :class="
+                    day.isToday ? 'bg-teal-700 text-white' : 'text-slate-700 dark:text-slate-300'
+                  "
                 >
                   {{ day.dayNumber }}
                 </span>
-                <span class="text-xs text-slate-500">{{ itemsForDay(day).length || '' }}</span>
+                <span class="text-xs text-slate-500 dark:text-slate-400">{{
+                  itemsForDay(day).length || ''
+                }}</span>
               </div>
               <div class="grid gap-1">
                 <article
@@ -580,8 +603,8 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                   class="rounded-md border px-2 py-1 text-xs shadow-xs transition hover:-translate-y-px hover:shadow-sm"
                   :class="
                     item.execution_mode === 'recurring'
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950'
-                      : 'border-teal-200 bg-teal-50 text-teal-950'
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200'
+                      : 'border-teal-200 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-200'
                   "
                   :aria-label="`${itemTime(item)} ${item.title}`"
                   role="button"
@@ -593,12 +616,14 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                     {{ itemTime(item) }} {{ item.title }}
                   </div>
                   <span class="mt-1 flex flex-wrap gap-1">
-                    <span class="rounded bg-white/80 px-1.5 py-0.5 font-semibold">
+                    <span
+                      class="rounded bg-white/80 px-1.5 py-0.5 font-semibold dark:bg-slate-900/80"
+                    >
                       {{ modeLabel(item) }}
                     </span>
                     <span
                       v-if="item.is_occurrence_override"
-                      class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800"
+                      class="rounded bg-amber-100 dark:bg-amber-950/30 px-1.5 py-0.5 font-semibold text-amber-800 dark:text-amber-300"
                     >
                       Override
                     </span>
@@ -606,7 +631,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                 </article>
                 <span
                   v-if="itemsForDay(day).length > 3"
-                  class="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600"
+                  class="rounded-md bg-slate-100 dark:bg-slate-900/50 px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400"
                 >
                   +{{ itemsForDay(day).length - 3 }} more
                 </span>
@@ -617,35 +642,39 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
 
         <div
           v-else
-          class="hidden overflow-x-auto rounded-md border border-slate-200 bg-white md:block"
+          class="hidden overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 md:block"
         >
           <div
-            class="grid min-w-[980px] border-b border-slate-200 bg-slate-50"
+            class="grid min-w-[980px] border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"
             :style="{ gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(0, 1fr))` }"
           >
-            <div class="px-3 py-3 text-xs font-bold tracking-wide text-slate-500 uppercase">
+            <div
+              class="px-3 py-3 text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400 uppercase"
+            >
               Time
             </div>
             <div
               v-for="day in timeGridDays"
               :key="day.key"
-              class="border-l border-slate-200 px-3 py-3"
+              class="border-l border-slate-200 dark:border-slate-700 px-3 py-3"
             >
-              <div class="text-xs font-bold tracking-wide text-slate-500 uppercase">
+              <div
+                class="text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400 uppercase"
+              >
                 {{ day.weekday }}
               </div>
-              <div class="text-sm font-bold text-slate-950">{{ day.label }}</div>
+              <div class="text-sm font-bold text-slate-950 dark:text-slate-50">{{ day.label }}</div>
             </div>
           </div>
           <div
             v-for="hour in hours"
             :key="hour"
-            class="grid min-w-[980px] border-b border-slate-100 last:border-b-0"
+            class="grid min-w-[980px] border-b border-slate-100 dark:border-slate-800 last:border-b-0"
             :class="hourHasItems(hour) ? 'min-h-20' : 'min-h-9'"
             :style="{ gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(0, 1fr))` }"
           >
             <div
-              class="bg-slate-50 px-3 text-xs font-semibold text-slate-500"
+              class="bg-slate-50 dark:bg-slate-800/50 px-3 text-xs font-semibold text-slate-500 dark:text-slate-400"
               :class="hourHasItems(hour) ? 'py-3' : 'py-2'"
             >
               {{ hourLabel(hour) }}
@@ -653,7 +682,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             <div
               v-for="day in timeGridDays"
               :key="`${day.key}-${hour}`"
-              class="cursor-pointer border-l border-slate-100 transition hover:bg-teal-50/50"
+              class="cursor-pointer border-l border-slate-100 dark:border-slate-800 transition hover:bg-teal-50/50"
               :class="hourHasItems(hour) ? 'min-h-20 p-2' : 'min-h-9 px-2 py-1'"
               :aria-label="addTaskLabel(slotDate(day, hour))"
               role="button"
@@ -668,8 +697,8 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                   class="rounded-md border p-2 shadow-xs transition hover:-translate-y-px hover:shadow-sm"
                   :class="
                     item.execution_mode === 'recurring'
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950'
-                      : 'border-teal-200 bg-teal-50 text-teal-950'
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200'
+                      : 'border-teal-200 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-200'
                   "
                   :aria-label="`${itemTime(item)} ${item.title}`"
                   role="button"
@@ -678,15 +707,19 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                   @keydown.enter.stop.prevent="openItemModal(item)"
                 >
                   <div class="mb-2 flex flex-wrap items-center gap-1">
-                    <span class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold">
+                    <span
+                      class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold dark:bg-slate-900/80"
+                    >
                       {{ itemTime(item) }}
                     </span>
-                    <span class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold">
+                    <span
+                      class="rounded bg-white/80 px-2 py-0.5 text-xs font-bold dark:bg-slate-900/80"
+                    >
                       {{ modeLabel(item) }}
                     </span>
                     <span
                       v-if="item.is_occurrence_override"
-                      class="rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800"
+                      class="rounded bg-amber-100 dark:bg-amber-950/30 px-2 py-0.5 text-xs font-bold text-amber-800 dark:text-amber-300"
                     >
                       Override
                     </span>
@@ -694,7 +727,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                   <div class="mb-2 text-sm font-bold text-inherit wrap-anywhere">
                     {{ item.title }}
                   </div>
-                  <div class="mb-2 text-xs font-semibold text-slate-600">
+                  <div class="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
                     {{ item.state }} · {{ overlapLabel(item) }}
                   </div>
                 </article>
@@ -703,11 +736,15 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </div>
         </div>
 
-        <div class="rounded-md border border-slate-200 bg-white md:hidden">
-          <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-            <span class="text-sm font-bold text-slate-950">Agenda</span>
+        <div
+          class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 md:hidden"
+        >
+          <div
+            class="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-3"
+          >
+            <span class="text-sm font-bold text-slate-950 dark:text-slate-50">Agenda</span>
             <button
-              class="min-h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800"
+              class="min-h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
               type="button"
               @click="openAddTaskModal(new Date())"
             >
@@ -718,17 +755,17 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             <article
               v-for="item in sortedItems(items)"
               :key="item.calendar_item_id"
-              class="grid cursor-pointer gap-2 bg-white px-4 py-3 transition hover:bg-teal-50/50"
+              class="grid cursor-pointer gap-2 bg-white dark:bg-slate-900 px-4 py-3 transition hover:bg-teal-50/50"
               :aria-label="item.title"
               role="button"
               tabindex="0"
               @click="openItemModal(item)"
               @keydown.enter.prevent="openItemModal(item)"
             >
-              <span class="text-sm font-bold text-teal-800 wrap-anywhere">
+              <span class="text-sm font-bold text-teal-800 dark:text-teal-300 wrap-anywhere">
                 {{ item.title }}
               </span>
-              <span class="text-xs font-semibold text-slate-600">
+              <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">
                 {{ formatDateTime(item.occurrence_at) }} · {{ modeLabel(item) }}
               </span>
             </article>
@@ -743,22 +780,27 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
       @click.self="closeItemModal"
     >
       <section
-        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white dark:bg-slate-900 p-5 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendar-item-title"
       >
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="m-0 text-xs font-bold tracking-wide text-teal-700 uppercase">
+            <p
+              class="m-0 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
+            >
               {{ modeLabel(selectedItem) }}
             </p>
-            <h3 id="calendar-item-title" class="m-0 text-xl font-bold text-slate-950">
+            <h3
+              id="calendar-item-title"
+              class="m-0 text-xl font-bold text-slate-950 dark:text-slate-50"
+            >
               {{ selectedItem.title }}
             </h3>
           </div>
           <button
-            class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50"
             type="button"
             @click="closeItemModal"
           >
@@ -766,16 +808,24 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </button>
         </div>
         <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-          <dt class="font-semibold text-slate-500">Time</dt>
-          <dd class="m-0 text-slate-950">{{ formatDateTime(selectedItem.occurrence_at) }}</dd>
-          <dt class="font-semibold text-slate-500">State</dt>
-          <dd class="m-0 text-slate-950">{{ selectedItem.state }}</dd>
-          <dt class="font-semibold text-slate-500">Overlap</dt>
-          <dd class="m-0 text-slate-950">{{ overlapLabel(selectedItem) }}</dd>
-          <dt v-if="selectedItem.is_occurrence_override" class="font-semibold text-slate-500">
+          <dt class="font-semibold text-slate-500 dark:text-slate-400">Time</dt>
+          <dd class="m-0 text-slate-950 dark:text-slate-50">
+            {{ formatDateTime(selectedItem.occurrence_at) }}
+          </dd>
+          <dt class="font-semibold text-slate-500 dark:text-slate-400">State</dt>
+          <dd class="m-0 text-slate-950 dark:text-slate-50">{{ selectedItem.state }}</dd>
+          <dt class="font-semibold text-slate-500 dark:text-slate-400">Overlap</dt>
+          <dd class="m-0 text-slate-950 dark:text-slate-50">{{ overlapLabel(selectedItem) }}</dd>
+          <dt
+            v-if="selectedItem.is_occurrence_override"
+            class="font-semibold text-slate-500 dark:text-slate-400"
+          >
             Override
           </dt>
-          <dd v-if="selectedItem.is_occurrence_override" class="m-0 text-amber-800">
+          <dd
+            v-if="selectedItem.is_occurrence_override"
+            class="m-0 text-amber-800 dark:text-amber-300"
+          >
             This occurrence has custom timing or instructions.
           </dd>
         </dl>
@@ -789,7 +839,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </button>
           <button
             v-if="selectedItem.execution_mode === 'recurring'"
-            class="min-h-10 rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="actionItemId === selectedItem.calendar_item_id"
             type="button"
             @click="editSelectedItem"
@@ -798,7 +848,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </button>
           <button
             v-if="selectedItem.execution_mode === 'recurring'"
-            class="min-h-10 rounded-md border border-red-300 bg-red-50 px-4 font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-4 font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="actionItemId === selectedItem.calendar_item_id"
             type="button"
             @click="skipSelectedItem"
@@ -815,7 +865,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
       @click.self="editingItem = null"
     >
       <form
-        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white dark:bg-slate-900 p-5 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-occurrence-title"
@@ -823,15 +873,18 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 id="edit-occurrence-title" class="m-0 text-lg font-bold text-slate-950">
+            <h3
+              id="edit-occurrence-title"
+              class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50"
+            >
               Edit Recurring Task
             </h3>
-            <p class="m-0 text-sm text-slate-500">
+            <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
               {{ editingItem.title }} · {{ formatDateTime(editingItem.occurrence_at) }}
             </p>
           </div>
           <button
-            class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50"
             type="button"
             @click="editingItem = null"
           >
@@ -839,14 +892,14 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </button>
         </div>
         <fieldset class="m-0 grid gap-2 border-0 p-0">
-          <legend class="font-semibold text-slate-700">Scope</legend>
+          <legend class="font-semibold text-slate-700 dark:text-slate-300">Scope</legend>
           <div class="flex flex-wrap gap-2">
             <button
               class="min-h-9 rounded-md border px-3 text-sm font-semibold transition"
               :class="
                 editScope === 'this_occurrence_only'
-                  ? 'border-teal-700 bg-teal-50 text-teal-800'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700'
+                  ? 'border-teal-700 bg-teal-50 text-teal-800 dark:border-teal-500 dark:bg-teal-950/30 dark:text-teal-300'
+                  : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-500'
               "
               type="button"
               @click="editScope = 'this_occurrence_only'"
@@ -857,8 +910,8 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               class="min-h-9 rounded-md border px-3 text-sm font-semibold transition"
               :class="
                 editScope === 'this_and_future'
-                  ? 'border-teal-700 bg-teal-50 text-teal-800'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700'
+                  ? 'border-teal-700 bg-teal-50 text-teal-800 dark:border-teal-500 dark:bg-teal-950/30 dark:text-teal-300'
+                  : 'border-slate-300 bg-white text-slate-700 hover:border-teal-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-500'
               "
               type="button"
               @click="editScope = 'this_and_future'"
@@ -869,20 +922,20 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
         </fieldset>
         <label
           v-if="editScope === 'this_occurrence_only'"
-          class="grid gap-2 font-semibold text-slate-700"
+          class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300"
         >
           <span>Occurrence Time</span>
           <input
             v-model="occurrencePlannedAt"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="datetime-local"
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Instructions</span>
           <textarea
             v-model="occurrenceInstruction"
-            class="min-h-24 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="min-h-24 w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
           />
         </label>
         <button
@@ -901,7 +954,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
       @click.self="closeAddTaskModal"
     >
       <form
-        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+        class="grid max-h-[90vh] w-full max-w-lg gap-4 overflow-y-auto rounded-md bg-white dark:bg-slate-900 p-5 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-calendar-task-title"
@@ -909,58 +962,65 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p class="m-0 text-xs font-bold tracking-wide text-teal-700 uppercase">One-time task</p>
-            <h3 id="new-calendar-task-title" class="m-0 text-lg font-bold text-slate-950">
+            <p
+              class="m-0 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
+            >
+              One-time task
+            </p>
+            <h3
+              id="new-calendar-task-title"
+              class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50"
+            >
               New Calendar Task
             </h3>
           </div>
           <button
-            class="min-h-9 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="min-h-9 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 font-semibold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50"
             type="button"
             @click="closeAddTaskModal"
           >
             Cancel
           </button>
         </div>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Title</span>
           <input
             v-model="newTaskTitle"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="text"
             placeholder="Run benchmark report"
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Instructions</span>
           <textarea
             v-model="newTaskInstructions"
-            class="min-h-24 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="min-h-24 w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             placeholder="Describe the AI work to run later..."
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Execution Time</span>
           <input
             v-model="newTaskPlannedAt"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="datetime-local"
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Target Directory</span>
           <input
             v-model="newTaskTargetDirectory"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="text"
             placeholder="/Users/you/project"
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Executor</span>
           <select
             v-model="newTaskExecutor"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
           >
             <option v-for="option in executorOptions" :key="option.value" :value="option.value">
               {{ option.label }}

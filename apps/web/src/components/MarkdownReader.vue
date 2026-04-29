@@ -41,13 +41,13 @@ const safeHtml = computed(() => {
     <button
       v-if="expandable"
       type="button"
-      class="mt-1.5 cursor-pointer border-0 bg-transparent p-0 text-xs font-semibold text-teal-700 transition hover:text-teal-900"
+      class="mt-1.5 cursor-pointer border-0 bg-transparent p-0 text-xs font-semibold text-teal-700 transition hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300"
       @click="isExpanded = !isExpanded"
     >
       {{ isExpanded ? 'Show less' : 'Show more' }}
     </button>
   </div>
-  <span v-else class="text-slate-400 italic">No content</span>
+  <span v-else class="text-slate-400 italic dark:text-slate-500">No content</span>
 </template>
 
 <style scoped>
@@ -55,6 +55,10 @@ const safeHtml = computed(() => {
   font-size: 0.875rem;
   line-height: 1.6;
   color: #334155;
+}
+
+.dark .markdown-body {
+  color: #cbd5e1;
 }
 
 .markdown-body.is-clamped {
@@ -74,6 +78,15 @@ const safeHtml = computed(() => {
   font-weight: 700;
   line-height: 1.3;
   color: #0f172a;
+}
+
+.dark .markdown-body :deep(h1),
+.dark .markdown-body :deep(h2),
+.dark .markdown-body :deep(h3),
+.dark .markdown-body :deep(h4),
+.dark .markdown-body :deep(h5),
+.dark .markdown-body :deep(h6) {
+  color: #f1f5f9;
 }
 
 .markdown-body :deep(h1) {
@@ -114,6 +127,11 @@ const safeHtml = computed(() => {
   color: #be123c;
 }
 
+.dark .markdown-body :deep(code) {
+  background: #1e293b;
+  color: #fb7185;
+}
+
 .markdown-body :deep(pre) {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -123,11 +141,20 @@ const safeHtml = computed(() => {
   margin: 0.75em 0;
 }
 
+.dark .markdown-body :deep(pre) {
+  background: #0f172a;
+  border-color: #334155;
+}
+
 .markdown-body :deep(pre code) {
   background: transparent;
   padding: 0;
   color: inherit;
   font-size: 0.8125em;
+}
+
+.dark .markdown-body :deep(pre code) {
+  color: #e2e8f0;
 }
 
 .markdown-body :deep(blockquote) {
@@ -138,14 +165,27 @@ const safeHtml = computed(() => {
   font-style: italic;
 }
 
+.dark .markdown-body :deep(blockquote) {
+  border-left-color: #475569;
+  color: #94a3b8;
+}
+
 .markdown-body :deep(a) {
   color: #0f766e;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
+.dark .markdown-body :deep(a) {
+  color: #2dd4bf;
+}
+
 .markdown-body :deep(a:hover) {
   color: #115e59;
+}
+
+.dark .markdown-body :deep(a:hover) {
+  color: #5eead4;
 }
 
 .markdown-body :deep(table) {
@@ -162,15 +202,28 @@ const safeHtml = computed(() => {
   text-align: left;
 }
 
+.dark .markdown-body :deep(th),
+.dark .markdown-body :deep(td) {
+  border-color: #334155;
+}
+
 .markdown-body :deep(th) {
   background: #f8fafc;
   font-weight: 600;
+}
+
+.dark .markdown-body :deep(th) {
+  background: #1e293b;
 }
 
 .markdown-body :deep(hr) {
   border: 0;
   border-top: 1px solid #e2e8f0;
   margin: 1em 0;
+}
+
+.dark .markdown-body :deep(hr) {
+  border-top-color: #334155;
 }
 
 .markdown-body :deep(img) {
@@ -183,5 +236,9 @@ const safeHtml = computed(() => {
 .markdown-body :deep(strong) {
   font-weight: 700;
   color: #0f172a;
+}
+
+.dark .markdown-body :deep(strong) {
+  color: #f1f5f9;
 }
 </style>

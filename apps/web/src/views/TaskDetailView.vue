@@ -268,7 +268,7 @@ async function openRunArchive() {
   <div>
     <div
       v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
     >
       {{ errorMessage }}
     </div>
@@ -279,21 +279,25 @@ async function openRunArchive() {
         class="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]"
       >
         <div>
-          <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Task Detail</p>
+          <p
+            class="mb-2 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase"
+          >
+            Task Detail
+          </p>
           <template v-if="isEditingTask">
-            <label class="grid gap-2 font-semibold text-slate-700">
+            <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
               <span>Title</span>
               <input
                 v-model="editTitle"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
                 type="text"
               />
             </label>
-            <label class="mt-4 grid gap-2 font-semibold text-slate-700">
+            <label class="mt-4 grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
               <span>Instructions</span>
               <textarea
                 v-model="editInstructions"
-                class="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                class="w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
                 rows="9"
               />
             </label>
@@ -306,7 +310,7 @@ async function openRunArchive() {
                 Save Changes
               </button>
               <button
-                class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+                class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50"
                 @click="cancelEditTask"
               >
                 Cancel
@@ -314,24 +318,26 @@ async function openRunArchive() {
             </div>
           </template>
           <template v-else>
-            <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
+            <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
               {{ selectedDetail.task.title }}
             </h2>
-            <p class="m-0 text-sm text-slate-500">
+            <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
               {{ selectedDetail.task.execution_mode }} · {{ selectedDetail.task.task_status }} ·
               {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
             </p>
-            <p class="m-0 text-sm text-slate-500">Executor: {{ selectedDetail.task.executor }}</p>
-            <p class="m-0 text-sm text-slate-500">
+            <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
+              Executor: {{ selectedDetail.task.executor }}
+            </p>
+            <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
               Target: {{ selectedDetail.task.target_working_directory ?? 'none' }}
             </p>
             <pre
-              class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900 wrap-anywhere"
+              class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-sm text-slate-900 dark:text-slate-100 wrap-anywhere"
               >{{ selectedDetail.task.instruction_source }}</pre
             >
             <button
               v-if="isTaskEditable"
-              class="mt-4 min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
+              class="mt-4 min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50"
               @click="startEditTask"
             >
               Edit Task
@@ -339,12 +345,12 @@ async function openRunArchive() {
           </template>
           <section
             v-if="isRecurringTask"
-            class="mt-6 rounded-md border border-slate-200 bg-white p-5"
+            class="mt-6 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5"
           >
             <div class="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h3 class="m-0 text-lg font-bold text-slate-950">Run Archive</h3>
-                <p class="m-0 mt-1 text-sm text-slate-500">
+                <h3 class="m-0 text-lg font-bold text-slate-950 dark:text-slate-50">Run Archive</h3>
+                <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
                   Read each recurring outcome in a focused single-column reader.
                 </p>
               </div>
@@ -358,10 +364,17 @@ async function openRunArchive() {
             </div>
           </section>
           <section v-else class="mt-6">
-            <h3 class="m-0 mb-3 text-lg font-bold text-slate-950">Recent Runs</h3>
-            <article v-if="selectedRun" class="rounded-md border border-slate-200 bg-white p-5">
+            <h3 class="m-0 mb-3 text-lg font-bold text-slate-950 dark:text-slate-50">
+              Recent Runs
+            </h3>
+            <article
+              v-if="selectedRun"
+              class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5"
+            >
               <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <h4 class="m-0 text-base font-bold text-slate-950">{{ selectedRun.run_id }}</h4>
+                <h4 class="m-0 text-base font-bold text-slate-950 dark:text-slate-50">
+                  {{ selectedRun.run_id }}
+                </h4>
                 <span
                   class="inline-flex rounded-md border px-2 py-1 text-xs font-bold uppercase"
                   :class="statusBadgeClass(selectedRun.run_status)"
@@ -371,23 +384,25 @@ async function openRunArchive() {
               </div>
               <dl class="m-0 mb-4 grid gap-3 text-sm sm:grid-cols-3">
                 <div>
-                  <dt class="font-bold text-slate-500">Planned</dt>
-                  <dd class="m-0 text-slate-700">
+                  <dt class="font-bold text-slate-500 dark:text-slate-400">Planned</dt>
+                  <dd class="m-0 text-slate-700 dark:text-slate-300">
                     {{ formatDateTime(selectedRun.planned_start_at) }}
                   </dd>
                 </div>
                 <div>
-                  <dt class="font-bold text-slate-500">Started</dt>
-                  <dd class="m-0 text-slate-700">
+                  <dt class="font-bold text-slate-500 dark:text-slate-400">Started</dt>
+                  <dd class="m-0 text-slate-700 dark:text-slate-300">
                     {{ formatDateTime(selectedRun.actual_start_at) }}
                   </dd>
                 </div>
                 <div>
-                  <dt class="font-bold text-slate-500">Finished</dt>
-                  <dd class="m-0 text-slate-700">{{ formatDateTime(selectedRun.finished_at) }}</dd>
+                  <dt class="font-bold text-slate-500 dark:text-slate-400">Finished</dt>
+                  <dd class="m-0 text-slate-700 dark:text-slate-300">
+                    {{ formatDateTime(selectedRun.finished_at) }}
+                  </dd>
                 </div>
               </dl>
-              <div class="max-w-3xl border-t border-slate-200 pt-4">
+              <div class="max-w-3xl border-t border-slate-200 dark:border-slate-700 pt-4">
                 <MarkdownReader
                   :content="runOutcome(selectedRun)"
                   :expandable="false"
@@ -395,17 +410,24 @@ async function openRunArchive() {
                 />
               </div>
             </article>
-            <div v-else class="rounded-md border border-slate-200 bg-white p-5">
-              <h4 class="m-0 text-base font-bold text-slate-950">No runs recorded</h4>
-              <p class="m-0 mt-1 text-sm text-slate-500">This task has no run output yet.</p>
+            <div
+              v-else
+              class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5"
+            >
+              <h4 class="m-0 text-base font-bold text-slate-950 dark:text-slate-50">
+                No runs recorded
+              </h4>
+              <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
+                This task has no run output yet.
+              </p>
             </div>
           </section>
         </div>
         <aside
-          class="grid content-start gap-4 border-t border-slate-200 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
+          class="grid content-start gap-4 border-t border-slate-200 dark:border-slate-700 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
         >
           <dl class="m-0 grid gap-1.5">
-            <dt class="text-sm font-bold text-slate-500">Planned</dt>
+            <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">Planned</dt>
             <dd class="m-0 mb-2.5 wrap-break-word">
               {{
                 isRecurringTask
@@ -417,20 +439,20 @@ async function openRunArchive() {
               }}
             </dd>
             <template v-if="isRecurringTask">
-              <dt class="text-sm font-bold text-slate-500">Timezone</dt>
+              <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">Timezone</dt>
               <dd class="m-0 mb-2.5 wrap-break-word">
                 {{ selectedDetail.schedule?.recurrence_timezone ?? 'none' }}
               </dd>
-              <dt class="text-sm font-bold text-slate-500">Next Run</dt>
+              <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">Next Run</dt>
               <dd class="m-0 mb-2.5 wrap-break-word">
                 {{ formatDateTime(selectedDetail.schedule?.next_run_at ?? null) }}
               </dd>
             </template>
-            <dt class="text-sm font-bold text-slate-500">Schedule</dt>
+            <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">Schedule</dt>
             <dd class="m-0 mb-2.5 wrap-break-word">
               {{ selectedDetail.schedule?.schedule_status ?? 'none' }}
             </dd>
-            <dt class="text-sm font-bold text-slate-500">Latest Result</dt>
+            <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">Latest Result</dt>
             <dd
               class="m-0 mb-2.5 wrap-break-word rounded-md border p-3 text-sm line-clamp-4"
               :class="
@@ -455,14 +477,18 @@ async function openRunArchive() {
               </span>
             </dd>
             <template v-if="selectedRun && !isRecurringTask">
-              <dt class="text-sm font-bold text-slate-500">Selected Run</dt>
-              <dd class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 line-clamp-3">
+              <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">Selected Run</dt>
+              <dd
+                class="m-0 mb-2.5 wrap-break-word text-sm text-slate-600 dark:text-slate-400 line-clamp-3"
+              >
                 {{ selectedRun.run_status }} ·
                 {{ selectedRun.result_summary ?? selectedRun.failure_reason ?? 'No summary' }}
               </dd>
             </template>
             <template v-if="selectedOccurrenceAt">
-              <dt class="text-sm font-bold text-slate-500">Selected Occurrence</dt>
+              <dt class="text-sm font-bold text-slate-500 dark:text-slate-400">
+                Selected Occurrence
+              </dt>
               <dd class="m-0 mb-2.5 wrap-break-word">
                 {{ formatDateTime(selectedOccurrenceAt) }}
               </dd>
@@ -481,16 +507,16 @@ async function openRunArchive() {
             Run Now
           </button>
           <template v-if="!isRecurringTask">
-            <label class="grid gap-2 font-semibold text-slate-700">
+            <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
               <span>Reschedule</span>
               <input
                 v-model="rescheduleAt"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
                 type="datetime-local"
               />
             </label>
             <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="!selectedDetail.schedule"
               @click="submitReschedule"
             >
@@ -499,7 +525,7 @@ async function openRunArchive() {
           </template>
           <template v-else>
             <button
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="!selectedDetail.schedule || isScheduleActionPending"
               @click="isEditingRecurrence = !isEditingRecurrence"
             >
@@ -507,21 +533,23 @@ async function openRunArchive() {
             </button>
             <form
               v-if="isEditingRecurrence"
-              class="grid gap-4 rounded-md border border-slate-200 bg-white p-4"
+              class="grid gap-4 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
               @submit.prevent="submitRecurrenceUpdate"
             >
-              <label class="grid gap-2 font-semibold text-slate-700">
+              <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
                 <span>Cadence</span>
                 <select
                   v-model="recurrenceCadence"
-                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                  class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                 </select>
               </label>
               <fieldset v-if="recurrenceCadence === 'weekly'" class="m-0 grid gap-2 border-0 p-0">
-                <legend class="mb-1 font-semibold text-slate-700">Weekdays</legend>
+                <legend class="mb-1 font-semibold text-slate-700 dark:text-slate-300">
+                  Weekdays
+                </legend>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="day in weekdayOptions"
@@ -539,15 +567,17 @@ async function openRunArchive() {
                   </button>
                 </div>
               </fieldset>
-              <label class="grid gap-2 font-semibold text-slate-700">
+              <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
                 <span>Run Time</span>
                 <input
                   v-model="recurrenceTime"
-                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+                  class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
                   type="time"
                 />
               </label>
-              <p class="m-0 text-sm text-slate-500">{{ recurrencePreviewText }}</p>
+              <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
+                {{ recurrencePreviewText }}
+              </p>
               <button
                 class="min-h-10 cursor-pointer rounded-md border border-transparent bg-teal-700 px-4 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
                 :disabled="isScheduleActionPending"
@@ -558,7 +588,7 @@ async function openRunArchive() {
             </form>
             <button
               v-if="selectedDetail.schedule?.schedule_status === 'active'"
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="isScheduleActionPending"
               @click="submitPause"
             >
@@ -566,7 +596,7 @@ async function openRunArchive() {
             </button>
             <button
               v-if="selectedDetail.schedule?.schedule_status === 'paused'"
-              class="min-h-10 cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
+              class="min-h-10 cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55"
               :disabled="isScheduleActionPending"
               @click="submitResume"
             >
@@ -574,7 +604,7 @@ async function openRunArchive() {
             </button>
           </template>
           <button
-            class="min-h-10 cursor-pointer rounded-md border border-red-300 bg-red-50 px-4 font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 cursor-pointer rounded-md border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-4 font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55"
             :disabled="!selectedDetail.schedule"
             @click="submitCancel"
           >
@@ -582,8 +612,11 @@ async function openRunArchive() {
           </button>
         </aside>
       </div>
-      <div v-else class="rounded-md border border-slate-200 bg-white p-7">
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
+      <div
+        v-else
+        class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-7"
+      >
+        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
           {{ isLoadingDetail ? 'Loading task...' : 'Task unavailable' }}
         </h2>
         <p>

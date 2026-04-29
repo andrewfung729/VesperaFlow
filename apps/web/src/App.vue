@@ -1,10 +1,29 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
+
+import ThemeToggle from '@/components/ThemeToggle.vue'
+import { initThemeListener } from '@/composables/useTheme'
+
+const isDark = ref(false)
+
+let cleanup: (() => void) | null = null
+
+onMounted(() => {
+  cleanup = initThemeListener((dark) => {
+    isDark.value = dark
+  })
+})
+
+onUnmounted(() => {
+  cleanup?.()
+})
 </script>
 
 <template>
   <main
-    class="grid min-h-screen grid-cols-1 bg-slate-100 text-slate-950 md:grid-cols-[260px_minmax(0,1fr)]"
+    :class="{ dark: isDark }"
+    class="grid min-h-screen grid-cols-1 bg-slate-100 text-slate-950 md:grid-cols-[260px_minmax(0,1fr)] dark:bg-slate-950 dark:text-slate-50"
   >
     <aside class="flex flex-col gap-8 bg-slate-900 px-5 py-5 text-slate-50 md:py-7">
       <div>
@@ -55,6 +74,9 @@ import { RouterLink, RouterView } from 'vue-router'
           History
         </RouterLink>
       </nav>
+      <div class="mt-auto">
+        <ThemeToggle />
+      </div>
     </aside>
 
     <section class="p-5 md:p-8">

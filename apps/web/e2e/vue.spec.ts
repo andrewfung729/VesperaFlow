@@ -87,6 +87,36 @@ test('covers the MVP navigation path', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Detailed Task' })).toBeVisible()
 })
 
+test('toggles dark mode and applies dark class to app root', async ({ page }) => {
+  await page.goto('/')
+  const main = page.locator('main')
+
+  // Force light mode first to establish a known baseline
+  await page.locator('aside button:has-text("Light")').click()
+  let hasDark = await main.evaluate((el) => el.classList.contains('dark'))
+  expect(hasDark).toBe(false)
+
+  await page.locator('aside button:has-text("Dark")').click()
+  hasDark = await main.evaluate((el) => el.classList.contains('dark'))
+  expect(hasDark).toBe(true)
+
+  await page.locator('aside button:has-text("Light")').click()
+  hasDark = await main.evaluate((el) => el.classList.contains('dark'))
+  expect(hasDark).toBe(false)
+})
+
+test('increases reader font size and changes markdown body class', async ({ page }) => {
+  await stubApi(page)
+  await page.goto('/tasks/task-recurring-1/runs/run-recurring-1')
+
+  const markdownContainer = page.locator('[data-testid="reader-body"]')
+  await expect(markdownContainer).toBeVisible()
+  await expect(markdownContainer).toHaveClass(/reader-font-md/)
+
+  await page.getByRole('button', { name: 'Increase font size' }).click()
+  await expect(markdownContainer).toHaveClass(/reader-font-lg/)
+})
+
 async function stubApi(page: Page) {
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url()

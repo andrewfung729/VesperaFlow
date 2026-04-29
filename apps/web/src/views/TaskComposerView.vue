@@ -286,24 +286,29 @@ function resetScheduleForMode(mode: ExecutionMode) {
   <div>
     <div
       v-if="errorMessage"
-      class="mb-5 max-w-5xl rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+      class="mb-5 max-w-5xl rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm font-medium text-red-800 dark:text-red-300"
     >
       {{ errorMessage }}
     </div>
 
     <section class="max-w-3xl">
       <div class="mb-6">
-        <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase">Composer</p>
-        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950">
+        <p class="mb-2 text-xs font-bold tracking-wide text-teal-700 dark:text-teal-400 uppercase">
+          Composer
+        </p>
+        <h2 class="m-0 text-2xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
           {{ executionMode === 'recurring' ? 'Create Recurring Task' : 'Create One-Time Task' }}
         </h2>
       </div>
       <form class="grid gap-5" @submit.prevent="submitTask">
-        <label v-if="templates.length > 0" class="grid gap-2 font-semibold text-slate-700">
+        <label
+          v-if="templates.length > 0"
+          class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300"
+        >
           <span>Template</span>
           <select
             v-model="selectedTemplateId"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             @change="applySelectedTemplate"
           >
             <option value="">Blank task</option>
@@ -316,9 +321,11 @@ function resetScheduleForMode(mode: ExecutionMode) {
             </option>
           </select>
         </label>
-        <div class="grid gap-2 font-semibold text-slate-700">
+        <div class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Mode</span>
-          <div class="grid grid-cols-2 gap-2 rounded-md border border-slate-200 bg-slate-50 p-1">
+          <div
+            class="grid grid-cols-2 gap-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-1"
+          >
             <button
               class="min-h-10 rounded-md border px-3 font-semibold transition"
               :class="
@@ -345,45 +352,51 @@ function resetScheduleForMode(mode: ExecutionMode) {
             </button>
           </div>
         </div>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Title</span>
           <input
             v-model="title"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="text"
             placeholder="Nightly Deep Research"
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Instructions</span>
           <textarea
             v-model="instructions"
-            class="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             rows="9"
             placeholder="Describe the AI work to run later..."
           />
         </label>
-        <label v-if="executionMode === 'one_time'" class="grid gap-2 font-semibold text-slate-700">
+        <label
+          v-if="executionMode === 'one_time'"
+          class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300"
+        >
           <span>Execution Time</span>
           <input
             v-model="plannedAt"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="datetime-local"
           />
         </label>
-        <div v-else class="grid gap-4 rounded-md border border-slate-200 bg-white p-4">
-          <label class="grid gap-2 font-semibold text-slate-700">
+        <div
+          v-else
+          class="grid gap-4 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4"
+        >
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Cadence</span>
             <select
               v-model="recurrenceCadence"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             >
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
             </select>
           </label>
           <fieldset v-if="recurrenceCadence === 'weekly'" class="m-0 grid gap-2 border-0 p-0">
-            <legend class="mb-1 font-semibold text-slate-700">Weekdays</legend>
+            <legend class="mb-1 font-semibold text-slate-700 dark:text-slate-300">Weekdays</legend>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="day in weekdayOptions"
@@ -401,30 +414,30 @@ function resetScheduleForMode(mode: ExecutionMode) {
               </button>
             </div>
           </fieldset>
-          <label class="grid gap-2 font-semibold text-slate-700">
+          <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <span>Run Time</span>
             <input
               v-model="recurrenceTime"
-              class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+              class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
               type="time"
             />
           </label>
-          <p class="m-0 text-sm text-slate-500">{{ recurrencePreviewText }}</p>
+          <p class="m-0 text-sm text-slate-500 dark:text-slate-400">{{ recurrencePreviewText }}</p>
         </div>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Target Directory</span>
           <input
             v-model="targetWorkingDirectory"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
             type="text"
             placeholder="/Users/you/project"
           />
         </label>
-        <label class="grid gap-2 font-semibold text-slate-700">
+        <label class="grid gap-2 font-semibold text-slate-700 dark:text-slate-300">
           <span>Executor</span>
           <select
             v-model="executor"
-            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
+            class="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-slate-950 dark:text-slate-50 shadow-xs outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20"
           >
             <option v-for="option in executorOptions" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -441,7 +454,7 @@ function resetScheduleForMode(mode: ExecutionMode) {
           </div>
           <button
             v-if="executor === 'claude_code' || executor === 'kimi_code'"
-            class="min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-teal-700 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
+            class="min-h-10 w-fit cursor-pointer rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
             :disabled="isCheckingExecutor || targetWorkingDirectory.trim().length === 0"
             @click="checkExecutor"
@@ -449,7 +462,7 @@ function resetScheduleForMode(mode: ExecutionMode) {
             {{ isCheckingExecutor ? 'Checking...' : 'Check Executor' }}
           </button>
         </div>
-        <p class="m-0 text-sm text-slate-500">Timezone: {{ timezoneLabel }}</p>
+        <p class="m-0 text-sm text-slate-500 dark:text-slate-400">Timezone: {{ timezoneLabel }}</p>
         <button
           class="min-h-10 w-fit cursor-pointer rounded-md border border-transparent bg-teal-700 px-5 font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-55"
           type="submit"
