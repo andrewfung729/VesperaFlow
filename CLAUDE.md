@@ -41,9 +41,9 @@ uv run pytest tests/integration
 # Agent-repo health check (also runs in CI)
 python scripts/check_agent_repo.py
 
-# DB migrations (run from packages/store)
-uv run alembic upgrade head
-uv run alembic revision --autogenerate -m "msg"
+# DB migrations
+uv run --directory packages/store alembic upgrade head
+uv run --directory packages/store alembic revision --autogenerate -m "msg"
 
 # Web (run from apps/web)
 bun install

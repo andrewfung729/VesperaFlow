@@ -4,9 +4,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
+import os
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from vesperaflow_api.settings import get_settings as _cached_get_settings
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from vesperaflow_api.app import create_app
 from vesperaflow_api.dependencies import set_app_state
@@ -90,6 +93,15 @@ class ApiTestContext:
     session_factory: async_sessionmaker
 
 
+@pytest.fixture(autouse=True)
+def _set_test_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "VESPERAFLOW_DATABASE_URL",
+        "postgresql+asyncpg://test@localhost/test",
+    )
+    _cached_get_settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def api_context(tmp_path: Path) -> AsyncIterator[ApiTestContext]:
     app = create_app()
@@ -97,7 +109,7 @@ async def api_context(tmp_path: Path) -> AsyncIterator[ApiTestContext]:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     session_factory = create_session_factory(engine)
-    set_app_state(ApiSettings(), session_factory, FakeScheduler())
+    set_app_state(ApiSettings(database_url="postgresql+asyncpg://test@localhost/test"), session_factory, FakeScheduler())
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport, base_url="http://test"

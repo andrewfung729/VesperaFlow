@@ -40,6 +40,7 @@ Run from the repository root unless noted.
 uv run ruff check .
 uv run basedpyright
 uv run pytest
+uv run --directory packages/store alembic upgrade head
 python scripts/check_agent_repo.py
 ```
 

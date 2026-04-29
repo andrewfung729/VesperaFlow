@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from vesperaflow_core import ExecutorName
 
@@ -14,9 +14,7 @@ class ApiSettings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = Field(
-        default="postgresql+asyncpg://vespera:password@localhost:15432/vespera"
-    )
+    database_url: str = Field(default="")
     temporal_address: str = "localhost:17233"
     temporal_namespace: str = "default"
     task_queue: str = "vesperaflow-default"
@@ -25,6 +23,14 @@ class ApiSettings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:15173"]
     host: str = "0.0.0.0"
     port: int = 18000
+
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def _database_url_required(cls, v: str) -> str:
+        if not v:
+            raise ValueError("VESPERAFLOW_DATABASE_URL must be set")
+        return v
 
 
 @lru_cache

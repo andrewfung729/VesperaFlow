@@ -166,6 +166,7 @@ def test_executor_factory_passes_claude_env() -> None:
 def test_worker_settings_builds_claude_executor_env() -> None:
     settings = WorkerSettings.model_validate(
         {
+            "database_url": "postgresql+asyncpg://test@localhost/test",
             "ANTHROPIC_API_KEY": "sk-test",
             "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
             "ANTHROPIC_MODEL": "claude-sonnet-4-5",
@@ -190,6 +191,7 @@ def test_worker_settings_reads_claude_passthrough_from_dotenv(
     _ = (tmp_path / ".env").write_text(
         "\n".join(
             [
+                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
                 "ANTHROPIC_API_KEY=sk-dotenv",
                 "ANTHROPIC_BASE_URL=https://dotenv-proxy.example.com/v1",
                 "ANTHROPIC_MODEL=claude-sonnet-4-5",
@@ -198,6 +200,7 @@ def test_worker_settings_reads_claude_passthrough_from_dotenv(
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VESPERAFLOW_DATABASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
@@ -218,7 +221,12 @@ def test_worker_settings_process_env_overrides_dotenv_passthrough(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ = (tmp_path / ".env").write_text(
-        "ANTHROPIC_BASE_URL=https://dotenv.example.com/v1",
+        "\n".join(
+            [
+                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
+                "ANTHROPIC_BASE_URL=https://dotenv.example.com/v1",
+            ]
+        ),
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
@@ -232,6 +240,7 @@ def test_worker_settings_process_env_overrides_dotenv_passthrough(
 
 def test_worker_settings_allows_explicit_claude_env_to_override_defaults() -> None:
     settings = WorkerSettings(
+        database_url="postgresql+asyncpg://test@localhost/test",
         claude_env={
             "DISABLE_TELEMETRY": "0",
             "CLAUDE_CODE_NO_FLICKER": "0",

@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import ClassVar
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CLAUDE_ENV = {
@@ -25,9 +25,7 @@ class WorkerSettings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = Field(
-        default="postgresql+asyncpg://vespera:password@localhost:15432/vespera"
-    )
+    database_url: str = Field(default="")
     temporal_address: str = "localhost:17233"
     temporal_namespace: str = "default"
     task_queue: str = "vesperaflow-default"
@@ -47,6 +45,13 @@ class WorkerSettings(BaseSettings):
         default=None,
         validation_alias="ANTHROPIC_MODEL",
     )
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def _database_url_required(cls, v: str) -> str:
+        if not v:
+            raise ValueError("VESPERAFLOW_DATABASE_URL must be set")
+        return v
 
     def claude_executor_env(self) -> dict[str, str]:
         env: dict[str, str] = dict(DEFAULT_CLAUDE_ENV)

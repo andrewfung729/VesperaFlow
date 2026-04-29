@@ -63,9 +63,9 @@
     {
       "label": "db: migrate",
       "type": "shell",
-      "command": "uv run alembic upgrade head",
+      "command": "uv run --directory packages/store alembic upgrade head",
       "options": {
-        "cwd": "${workspaceFolder}/packages/store"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [],
       "presentation": {
@@ -77,9 +77,9 @@
     {
       "label": "db: revision",
       "type": "shell",
-      "command": "uv run alembic revision --autogenerate -m \"${input:alembicMessage}\"",
+      "command": "uv run --directory packages/store alembic revision --autogenerate -m \"${input:alembicMessage}\"",
       "options": {
-        "cwd": "${workspaceFolder}/packages/store"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [],
       "presentation": {
@@ -91,9 +91,9 @@
     {
       "label": "db: downgrade",
       "type": "shell",
-      "command": "uv run alembic downgrade -1",
+      "command": "uv run --directory packages/store alembic downgrade -1",
       "options": {
-        "cwd": "${workspaceFolder}/packages/store"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": [],
       "presentation": {
