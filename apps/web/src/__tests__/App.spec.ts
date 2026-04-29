@@ -130,6 +130,9 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Recurring Calendar')
     expect(wrapper.text()).toContain('One-time')
     expect(wrapper.text()).toContain('Recurring')
+    expect(wrapper.find('[data-testid="calendar-today-header"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="calendar-current-time-marker"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="calendar-current-time-label"]').exists()).toBe(true)
 
     const oneTimeItem = wrapper
       .findAll('[role="button"]')
@@ -159,6 +162,8 @@ describe('App', () => {
 
     expect(wrapper.text()).toContain('One-Time Calendar')
     expect(wrapper.text()).toContain('Recurring Calendar')
+    expect(wrapper.find('[data-testid="calendar-today-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="calendar-current-time-label"]').exists()).toBe(true)
     expect(calendarUrls().length).toBeGreaterThan(initialCalendarCalls)
 
     const dayButton = wrapper.findAll('button').find((button) => button.text() === 'Day')
@@ -173,6 +178,8 @@ describe('App', () => {
     const from = new Date(dayParams.get('from') ?? '')
     const to = new Date(dayParams.get('to') ?? '')
     expect(to.getTime() - from.getTime()).toBe(24 * 60 * 60 * 1000)
+    expect(wrapper.find('[data-testid="calendar-today-header"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="calendar-current-time-marker"]').exists()).toBe(true)
   })
 
   it('creates a one-time task from the calendar add modal', async () => {

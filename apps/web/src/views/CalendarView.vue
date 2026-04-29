@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import {
@@ -44,6 +44,7 @@ const router = useRouter()
 const viewMode = ref<CalendarViewMode>('week')
 const anchorDate = ref(startOfDay(new Date()))
 const includeCompleted = ref(false)
+const currentTime = ref(new Date())
 const items = ref<CalendarItem[]>([])
 const total = ref(0)
 const isLoading = ref(false)
@@ -60,8 +61,17 @@ const newTaskTitle = ref('')
 const newTaskInstructions = ref('')
 const newTaskTargetDirectory = ref('')
 const newTaskExecutor = ref<ExecutorName>('debug_printer')
+let currentTimeTimer: number | undefined
 
 const hours = Array.from({ length: 24 }, (_, hour) => hour)
+const currentDateKey = computed(() => dateKey(currentTime.value))
+const currentHour = computed(() => currentTime.value.getHours())
+const currentMinuteOffset = computed(() => `${(currentTime.value.getMinutes() / 60) * 100}%`)
+const currentClockLabel = computed(() =>
+  new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(
+    currentTime.value,
+  ),
+)
 const visibleRange = computed(() => rangeForMode(viewMode.value, anchorDate.value))
 const rangeLabel = computed(() =>
   labelForRange(viewMode.value, visibleRange.value, anchorDate.value),
@@ -71,6 +81,7 @@ const calendarDays = computed(() =>
     buildCalendarDay(date, anchorDate.value),
   ),
 )
+const visibleToday = computed(() => calendarDays.value.some((day) => day.isToday))
 const timeGridDays = computed(() => (viewMode.value === 'month' ? [] : calendarDays.value))
 const monthRows = computed(() => {
   const rows: CalendarDay[][] = []
@@ -120,6 +131,15 @@ const canCreateTask = computed(
 
 onMounted(() => {
   void refreshCalendar()
+  currentTimeTimer = window.setInterval(() => {
+    currentTime.value = new Date()
+  }, 60_000)
+})
+
+onUnmounted(() => {
+  if (currentTimeTimer !== undefined) {
+    window.clearInterval(currentTimeTimer)
+  }
 })
 
 watch([viewMode, anchorDate, includeCompleted], () => {
@@ -314,6 +334,10 @@ function hourHasItems(hour: number): boolean {
   return timeGridDays.value.some((day) => itemsForHour(day, hour).length > 0)
 }
 
+function isCurrentHour(day: CalendarDay, hour: number): boolean {
+  return day.isToday && hour === currentHour.value
+}
+
 function addTaskLabel(date: Date): string {
   return `Add task at ${formatDateTime(date.toISOString())}`
 }
@@ -399,7 +423,7 @@ function buildCalendarDay(date: Date, currentMonthDate: Date): CalendarDay {
     label: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date),
     weekday: new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date),
     dayNumber: date.getDate(),
-    isToday: dateKey(date) === dateKey(new Date()),
+    isToday: dateKey(date) === currentDateKey.value,
     isOutsideMonth: date.getMonth() !== currentMonthDate.getMonth(),
   }
 }
@@ -550,11 +574,15 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               v-for="day in week"
               :key="day.key"
               class="min-h-36 cursor-pointer border-r border-slate-200 dark:border-slate-700 p-2 last:border-r-0 hover:bg-teal-50/40"
-              :class="
+              :class="[
                 day.isOutsideMonth
                   ? 'bg-slate-50/70 text-slate-400 dark:bg-slate-900/50 dark:text-slate-500'
-                  : 'bg-white text-slate-950 dark:bg-slate-900 dark:text-slate-50'
-              "
+                  : 'bg-white text-slate-950 dark:bg-slate-900 dark:text-slate-50',
+                day.isToday
+                  ? 'ring-2 ring-inset ring-teal-600 dark:ring-teal-400'
+                  : '',
+              ]"
+              :data-testid="day.isToday ? 'calendar-today-cell' : undefined"
               :aria-label="addTaskLabel(defaultDaySlot(day))"
               role="button"
               tabindex="0"
@@ -570,9 +598,18 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                 >
                   {{ day.dayNumber }}
                 </span>
-                <span class="text-xs text-slate-500 dark:text-slate-400">{{
-                  itemsForDay(day).length || ''
-                }}</span>
+                <span class="flex items-center gap-1">
+                  <span
+                    v-if="day.isToday"
+                    class="rounded-full bg-teal-50 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-bold text-teal-800 dark:text-teal-300"
+                    data-testid="calendar-current-time-label"
+                  >
+                    {{ currentClockLabel }}
+                  </span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400">{{
+                    itemsForDay(day).length || ''
+                  }}</span>
+                </span>
               </div>
               <div class="grid gap-1">
                 <article
@@ -631,13 +668,30 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               v-for="day in timeGridDays"
               :key="day.key"
               class="border-l border-slate-200 dark:border-slate-700 px-3 py-3"
+              :class="
+                day.isToday
+                  ? 'bg-teal-50/80 dark:bg-teal-950/30'
+                  : ''
+              "
+              :data-testid="day.isToday ? 'calendar-today-header' : undefined"
             >
               <div
                 class="text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400 uppercase"
               >
                 {{ day.weekday }}
               </div>
-              <div class="text-sm font-bold text-slate-950 dark:text-slate-50">{{ day.label }}</div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-bold text-slate-950 dark:text-slate-50">{{
+                  day.label
+                }}</span>
+                <span
+                  v-if="day.isToday"
+                  class="rounded-full bg-teal-700 px-2 py-0.5 text-xs font-bold text-white dark:bg-teal-400 dark:text-slate-950"
+                  data-testid="calendar-current-time-label"
+                >
+                  {{ currentClockLabel }}
+                </span>
+              </div>
             </div>
           </div>
           <div
@@ -649,21 +703,42 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           >
             <div
               class="bg-slate-50 dark:bg-slate-800/50 px-3 text-xs font-semibold text-slate-500 dark:text-slate-400"
-              :class="hourHasItems(hour) ? 'py-3' : 'py-2'"
+              :class="[
+                hourHasItems(hour) ? 'py-3' : 'py-2',
+                visibleToday && hour === currentHour
+                  ? 'text-teal-800 dark:text-teal-300'
+                  : '',
+              ]"
             >
               {{ hourLabel(hour) }}
             </div>
             <div
               v-for="day in timeGridDays"
               :key="`${day.key}-${hour}`"
-              class="cursor-pointer border-l border-slate-100 dark:border-slate-800 transition hover:bg-teal-50/50"
-              :class="hourHasItems(hour) ? 'min-h-20 p-2' : 'min-h-9 px-2 py-1'"
+              class="relative cursor-pointer border-l border-slate-100 dark:border-slate-800 transition hover:bg-teal-50/50"
+              :class="[
+                hourHasItems(hour) ? 'min-h-20 p-2' : 'min-h-9 px-2 py-1',
+                day.isToday ? 'bg-teal-50/30 dark:bg-teal-950/10' : '',
+                isCurrentHour(day, hour)
+                  ? 'bg-teal-50/80 dark:bg-teal-950/30'
+                  : '',
+              ]"
               :aria-label="addTaskLabel(slotDate(day, hour))"
               role="button"
               tabindex="0"
               @click="openAddTaskModal(slotDate(day, hour))"
               @keydown.enter.prevent="openAddTaskModal(slotDate(day, hour))"
             >
+              <div
+                v-if="isCurrentHour(day, hour)"
+                class="pointer-events-none absolute right-2 left-2 z-10 flex items-center"
+                :style="{ top: currentMinuteOffset }"
+                aria-label="Current time"
+                data-testid="calendar-current-time-marker"
+              >
+                <span class="size-2 rounded-full bg-teal-700 dark:bg-teal-300"></span>
+                <span class="h-0.5 flex-1 bg-teal-700 dark:bg-teal-300"></span>
+              </div>
               <div class="grid gap-2">
                 <article
                   v-for="item in itemsForHour(day, hour)"
@@ -712,7 +787,16 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           <div
             class="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-3"
           >
-            <span class="text-sm font-bold text-slate-950 dark:text-slate-50">Agenda</span>
+            <span class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-bold text-slate-950 dark:text-slate-50">Agenda</span>
+              <span
+                v-if="visibleToday"
+                class="rounded-full bg-teal-50 dark:bg-teal-950/50 px-2 py-0.5 text-xs font-bold text-teal-800 dark:text-teal-300"
+                data-testid="calendar-mobile-current-time-label"
+              >
+                {{ currentClockLabel }}
+              </span>
+            </span>
             <button
               class="min-h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 transition hover:border-teal-700 dark:hover:border-teal-500 hover:text-teal-800"
               type="button"
