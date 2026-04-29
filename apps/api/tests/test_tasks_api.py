@@ -4,16 +4,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-import os
-
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from vesperaflow_api.settings import get_settings as _cached_get_settings
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from vesperaflow_api.app import create_app
 from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
+from vesperaflow_api.settings import get_settings as _cached_get_settings
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.models import Run, Task
@@ -109,7 +107,11 @@ async def api_context(tmp_path: Path) -> AsyncIterator[ApiTestContext]:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     session_factory = create_session_factory(engine)
-    set_app_state(ApiSettings(database_url="postgresql+asyncpg://test@localhost/test"), session_factory, FakeScheduler())
+    set_app_state(
+        ApiSettings(database_url="postgresql+asyncpg://test@localhost/test"),
+        session_factory,
+        FakeScheduler(),
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport, base_url="http://test"

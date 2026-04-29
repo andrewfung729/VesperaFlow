@@ -15,7 +15,12 @@ from vesperaflow_store.models import Task
 
 
 def test_recurring_schedule_action_has_workflow_id_prefix() -> None:
-    scheduler = TemporalScheduler(ApiSettings(database_url="postgresql+asyncpg://test@localhost/test", task_queue="test-queue"))
+    scheduler = TemporalScheduler(
+        ApiSettings(
+            database_url="postgresql+asyncpg://test@localhost/test",
+            task_queue="test-queue",
+        )
+    )
     now = datetime(2026, 4, 26, 13, 30, tzinfo=UTC)
     task = Task(
         task_id="task_123",
