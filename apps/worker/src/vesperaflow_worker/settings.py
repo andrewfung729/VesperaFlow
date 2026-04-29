@@ -31,7 +31,6 @@ class WorkerSettings(BaseSettings):
     task_queue: str = "vesperaflow-default"
     run_workspace_root: str = "/tmp/vesperaflow-runs"
     executor_adapter: str = "auto"
-    claude_env: dict[str, str] = Field(default_factory=dict, repr=False)
     anthropic_api_key: str | None = Field(
         default=None,
         validation_alias="ANTHROPIC_API_KEY",
@@ -61,7 +60,6 @@ class WorkerSettings(BaseSettings):
             env["ANTHROPIC_BASE_URL"] = self.anthropic_base_url
         if self.anthropic_model:
             env["ANTHROPIC_MODEL"] = self.anthropic_model
-        env.update({name: value for name, value in self.claude_env.items() if value})
         return env
 
 

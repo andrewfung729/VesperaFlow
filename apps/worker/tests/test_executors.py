@@ -170,7 +170,6 @@ def test_worker_settings_builds_claude_executor_env() -> None:
             "ANTHROPIC_API_KEY": "sk-test",
             "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
             "ANTHROPIC_MODEL": "claude-sonnet-4-5",
-            "claude_env": {"ANTHROPIC_BASE_URL": "https://override.example.com/v1"},
         }
     )
 
@@ -179,7 +178,7 @@ def test_worker_settings_builds_claude_executor_env() -> None:
     assert env == {
         **DEFAULT_CLAUDE_ENV,
         "ANTHROPIC_API_KEY": "sk-test",
-        "ANTHROPIC_BASE_URL": "https://override.example.com/v1",
+        "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
         "ANTHROPIC_MODEL": "claude-sonnet-4-5",
     }
 
@@ -236,22 +235,6 @@ def test_worker_settings_process_env_overrides_dotenv_passthrough(
     env = settings.claude_executor_env()
 
     assert env["ANTHROPIC_BASE_URL"] == "https://process.example.com/v1"
-
-
-def test_worker_settings_allows_explicit_claude_env_to_override_defaults() -> None:
-    settings = WorkerSettings(
-        database_url="postgresql+asyncpg://test@localhost/test",
-        claude_env={
-            "DISABLE_TELEMETRY": "0",
-            "CLAUDE_CODE_NO_FLICKER": "0",
-        },
-    )
-
-    env = settings.claude_executor_env()
-
-    assert env["DISABLE_TELEMETRY"] == "0"
-    assert env["DISABLE_ERROR_REPORTING"] == "1"
-    assert env["CLAUDE_CODE_NO_FLICKER"] == "0"
 
 
 @pytest.mark.asyncio
