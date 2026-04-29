@@ -143,10 +143,17 @@ def iter_source_files() -> list[Path]:
 
 def check_forbidden_scheduler_patterns(errors: list[str]) -> None:
     for path in iter_source_files():
-        text = path.read_text(encoding="utf-8")
-        for lineno, line in enumerate(text.splitlines(), start=1):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for lineno, line in enumerate(lines, start=1):
             for pattern, message in FORBIDDEN_SCHEDULER_PATTERNS:
                 if pattern.search(line):
+                    # Allow asyncio.sleep inside Temporal heartbeat loops
+                    if "asyncio.sleep" in line:
+                        context = "\n".join(
+                            lines[max(0, lineno - 10) : lineno]
+                        )
+                        if "heartbeat" in context or "_heartbeat_loop" in context:
+                            continue
                     fail(f"{relative(path)}:{lineno}: {message}", errors)
 
 

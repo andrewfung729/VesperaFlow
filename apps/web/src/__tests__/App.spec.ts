@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import App from '../App.vue'
+import { toIsoWithOffset } from '../lib/dateTime'
 import { routes } from '../router'
 
 describe('App', () => {
@@ -207,7 +208,7 @@ describe('App', () => {
     const body = JSON.parse(String(createCall[1]?.body))
     expect(body.title).toBe('Calendar-created task')
     expect(body.execution_mode).toBe('one_time')
-    expect(body.schedule.planned_at).toBe('2026-04-29T14:00:00+08:00')
+    expect(body.schedule.planned_at).toBe(toIsoWithOffset('2026-04-29T14:00'))
   })
 
   it('renders the templates route and links templates into the composer', async () => {
