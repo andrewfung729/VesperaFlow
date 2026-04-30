@@ -123,6 +123,42 @@ async def test_terminal_run_updates_task_and_schedule_state(
 
 
 @pytest.mark.asyncio
+async def test_run_status_transitions_create_ordered_events(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        await repo.mark_run_queued(
+            session,
+            run_id=bundle.run.run_id,
+            external_execution_ref="workflow-run-1",
+        )
+        await repo.mark_run_running(session, run_id=bundle.run.run_id)
+        await repo.mark_run_completed(
+            session,
+            run_id=bundle.run.run_id,
+            result_summary="Done",
+        )
+
+    events = await repo.list_run_events(session, run_id=bundle.run.run_id)
+
+    assert events.total == 3
+    assert [event.event_type for event in events.items] == [
+        "run.queued",
+        "run.running",
+        "run.completed",
+    ]
+    assert events.items[0].details == {"external_execution_ref": "workflow-run-1"}
+    assert events.items[2].details == {"has_result_summary": True}
+
+
+@pytest.mark.asyncio
 async def test_recurring_lifecycle_and_materialized_run_keeps_parent_stable(
     session: AsyncSession,
 ) -> None:
@@ -203,6 +239,53 @@ async def test_recurring_lifecycle_and_materialized_run_keeps_parent_stable(
     assert resumed.task.task_status is TaskStatus.SCHEDULED
     assert resumed.schedule.schedule_status is ScheduleStatus.ACTIVE
     assert resumed.schedule.next_run_at is not None
+
+
+@pytest.mark.asyncio
+async def test_recurring_materialization_records_materialized_and_reused_events(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        planned_start_at = datetime(2026, 4, 27, 0, 0, tzinfo=UTC)
+        occurrence_key = occurrence_key_for_datetime(planned_start_at)
+        materialized = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=planned_start_at,
+            occurrence_key=occurrence_key,
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        duplicate = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=planned_start_at,
+            occurrence_key=occurrence_key,
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+
+    events = await repo.list_run_events(session, run_id=materialized.run_id)
+
+    assert duplicate.run_id == materialized.run_id
+    assert [event.event_type for event in events.items] == [
+        "run.materialized",
+        "run.materialization_reused",
+    ]
+    assert events.items[0].temporal_workflow_id == "vesperaflow-recurring-workflow"
 
 
 @pytest.mark.asyncio

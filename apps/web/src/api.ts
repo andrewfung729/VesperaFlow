@@ -52,6 +52,22 @@ export interface Run {
   occurrence_key: string | null
 }
 
+export interface RunEvent {
+  run_event_id: string
+  run_id: string
+  task_id: string
+  schedule_id: string | null
+  event_type: string
+  severity: 'info' | 'warning' | 'error' | string
+  message: string
+  details: Record<string, string | number | boolean | null>
+  temporal_workflow_id: string | null
+  temporal_workflow_run_id: string | null
+  activity_type: string | null
+  activity_attempt: number | null
+  created_at: string
+}
+
 export interface RunPreview {
   run_id: string
   task_id: string
@@ -290,6 +306,20 @@ export async function getTaskRuns(
 
 export async function getRun(runId: string): Promise<Run> {
   return request<Run>(`/runs/${runId}`)
+}
+
+export async function getRunEvents(
+  runId: string,
+  params: { limit?: number; offset?: number } = {},
+): Promise<ListEnvelope<RunEvent>> {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      search.set(key, String(value))
+    }
+  }
+  const suffix = search.size > 0 ? `?${search}` : ''
+  return requestList<RunEvent>(`/runs/${runId}/events${suffix}`)
 }
 
 export async function getRunReaderDetail(taskId: string, runId: string): Promise<RunReaderDetail> {

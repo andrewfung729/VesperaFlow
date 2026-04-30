@@ -1,8 +1,10 @@
 """TaskRunActivities Temporal activity definitions."""
 
 import asyncio
+import logging
 from contextlib import suppress
 from datetime import datetime
+from typing import TypedDict
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from temporalio import activity
@@ -11,6 +13,15 @@ from vesperaflow_store import create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
 
 from vesperaflow_worker.executors.base import ExecutorAdapter, ExecutorUnavailableError
+
+logger = logging.getLogger(__name__)
+
+
+class ActivityEventContext(TypedDict, total=False):
+    temporal_workflow_id: str | None
+    temporal_workflow_run_id: str | None
+    activity_type: str | None
+    activity_attempt: int | None
 
 
 class TaskRunActivities:
@@ -37,56 +48,152 @@ class TaskRunActivities:
     ) -> MaterializedRun | str:
         if isinstance(payload, dict):
             payload = TaskRunInput.model_validate(payload)
-        if payload.run_id is not None and workflow_id is None:
+        logger.info(
+            "activity.materialize_run.starting",
+            extra=_activity_log_context(payload=payload),
+        )
+        try:
+            if payload.run_id is not None and workflow_id is None:
+                async with self._session_factory() as session:
+                    async with session.begin():
+                        run = await repo.get_run(session, payload.run_id)
+                        _ = await repo.record_run_event(
+                            session,
+                            run_id=run.run_id,
+                            event_type="run.materialization_reused",
+                            message="Existing run loaded for execution.",
+                            details={"run_status": run.run_status.value},
+                            **_activity_event_context(),
+                        )
+                        logger.info(
+                            "activity.materialize_run.succeeded",
+                            extra=_activity_log_context(
+                                payload=payload,
+                                run_id=run.run_id,
+                                run_status=run.run_status.value,
+                            ),
+                        )
+                        return run.run_status.value
+            if workflow_id is None or workflow_start_time is None:
+                raise ValueError("recurring materialization requires workflow metadata")
             async with self._session_factory() as session:
-                run = await repo.get_run(session, payload.run_id)
-                return run.run_status.value
-        if workflow_id is None or workflow_start_time is None:
-            raise ValueError("recurring materialization requires workflow metadata")
-        async with self._session_factory() as session:
-            async with session.begin():
-                return await repo.materialize_run(
-                    session,
-                    payload_task_id=payload.task_id,
-                    payload_schedule_id=payload.schedule_id,
-                    payload_run_id=payload.run_id,
-                    planned_start_at=workflow_start_time,
-                    occurrence_key=payload.occurrence_key,
-                    workflow_id=workflow_id,
-                    run_workspace_root=self._run_workspace_root,
-                )
+                async with session.begin():
+                    materialized = await repo.materialize_run(
+                        session,
+                        payload_task_id=payload.task_id,
+                        payload_schedule_id=payload.schedule_id,
+                        payload_run_id=payload.run_id,
+                        planned_start_at=workflow_start_time,
+                        occurrence_key=payload.occurrence_key,
+                        workflow_id=workflow_id,
+                        run_workspace_root=self._run_workspace_root,
+                    )
+                    logger.info(
+                        "activity.materialize_run.succeeded",
+                        extra=_activity_log_context(
+                            payload=payload,
+                            run_id=materialized.run_id,
+                            run_status=materialized.run_status.value,
+                        ),
+                    )
+                    return materialized
+        except Exception:
+            logger.exception(
+                "activity.materialize_run.failed",
+                extra=_activity_log_context(payload=payload),
+            )
+            raise
 
     @activity.defn(name="mark_run_queued")
     async def mark_run_queued(self, run_id: str, external_execution_ref: str) -> None:
-        async with self._session_factory() as session:
-            async with session.begin():
-                _ = await repo.mark_run_queued(
-                    session,
-                    run_id=run_id,
-                    external_execution_ref=external_execution_ref,
-                )
+        logger.info(
+            "activity.mark_run_queued.starting",
+            extra=_activity_log_context(run_id=run_id),
+        )
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    run = await repo.mark_run_queued(
+                        session,
+                        run_id=run_id,
+                        external_execution_ref=external_execution_ref,
+                        **_activity_event_context(),
+                    )
+                    logger.info(
+                        "activity.mark_run_queued.succeeded",
+                        extra=_activity_log_context(
+                            run_id=run.run_id,
+                            task_id=run.task_id,
+                            schedule_id=run.schedule_id,
+                            run_status=run.run_status.value,
+                        ),
+                    )
+        except Exception:
+            logger.exception(
+                "activity.mark_run_queued.failed",
+                extra=_activity_log_context(run_id=run_id),
+            )
+            raise
 
     @activity.defn(name="mark_run_running")
     async def mark_run_running(self, run_id: str) -> None:
-        async with self._session_factory() as session:
-            async with session.begin():
-                _ = await repo.mark_run_running(session, run_id=run_id)
+        logger.info(
+            "activity.mark_run_running.starting",
+            extra=_activity_log_context(run_id=run_id),
+        )
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    run = await repo.mark_run_running(
+                        session,
+                        run_id=run_id,
+                        **_activity_event_context(),
+                    )
+                    logger.info(
+                        "activity.mark_run_running.succeeded",
+                        extra=_activity_log_context(
+                            run_id=run.run_id,
+                            task_id=run.task_id,
+                            schedule_id=run.schedule_id,
+                            run_status=run.run_status.value,
+                        ),
+                    )
+        except Exception:
+            logger.exception(
+                "activity.mark_run_running.failed",
+                extra=_activity_log_context(run_id=run_id),
+            )
+            raise
 
     @activity.defn(name="execute_agent_run")
     async def execute_agent_run(self, payload: TaskRunInput) -> ExecutorOutcome:
         if isinstance(payload, dict):
             payload = TaskRunInput.model_validate(payload)
+        logger.info(
+            "activity.execute_agent_run.starting",
+            extra=_activity_log_context(payload=payload),
+        )
+        await self._record_executor_event(
+            payload,
+            event_type="executor.started",
+            message="Executor invocation started.",
+            details=_executor_event_details(payload),
+        )
         heartbeat_task = asyncio.create_task(_heartbeat_loop(interval_seconds=60))
         try:
-            return await self._executor.execute(payload.execution_snapshot)
+            outcome = await self._executor.execute(payload.execution_snapshot)
         except ExecutorUnavailableError as exc:
-            return ExecutorOutcome(
+            outcome = ExecutorOutcome(
                 terminal_status=RunStatus.FAILED,
                 failure_reason=str(exc),
                 terminal_code="executor_unavailable",
             )
         except Exception as exc:
-            return ExecutorOutcome(
+            logger.exception(
+                "activity.execute_agent_run.executor_error",
+                extra=_activity_log_context(payload=payload),
+            )
+            outcome = ExecutorOutcome(
                 terminal_status=RunStatus.FAILED,
                 failure_reason=str(exc),
                 terminal_code="executor_error",
@@ -96,42 +203,184 @@ class TaskRunActivities:
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
 
+        terminal_event_type = _executor_terminal_event_type(outcome.terminal_status)
+        try:
+            await self._record_executor_event(
+                payload,
+                event_type=terminal_event_type,
+                message=_executor_terminal_message(outcome.terminal_status),
+                severity="error"
+                if outcome.terminal_status is RunStatus.FAILED
+                else "warning"
+                if outcome.terminal_status is RunStatus.CANCELED
+                else "info",
+                details={
+                    **_executor_event_details(payload),
+                    "terminal_status": outcome.terminal_status.value,
+                    "terminal_code": outcome.terminal_code,
+                    "has_result_summary": outcome.result_summary is not None,
+                    "has_failure_reason": outcome.failure_reason is not None,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "activity.execute_agent_run.terminal_event_record_failed",
+                extra=_activity_log_context(
+                    payload=payload,
+                    run_status=outcome.terminal_status.value,
+                    terminal_code=outcome.terminal_code,
+                ),
+            )
+        logger.info(
+            "activity.execute_agent_run.succeeded",
+            extra=_activity_log_context(
+                payload=payload,
+                run_status=outcome.terminal_status.value,
+                terminal_code=outcome.terminal_code,
+            ),
+        )
+        return outcome
+
     @activity.defn(name="mark_run_completed")
     async def mark_run_completed(self, run_id: str, result_summary: str | None) -> None:
-        async with self._session_factory() as session:
-            async with session.begin():
-                _ = await repo.mark_run_completed(
-                    session,
-                    run_id=run_id,
-                    result_summary=result_summary,
-                )
+        logger.info(
+            "activity.mark_run_completed.starting",
+            extra=_activity_log_context(run_id=run_id),
+        )
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    run = await repo.mark_run_completed(
+                        session,
+                        run_id=run_id,
+                        result_summary=result_summary,
+                        **_activity_event_context(),
+                    )
+                    logger.info(
+                        "activity.mark_run_completed.succeeded",
+                        extra=_activity_log_context(
+                            run_id=run.run_id,
+                            task_id=run.task_id,
+                            schedule_id=run.schedule_id,
+                            run_status=run.run_status.value,
+                        ),
+                    )
+        except Exception:
+            logger.exception(
+                "activity.mark_run_completed.failed",
+                extra=_activity_log_context(run_id=run_id),
+            )
+            raise
 
     @activity.defn(name="mark_run_failed")
     async def mark_run_failed(self, run_id: str, failure_reason: str) -> None:
-        async with self._session_factory() as session:
-            async with session.begin():
-                _ = await repo.mark_run_failed(
-                    session,
-                    run_id=run_id,
-                    failure_reason=failure_reason,
-                )
+        logger.info(
+            "activity.mark_run_failed.starting",
+            extra=_activity_log_context(run_id=run_id),
+        )
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    run = await repo.mark_run_failed(
+                        session,
+                        run_id=run_id,
+                        failure_reason=failure_reason,
+                        **_activity_event_context(),
+                    )
+                    logger.info(
+                        "activity.mark_run_failed.succeeded",
+                        extra=_activity_log_context(
+                            run_id=run.run_id,
+                            task_id=run.task_id,
+                            schedule_id=run.schedule_id,
+                            run_status=run.run_status.value,
+                        ),
+                    )
+        except Exception:
+            logger.exception(
+                "activity.mark_run_failed.failed",
+                extra=_activity_log_context(run_id=run_id),
+            )
+            raise
 
     @activity.defn(name="mark_run_canceled")
     async def mark_run_canceled(self, run_id: str, failure_reason: str | None) -> None:
-        async with self._session_factory() as session:
-            async with session.begin():
-                _ = await repo.mark_run_canceled(
-                    session,
-                    run_id=run_id,
-                    failure_reason=failure_reason,
-                )
+        logger.info(
+            "activity.mark_run_canceled.starting",
+            extra=_activity_log_context(run_id=run_id),
+        )
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    run = await repo.mark_run_canceled(
+                        session,
+                        run_id=run_id,
+                        failure_reason=failure_reason,
+                        **_activity_event_context(),
+                    )
+                    logger.info(
+                        "activity.mark_run_canceled.succeeded",
+                        extra=_activity_log_context(
+                            run_id=run.run_id,
+                            task_id=run.task_id,
+                            schedule_id=run.schedule_id,
+                            run_status=run.run_status.value,
+                        ),
+                    )
+        except Exception:
+            logger.exception(
+                "activity.mark_run_canceled.failed",
+                extra=_activity_log_context(run_id=run_id),
+            )
+            raise
 
     @activity.defn(name="complete_single_run_schedule")
     async def complete_single_run_schedule(self, schedule_id: str) -> None:
+        logger.info(
+            "activity.complete_single_run_schedule.starting",
+            extra=_activity_log_context(schedule_id=schedule_id),
+        )
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    schedule = await repo.complete_single_run_schedule(
+                        session, schedule_id=schedule_id
+                    )
+                    logger.info(
+                        "activity.complete_single_run_schedule.succeeded",
+                        extra=_activity_log_context(
+                            task_id=schedule.task_id,
+                            schedule_id=schedule.schedule_id,
+                        ),
+                    )
+        except Exception:
+            logger.exception(
+                "activity.complete_single_run_schedule.failed",
+                extra=_activity_log_context(schedule_id=schedule_id),
+            )
+            raise
+
+    async def _record_executor_event(
+        self,
+        payload: TaskRunInput,
+        *,
+        event_type: str,
+        message: str,
+        details: dict[str, object],
+        severity: str = "info",
+    ) -> None:
+        if payload.run_id is None:
+            return
         async with self._session_factory() as session:
             async with session.begin():
-                _ = await repo.complete_single_run_schedule(
-                    session, schedule_id=schedule_id
+                _ = await repo.record_run_event(
+                    session,
+                    run_id=payload.run_id,
+                    event_type=event_type,
+                    message=message,
+                    severity=severity,
+                    details=details,
+                    **_activity_event_context(),
                 )
 
     async def close(self) -> None:
@@ -151,3 +400,74 @@ async def _heartbeat_loop(interval_seconds: float = 60.0) -> None:
             activity.heartbeat()
         except asyncio.CancelledError:
             break
+
+
+def _activity_log_context(
+    *,
+    payload: TaskRunInput | None = None,
+    run_id: str | None = None,
+    task_id: str | None = None,
+    schedule_id: str | None = None,
+    run_status: str | None = None,
+    terminal_code: str | None = None,
+) -> dict[str, object]:
+    activity_context = _activity_info_dict()
+    snapshot = payload.execution_snapshot if payload is not None else None
+    return {
+        **activity_context,
+        "task_id": task_id or (payload.task_id if payload is not None else None),
+        "schedule_id": schedule_id
+        or (payload.schedule_id if payload is not None else None),
+        "run_id": run_id or (payload.run_id if payload is not None else None),
+        "executor": snapshot.executor.value if snapshot is not None else None,
+        "run_status": run_status,
+        "terminal_code": terminal_code,
+    }
+
+
+def _activity_info_dict() -> dict[str, object]:
+    try:
+        info = activity.info()
+    except RuntimeError:
+        return {}
+    return {
+        "workflow_id": info.workflow_id,
+        "workflow_run_id": info.workflow_run_id,
+        "activity_type": info.activity_type,
+        "activity_attempt": info.attempt,
+    }
+
+
+def _activity_event_context() -> ActivityEventContext:
+    try:
+        info = activity.info()
+    except RuntimeError:
+        return {}
+    return {
+        "temporal_workflow_id": info.workflow_id,
+        "temporal_workflow_run_id": info.workflow_run_id,
+        "activity_type": info.activity_type,
+        "activity_attempt": info.attempt,
+    }
+
+
+def _executor_event_details(payload: TaskRunInput) -> dict[str, object]:
+    return {
+        "executor": payload.execution_snapshot.executor.value,
+    }
+
+
+def _executor_terminal_event_type(status: RunStatus) -> str:
+    if status is RunStatus.COMPLETED:
+        return "executor.completed"
+    if status is RunStatus.CANCELED:
+        return "executor.canceled"
+    return "executor.failed"
+
+
+def _executor_terminal_message(status: RunStatus) -> str:
+    if status is RunStatus.COMPLETED:
+        return "Executor invocation completed successfully."
+    if status is RunStatus.CANCELED:
+        return "Executor invocation was canceled."
+    return "Executor invocation failed."

@@ -154,6 +154,33 @@ Notes:
 - Recurring schedule-fired runs are idempotent by `(schedule_id, occurrence_key)`.
 - Runs are append-only historical records except for status updates during execution.
 
+### 3.4.1 Run Event
+
+Represents one persisted timeline event for a run.
+
+Fields:
+
+- `run_event_id`
+- `run_id`
+- `task_id`
+- `schedule_id` nullable
+- `event_type`
+- `severity`
+- `message`
+- `details`
+- `temporal_workflow_id` nullable
+- `temporal_workflow_run_id` nullable
+- `activity_type` nullable
+- `activity_attempt` nullable
+- `created_at`
+
+Notes:
+
+- Run events support developer and user-facing execution timelines.
+- Event details contain short structured metadata only.
+- Full instructions, credentials, and full executor output must not be stored in
+  run events.
+
 ### 3.5 Occurrence Override
 
 Represents a single-instance exception to a recurring schedule.

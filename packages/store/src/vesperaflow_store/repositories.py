@@ -31,7 +31,7 @@ from vesperaflow_core import (
 )
 
 from .errors import ConflictError, InvalidStateTransitionError, NotFoundError
-from .models import OccurrenceOverride, Run, Schedule, Task, Template
+from .models import OccurrenceOverride, Run, RunEvent, Schedule, Task, Template
 
 
 def new_id(prefix: str) -> str:
@@ -85,6 +85,12 @@ class RunPreview:
 @dataclass(frozen=True, slots=True)
 class RunPreviewPage:
     items: list[RunPreview]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class RunEventPage:
+    items: list[RunEvent]
     total: int
 
 
@@ -506,6 +512,64 @@ async def get_run(session: AsyncSession, run_id: str) -> Run:
     if run is None:
         raise NotFoundError(f"run not found: {run_id}")
     return run
+
+
+async def record_run_event(
+    session: AsyncSession,
+    *,
+    run_id: str,
+    event_type: str,
+    message: str,
+    severity: str = "info",
+    details: dict[str, object] | None = None,
+    temporal_workflow_id: str | None = None,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
+) -> RunEvent:
+    run = await get_run(session, run_id)
+    event = RunEvent(
+        run_event_id=new_id("evt"),
+        run_id=run.run_id,
+        task_id=run.task_id,
+        schedule_id=run.schedule_id,
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        details=details or {},
+        temporal_workflow_id=temporal_workflow_id,
+        temporal_workflow_run_id=temporal_workflow_run_id,
+        activity_type=activity_type,
+        activity_attempt=activity_attempt,
+        created_at=utc_now(),
+    )
+    session.add(event)
+    await session.flush()
+    return event
+
+
+async def list_run_events(
+    session: AsyncSession,
+    *,
+    run_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> RunEventPage:
+    _ = await get_run(session, run_id)
+    filters: list[ColumnElement[bool]] = [RunEvent.run_id == run_id]
+    total_statement = select(func.count()).select_from(RunEvent).where(*filters)
+    total = (await session.execute(total_statement)).scalar_one()
+    statement = (
+        select(RunEvent)
+        .where(*filters)
+        .order_by(RunEvent.created_at.asc(), RunEvent.run_event_id.asc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return RunEventPage(
+        items=list(await session.scalars(statement)),
+        total=total,
+    )
 
 
 async def get_schedule_for_task(session: AsyncSession, task_id: str) -> Schedule:
@@ -1268,6 +1332,14 @@ async def materialize_run(
     if payload_run_id is not None:
         run = await get_run(session, payload_run_id)
         task = await get_task(session, run.task_id)
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.materialization_reused",
+            message="Existing run loaded for execution.",
+            details={"run_status": run.run_status.value},
+            temporal_workflow_id=workflow_id,
+        )
         return _materialized_run_response(
             run=run,
             task=task,
@@ -1292,6 +1364,17 @@ async def materialize_run(
         occurrence_key=occurrence_key,
     )
     if existing is not None:
+        _ = await record_run_event(
+            session,
+            run_id=existing.run_id,
+            event_type="run.materialization_reused",
+            message="Existing recurring occurrence run loaded for execution.",
+            details={
+                "occurrence_key": occurrence_key,
+                "run_status": existing.run_status.value,
+            },
+            temporal_workflow_id=workflow_id,
+        )
         return _materialized_run_response(
             run=existing,
             task=task,
@@ -1358,6 +1441,25 @@ async def materialize_run(
     session.add(run)
     await _recompute_task_status(session, task)
     await session.flush()
+    if run_status is RunStatus.CANCELED:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.skipped_canceled",
+            message="Recurring occurrence skipped because it was canceled or inactive.",
+            details={"occurrence_key": occurrence_key},
+            severity="warning",
+            temporal_workflow_id=workflow_id,
+        )
+    else:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.materialized",
+            message="Recurring occurrence run materialized.",
+            details={"occurrence_key": occurrence_key},
+            temporal_workflow_id=workflow_id,
+        )
     return _materialized_run_response(
         run=run,
         task=task,
@@ -1372,21 +1474,66 @@ async def mark_run_queued(
     *,
     run_id: str,
     external_execution_ref: str | None = None,
+    temporal_workflow_id: str | None = None,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
 ) -> Run:
+    status_changed = await _run_status_will_change(
+        session,
+        run_id=run_id,
+        target=RunStatus.QUEUED,
+    )
     run = await _set_run_status(
         session,
         run_id=run_id,
         target=RunStatus.QUEUED,
         external_execution_ref=external_execution_ref,
     )
+    if status_changed:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.queued",
+            message="Run queued for execution.",
+            details={"external_execution_ref": external_execution_ref},
+            temporal_workflow_id=temporal_workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
+        )
     await _recompute_task_status_by_id(session, run.task_id)
     return run
 
 
-async def mark_run_running(session: AsyncSession, *, run_id: str) -> Run:
+async def mark_run_running(
+    session: AsyncSession,
+    *,
+    run_id: str,
+    temporal_workflow_id: str | None = None,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
+) -> Run:
+    status_changed = await _run_status_will_change(
+        session,
+        run_id=run_id,
+        target=RunStatus.RUNNING,
+    )
     run = await _set_run_status(session, run_id=run_id, target=RunStatus.RUNNING)
     if run.actual_start_at is None:
         run.actual_start_at = utc_now()
+    if status_changed:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.running",
+            message="Run execution started.",
+            temporal_workflow_id=temporal_workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
+        )
     await _recompute_task_status_by_id(session, run.task_id)
     return run
 
@@ -1396,11 +1543,32 @@ async def mark_run_completed(
     *,
     run_id: str,
     result_summary: str | None,
+    temporal_workflow_id: str | None = None,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
 ) -> Run:
+    status_changed = await _run_status_will_change(
+        session,
+        run_id=run_id,
+        target=RunStatus.COMPLETED,
+    )
     run = await _set_run_status(session, run_id=run_id, target=RunStatus.COMPLETED)
     run.result_summary = result_summary
     run.failure_reason = None
     run.finished_at = run.finished_at or utc_now()
+    if status_changed:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.completed",
+            message="Run completed successfully.",
+            details={"has_result_summary": result_summary is not None},
+            temporal_workflow_id=temporal_workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
+        )
     await _recompute_task_status_by_id(session, run.task_id)
     return run
 
@@ -1410,10 +1578,32 @@ async def mark_run_failed(
     *,
     run_id: str,
     failure_reason: str,
+    temporal_workflow_id: str | None = None,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
 ) -> Run:
+    status_changed = await _run_status_will_change(
+        session,
+        run_id=run_id,
+        target=RunStatus.FAILED,
+    )
     run = await _set_run_status(session, run_id=run_id, target=RunStatus.FAILED)
     run.failure_reason = failure_reason
     run.finished_at = run.finished_at or utc_now()
+    if status_changed:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.failed",
+            message="Run failed.",
+            details={"has_failure_reason": bool(failure_reason)},
+            severity="error",
+            temporal_workflow_id=temporal_workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
+        )
     await _recompute_task_status_by_id(session, run.task_id)
     return run
 
@@ -1423,10 +1613,32 @@ async def mark_run_canceled(
     *,
     run_id: str,
     failure_reason: str | None = None,
+    temporal_workflow_id: str | None = None,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
 ) -> Run:
+    status_changed = await _run_status_will_change(
+        session,
+        run_id=run_id,
+        target=RunStatus.CANCELED,
+    )
     run = await _set_run_status(session, run_id=run_id, target=RunStatus.CANCELED)
     run.failure_reason = failure_reason
     run.finished_at = run.finished_at or utc_now()
+    if status_changed:
+        _ = await record_run_event(
+            session,
+            run_id=run.run_id,
+            event_type="run.canceled",
+            message="Run canceled.",
+            details={"has_failure_reason": failure_reason is not None},
+            severity="warning",
+            temporal_workflow_id=temporal_workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
+        )
     await _recompute_task_status_by_id(session, run.task_id)
     return run
 
@@ -1848,6 +2060,16 @@ async def _set_run_status(
         run.external_execution_ref = external_execution_ref
     await session.flush()
     return run
+
+
+async def _run_status_will_change(
+    session: AsyncSession,
+    *,
+    run_id: str,
+    target: RunStatus,
+) -> bool:
+    run = await get_run(session, run_id)
+    return run.run_status is not target
 
 
 async def _get_planned_run_for_schedule(

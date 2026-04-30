@@ -15,7 +15,7 @@ from vesperaflow_core import (
     ScheduleType,
     TaskStatus,
 )
-from vesperaflow_store.models import OccurrenceOverride, Run, Schedule, Task
+from vesperaflow_store.models import OccurrenceOverride, Run, RunEvent, Schedule, Task
 from vesperaflow_store.repositories import RunPreview, RunReaderContext, TaskDetail
 
 
@@ -150,6 +150,26 @@ class RunResponse(BaseModel):
     @classmethod
     def from_model(cls, run: Run) -> "RunResponse":
         return cls.model_validate(_model_dict(run))
+
+
+class RunEventResponse(BaseModel):
+    run_event_id: str
+    run_id: str
+    task_id: str
+    schedule_id: str | None
+    event_type: str
+    severity: str
+    message: str
+    details: dict[str, object]
+    temporal_workflow_id: str | None
+    temporal_workflow_run_id: str | None
+    activity_type: str | None
+    activity_attempt: int | None
+    created_at: datetime
+
+    @classmethod
+    def from_model(cls, event: RunEvent) -> "RunEventResponse":
+        return cls.model_validate(_model_dict(event))
 
 
 class RunPreviewResponse(BaseModel):

@@ -859,6 +859,50 @@ async def test_run_reader_endpoint_returns_selected_and_adjacent_ids(
 
 
 @pytest.mark.asyncio
+async def test_run_events_endpoint_returns_persisted_timeline(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            bundle = await repo.create_one_time_task(
+                session,
+                title="Research",
+                instruction_source="Find updates",
+                target_working_directory=str(Path.cwd()),
+                planned_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+            if bundle.run is None:
+                raise AssertionError("one-time task should create a planned run")
+            run_id = bundle.run.run_id
+            await repo.record_run_event(
+                session,
+                run_id=run_id,
+                event_type="executor.started",
+                message="Executor invocation started.",
+                details={"executor": "debug_printer"},
+                temporal_workflow_id="workflow-1",
+                temporal_workflow_run_id="workflow-run-1",
+                activity_type="execute_agent_run",
+                activity_attempt=1,
+            )
+
+    response = await client.get(f"/api/v1/runs/{run_id}/events")
+    missing = await client.get("/api/v1/runs/run_missing/events")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["total"] == 1
+    event = body["data"][0]
+    assert event["run_id"] == run_id
+    assert event["event_type"] == "executor.started"
+    assert event["details"] == {"executor": "debug_printer"}
+    assert event["temporal_workflow_id"] == "workflow-1"
+    assert event["activity_attempt"] == 1
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_template_lifecycle_and_instantiation_copy_fields(
     client: AsyncClient,
 ) -> None:

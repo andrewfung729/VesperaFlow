@@ -8,6 +8,7 @@ import {
   getCalendar,
   getHistory,
   getRun,
+  getRunEvents,
   getRunReaderDetail,
   getRecurringTodo,
   getTaskRuns,
@@ -306,6 +307,45 @@ describe('api', () => {
     )
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/tasks/task-1/runs/run-1/reader'),
+      expect.any(Object),
+    )
+  })
+
+  it('loads run events endpoint', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                run_event_id: 'evt-1',
+                run_id: 'run-1',
+                task_id: 'task-1',
+                schedule_id: 'schedule-1',
+                event_type: 'executor.completed',
+                severity: 'info',
+                message: 'Executor invocation completed successfully.',
+                details: { terminal_code: 'debug_printer_completed' },
+                temporal_workflow_id: 'workflow-1',
+                temporal_workflow_run_id: 'workflow-run-1',
+                activity_type: 'execute_agent_run',
+                activity_attempt: 1,
+                created_at: '2026-04-25T11:00:00+08:00',
+              },
+            ],
+            meta: { total: 1 },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const events = await getRunEvents('run-1', { limit: 25 })
+
+    expect(events.meta.total).toBe(1)
+    expect(events.data[0]?.event_type).toBe('executor.completed')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/runs/run-1/events?limit=25'),
       expect.any(Object),
     )
   })

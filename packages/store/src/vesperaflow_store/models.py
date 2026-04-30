@@ -3,7 +3,16 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from vesperaflow_core import (
     ExecutionMode,
@@ -180,6 +189,40 @@ class Run(Base):
 
     task: Mapped[Task] = relationship(back_populates="runs")
     schedule: Mapped[Schedule | None] = relationship(back_populates="runs")
+    events: Mapped[list["RunEvent"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class RunEvent(Base):
+    __tablename__: str = "run_events"
+    __table_args__: tuple[Index, ...] = (
+        Index(
+            "ix_run_events_run_id_created_at",
+            "run_id",
+            "created_at",
+            "run_event_id",
+        ),
+    )
+
+    run_event_id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.run_id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(48), nullable=False)
+    schedule_id: Mapped[str | None] = mapped_column(String(48))
+    event_type: Mapped[str] = mapped_column(String(96), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    temporal_workflow_id: Mapped[str | None] = mapped_column(String(240))
+    temporal_workflow_run_id: Mapped[str | None] = mapped_column(String(240))
+    activity_type: Mapped[str | None] = mapped_column(String(120))
+    activity_attempt: Mapped[int | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    run: Mapped[Run] = relationship(back_populates="events")
 
 
 class OccurrenceOverride(Base):

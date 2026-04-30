@@ -31,6 +31,7 @@ class WorkerSettings(BaseSettings):
     task_queue: str = "vesperaflow-default"
     run_workspace_root: str = "/tmp/vesperaflow-runs"
     executor_adapter: str = "auto"
+    log_level: str = "INFO"
     anthropic_api_key: str | None = Field(
         default=None,
         validation_alias="ANTHROPIC_API_KEY",

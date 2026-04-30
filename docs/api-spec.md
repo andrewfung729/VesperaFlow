@@ -291,6 +291,33 @@ Preview behavior:
 - `outcome_truncated` indicates truncation
 - `outcome_source` is `result_summary`, `failure_reason`, or `null`
 
+### 5.4.2 Run Event Object
+
+Run events are the persisted execution timeline for a run. They are safe for
+default UI display and do not include full instructions, credentials, or full
+executor output.
+
+```json
+{
+  "run_event_id": "evt_123",
+  "run_id": "run_123",
+  "task_id": "task_123",
+  "schedule_id": "sch_123",
+  "event_type": "executor.completed",
+  "severity": "info",
+  "message": "Executor invocation completed successfully.",
+  "details": {
+    "executor": "debug_printer",
+    "terminal_code": "debug_printer_completed"
+  },
+  "temporal_workflow_id": "vesperaflow.run.run_123",
+  "temporal_workflow_run_id": "temporal-run-id",
+  "activity_type": "execute_agent_run",
+  "activity_attempt": 1,
+  "created_at": "2026-04-24T23:35:00+08:00"
+}
+```
+
 ### 5.5 Occurrence Override Object
 
 ```json
@@ -854,6 +881,24 @@ Notes:
 Response:
 
 - `200 OK` with `Run Object`
+
+### 10.2.1 List Run Events
+
+`GET /api/v1/runs/{run_id}/events`
+
+Query params:
+
+- `limit`
+- `offset`
+
+Response:
+
+- `200 OK` with `Run Event Object[]`
+
+Notes:
+
+- events are ordered by `created_at asc, run_event_id asc`
+- event details are short structured metadata, not executor transcripts
 
 ### 10.3 Get Run Reader Detail
 

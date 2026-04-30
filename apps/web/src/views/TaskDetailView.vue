@@ -5,17 +5,20 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   cancelTask,
   getRun,
+  getRunEvents,
   getTaskDetail,
   rescheduleTask,
   updateRecurringSchedule,
   updateTask,
   type ExecutorName,
   type Run,
+  type RunEvent,
   type TaskDetail,
 } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import MarkdownReader from '@/components/MarkdownReader.vue'
 import RecurrenceEditor from '@/components/RecurrenceEditor.vue'
+import RunTimeline from '@/components/RunTimeline.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import SelectField from '@/components/SelectField.vue'
 import TextArea from '@/components/TextArea.vue'
@@ -44,7 +47,9 @@ const route = useRoute()
 const router = useRouter()
 const selectedDetail = ref<TaskDetail | null>(null)
 const selectedRun = ref<Run | null>(null)
+const runEvents = ref<RunEvent[]>([])
 const isLoadingDetail = ref(false)
+const isLoadingRunEvents = ref(false)
 const errorMessage = ref<string | null>(null)
 const rescheduleAt = ref('')
 const isEditingRecurrence = ref(false)
@@ -99,8 +104,10 @@ async function loadTaskDetail() {
     if (selectedDetail.value.task.execution_mode === 'one_time') {
       const runId = selectedRunId.value ?? selectedDetail.value.latest_run?.run_id
       selectedRun.value = runId ? await getRun(runId) : selectedDetail.value.latest_run
+      if (selectedRun.value) void loadRunEvents(selectedRun.value.run_id)
     } else {
       selectedRun.value = null
+      runEvents.value = []
     }
     rescheduleAt.value = selectedDetail.value.schedule?.planned_at
       ? toDateTimeLocal(selectedDetail.value.schedule.planned_at)
@@ -112,10 +119,22 @@ async function loadTaskDetail() {
   } catch (error) {
     selectedDetail.value = null
     selectedRun.value = null
+    runEvents.value = []
     rescheduleAt.value = ''
     errorMessage.value = readableError(error)
   } finally {
     isLoadingDetail.value = false
+  }
+}
+
+async function loadRunEvents(runId: string) {
+  isLoadingRunEvents.value = true
+  try {
+    runEvents.value = (await getRunEvents(runId)).data
+  } catch {
+    runEvents.value = []
+  } finally {
+    isLoadingRunEvents.value = false
   }
 }
 
@@ -382,6 +401,11 @@ async function openRunArchive() {
                   class="wrap-anywhere"
                 />
               </div>
+              <RunTimeline
+                class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700"
+                :events="runEvents"
+                :is-loading="isLoadingRunEvents"
+              />
             </article>
             <div
               v-else

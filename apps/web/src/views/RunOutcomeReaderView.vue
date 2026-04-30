@@ -2,10 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getRunReaderDetail, type RunReaderDetail } from '@/api'
+import { getRunEvents, getRunReaderDetail, type RunEvent, type RunReaderDetail } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import MarkdownReader from '@/components/MarkdownReader.vue'
 import PageStatePanel from '@/components/PageStatePanel.vue'
+import RunTimeline from '@/components/RunTimeline.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import UiButton from '@/components/UiButton.vue'
 import { useReaderPreference, type ReaderFontSize } from '@/composables/useReaderPreference'
@@ -21,7 +22,9 @@ const props = defineProps<{
 const router = useRouter()
 
 const readerDetail = ref<RunReaderDetail | null>(null)
+const runEvents = ref<RunEvent[]>([])
 const isLoading = ref(false)
+const isLoadingEvents = ref(false)
 const errorMessage = ref<string | null>(null)
 const copyStatus = ref<'idle' | 'copied' | 'failed'>('idle')
 
@@ -46,11 +49,24 @@ async function loadReader() {
   errorMessage.value = null
   try {
     readerDetail.value = await getRunReaderDetail(props.taskId, props.runId)
+    void loadRunEvents(props.runId)
   } catch (error) {
     readerDetail.value = null
+    runEvents.value = []
     errorMessage.value = readableError(error)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function loadRunEvents(runId: string) {
+  isLoadingEvents.value = true
+  try {
+    runEvents.value = (await getRunEvents(runId)).data
+  } catch {
+    runEvents.value = []
+  } finally {
+    isLoadingEvents.value = false
   }
 }
 
@@ -212,6 +228,12 @@ function cycleFontSize(direction: 'down' | 'up') {
           </UiButton>
           <UiButton :disabled="!nextRunId" @click="openRun(nextRunId)"> Next Run </UiButton>
         </footer>
+
+        <RunTimeline
+          class="mx-auto mt-8 w-full max-w-[88ch]"
+          :events="runEvents"
+          :is-loading="isLoadingEvents"
+        />
       </article>
 
       <PageStatePanel

@@ -24,7 +24,7 @@ Update this file when any of these change:
 | `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/Claude/Kimi/debug executor contracts, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, Claude Code executor tests, Codex CLI JSONL executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
 | `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, Kimi text CLI executor alignment, and local full-stack runbooks are now present. |
@@ -33,6 +33,8 @@ Update this file when any of these change:
 
 - [ ] Generated DB schema, API route map, Temporal surface, and dependency graph
       exist, but refresh is manual.
+- [x] Worker startup, Activity execution, and run lifecycle now emit structured
+      logs or persisted run timeline events with correlation identifiers.
 - [x] Temporal replay tests cover completed, failed, canceled, and
       pre-execution-canceled representative histories.
 - [x] Integration tests requiring the full Postgres/Temporal stack are opt-in and
@@ -109,3 +111,6 @@ Update this file when any of these change:
 - 2026-04-30: Updated Codex Worker execution to use full-permission bypass mode
   and added `VESPERAFLOW_CODEX_MODEL` for selecting the CLI model from Worker
   runtime settings.
+- 2026-04-30: Added Worker JSON logs and persisted run event timelines across
+  store/API/Worker/web, including Activity correlation metadata and UI timeline
+  surfaces.

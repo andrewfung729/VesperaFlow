@@ -9,6 +9,36 @@ import RunOutcomeReaderView from '@/views/RunOutcomeReaderView.vue'
 function stubFetch() {
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const url = String(input)
+    if (url.includes('/runs/run-recurring-1/events')) {
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              run_event_id: 'evt-1',
+              run_id: 'run-recurring-1',
+              task_id: 'task-recurring-1',
+              schedule_id: 'schedule-task-recurring-1',
+              event_type: 'executor.completed',
+              severity: 'info',
+              message: 'Executor invocation completed successfully.',
+              details: { terminal_code: 'debug_printer_completed' },
+              temporal_workflow_id: 'workflow-1',
+              temporal_workflow_run_id: 'workflow-run-1',
+              activity_type: 'execute_agent_run',
+              activity_attempt: 1,
+              created_at: '2026-04-26T08:30:00+08:00',
+            },
+          ],
+          meta: { total: 1 },
+        }),
+        { status: 200 },
+      )
+    }
+    if (url.includes('/runs/run-recurring-2/events')) {
+      return new Response(JSON.stringify({ data: [], meta: { total: 0 } }), {
+        status: 200,
+      })
+    }
     if (url.includes('/tasks/task-recurring-1/runs/run-recurring-1/reader')) {
       return new Response(
         JSON.stringify({
@@ -197,5 +227,23 @@ describe('RunOutcomeReaderView', () => {
 
     const markdownContainer = wrapper2.find('[data-testid="reader-body"]')
     expect(markdownContainer.classes()).toContain('reader-font-lg')
+  })
+
+  it('renders the run timeline', async () => {
+    stubFetch()
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes,
+    })
+    const wrapper = mount(RunOutcomeReaderView, {
+      global: { plugins: [router] },
+      props: { taskId: 'task-recurring-1', runId: 'run-recurring-1' },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Timeline')
+    expect(wrapper.text()).toContain('Executor invocation completed successfully.')
+    expect(wrapper.text()).toContain('debug_printer_completed')
   })
 })

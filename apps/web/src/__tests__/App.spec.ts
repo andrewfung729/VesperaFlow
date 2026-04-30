@@ -504,6 +504,16 @@ describe('App', () => {
     expect(wrapper.text()).not.toContain('Read Outcome')
   })
 
+  it('renders one-time run timeline on task detail', async () => {
+    stubFetch()
+    const { wrapper } = await mountAppAt('/tasks/task-1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Timeline')
+    expect(wrapper.text()).toContain('Executor invocation failed.')
+    expect(wrapper.text()).toContain('executor_error')
+  })
+
   it('filters recurring run archive runs by status', async () => {
     stubFetch()
     const { wrapper } = await mountAppAt('/tasks/task-recurring-1/runs')
@@ -964,6 +974,59 @@ function stubFetch(options: StubFetchOptions = {}) {
 
     if (url.includes('/tasks/task-recurring-1/runs/run-recurring-2/reader')) {
       return jsonResponse(runReaderDetailResponse('task-recurring-1', 'run-recurring-2'))
+    }
+
+    if (url.includes('/runs/run-1/events')) {
+      return jsonResponse(
+        [
+          {
+            run_event_id: 'evt-1',
+            run_id: 'run-1',
+            task_id: 'task-1',
+            schedule_id: 'schedule-1',
+            event_type: 'executor.failed',
+            severity: 'error',
+            message: 'Executor invocation failed.',
+            details: { terminal_code: 'executor_error' },
+            temporal_workflow_id: 'workflow-1',
+            temporal_workflow_run_id: 'workflow-run-1',
+            activity_type: 'execute_agent_run',
+            activity_attempt: 1,
+            created_at: '2026-04-25T11:00:00+08:00',
+          },
+        ],
+        { total: 1 },
+      )
+    }
+
+    if (url.includes('/runs/run-recurring-1/events')) {
+      return jsonResponse(
+        [
+          {
+            run_event_id: 'evt-recurring-1',
+            run_id: 'run-recurring-1',
+            task_id: 'task-recurring-1',
+            schedule_id: 'schedule-task-recurring-1',
+            event_type: 'executor.completed',
+            severity: 'info',
+            message: 'Executor invocation completed successfully.',
+            details: { terminal_code: 'debug_printer_completed' },
+            temporal_workflow_id: 'workflow-recurring-1',
+            temporal_workflow_run_id: 'workflow-run-recurring-1',
+            activity_type: 'execute_agent_run',
+            activity_attempt: 1,
+            created_at: '2026-04-26T08:30:00+08:00',
+          },
+        ],
+        { total: 1 },
+      )
+    }
+
+    if (
+      url.includes('/runs/run-recurring-2/events') ||
+      url.includes('/runs/run-completed/events')
+    ) {
+      return jsonResponse([], { total: 0 })
     }
 
     if (
