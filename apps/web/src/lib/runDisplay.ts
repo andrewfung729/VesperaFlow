@@ -13,6 +13,9 @@ export const runStatusOptions: Array<{ label: string; value: RunStatus }> = [
 export interface RunOutcomeSource {
   result_summary?: string | null
   failure_reason?: string | null
+  outcome_preview?: string | null
+  outcome_source?: 'result_summary' | 'failure_reason' | null
+  outcome_truncated?: boolean
   run_status?: RunStatus | null
   latest_run_outcome?: RunStatus | null
 }
@@ -21,7 +24,7 @@ export function runOutcome(
   run: RunOutcomeSource | null | undefined,
   fallback: string = 'No summary recorded.',
 ): string {
-  return run?.result_summary ?? run?.failure_reason ?? fallback
+  return run?.result_summary ?? run?.failure_reason ?? run?.outcome_preview ?? fallback
 }
 
 export function runOutcomeSummary(
@@ -31,7 +34,7 @@ export function runOutcomeSummary(
   return runOutcome(run, runStatusLabel(runStatusValue(run)) ?? fallback)
 }
 
-export function occurrenceLabel(run: Run): string {
+export function occurrenceLabel(run: Pick<Run, 'occurrence_key' | 'planned_start_at'>): string {
   if (!run.occurrence_key) return formatDateTime(run.planned_start_at)
   const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(run.occurrence_key)
   if (!match) return run.occurrence_key

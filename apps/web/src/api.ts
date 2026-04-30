@@ -52,6 +52,22 @@ export interface Run {
   occurrence_key: string | null
 }
 
+export interface RunPreview {
+  run_id: string
+  task_id: string
+  schedule_id: string | null
+  run_status: RunStatus
+  planned_start_at: string
+  actual_start_at: string | null
+  finished_at: string | null
+  occurrence_key: string | null
+  created_at: string
+  updated_at: string
+  outcome_preview: string | null
+  outcome_truncated: boolean
+  outcome_source: 'result_summary' | 'failure_reason' | null
+}
+
 export interface TaskBundle {
   task: Task
   schedule: Schedule
@@ -70,6 +86,14 @@ export interface TaskDetail {
   task: Task
   schedule: Schedule | null
   latest_run: Run | null
+}
+
+export interface RunReaderDetail {
+  task: Task
+  schedule: Schedule | null
+  run: Run
+  previous_run_id: string | null
+  next_run_id: string | null
 }
 
 export interface KanbanCard {
@@ -94,8 +118,9 @@ export interface HistoryItem {
   execution_mode: ExecutionMode
   run_status: Extract<RunStatus, 'completed' | 'failed'>
   finished_at: string
-  result_summary: string | null
-  failure_reason: string | null
+  outcome_preview: string | null
+  outcome_truncated: boolean
+  outcome_source: 'result_summary' | 'failure_reason' | null
 }
 
 export interface RecurringTodoItem {
@@ -252,7 +277,7 @@ export async function getTaskRuns(
     limit?: number
     offset?: number
   } = {},
-): Promise<ListEnvelope<Run>> {
+): Promise<ListEnvelope<RunPreview>> {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') {
@@ -260,14 +285,15 @@ export async function getTaskRuns(
     }
   }
   const suffix = search.size > 0 ? `?${search}` : ''
-  const response = await requestList<Run>(`/tasks/${taskId}/runs${suffix}`)
-  const status = params.status
-  if (!status) return response
-  const data = response.data.filter((run) => run.run_status === status)
-  return {
-    data,
-    meta: { total: data.length },
-  }
+  return requestList<RunPreview>(`/tasks/${taskId}/runs${suffix}`)
+}
+
+export async function getRun(runId: string): Promise<Run> {
+  return request<Run>(`/runs/${runId}`)
+}
+
+export async function getRunReaderDetail(taskId: string, runId: string): Promise<RunReaderDetail> {
+  return request<RunReaderDetail>(`/tasks/${taskId}/runs/${runId}/reader`)
 }
 
 export async function getHistory(

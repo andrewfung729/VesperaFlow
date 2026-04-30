@@ -2,11 +2,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import (
     ExecutionMode,
     OccurrenceEditScope,
+    RunStatus,
     ScheduleType,
     TaskStatus,
 )
@@ -21,6 +22,8 @@ from ..schemas.tasks import (
     OccurrenceCancelRequest,
     OccurrenceOverrideResponse,
     OccurrenceUpdateRequest,
+    RunPreviewResponse,
+    RunReaderDetailResponse,
     RunResponse,
     ScheduleResponse,
     ScheduleUpdateRequest,
@@ -449,9 +452,32 @@ async def run_task_now(
 async def list_runs(
     task_id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    status: RunStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ListEnvelope:
-    runs = await repo.list_runs_for_task(session, task_id)
-    return ListEnvelope(
-        data=[RunResponse.from_model(run).model_dump() for run in runs],
-        meta={"total": len(runs)},
+    runs = await repo.list_run_previews_for_task(
+        session,
+        task_id=task_id,
+        status=status,
+        limit=limit,
+        offset=offset,
     )
+    return ListEnvelope(
+        data=[RunPreviewResponse.from_preview(run).model_dump() for run in runs.items],
+        meta={"total": runs.total},
+    )
+
+
+@router.get("/tasks/{task_id}/runs/{run_id}/reader")
+async def get_run_reader_detail(
+    task_id: str,
+    run_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DataEnvelope:
+    context = await repo.get_run_reader_context(
+        session,
+        task_id=task_id,
+        run_id=run_id,
+    )
+    return DataEnvelope(data=RunReaderDetailResponse.from_context(context).model_dump())

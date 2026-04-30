@@ -260,6 +260,37 @@ Templates may define `default_target_working_directory`. When present, creating 
 }
 ```
 
+### 5.4.1 Run Preview Object
+
+Run list and history surfaces return a lightweight preview payload instead of full
+`result_summary` or `failure_reason`.
+
+```json
+{
+  "run_id": "run_123",
+  "task_id": "task_123",
+  "schedule_id": "sch_123",
+  "run_status": "failed",
+  "planned_start_at": "2026-04-24T23:30:00+08:00",
+  "actual_start_at": "2026-04-24T23:31:00+08:00",
+  "finished_at": "2026-04-24T23:35:00+08:00",
+  "occurrence_key": null,
+  "created_at": "2026-04-24T23:30:00+08:00",
+  "updated_at": "2026-04-24T23:35:00+08:00",
+  "outcome_preview": "Executor failed after validation step...",
+  "outcome_truncated": true,
+  "outcome_source": "failure_reason"
+}
+```
+
+Preview behavior:
+
+- source priority is `result_summary`, then `failure_reason`
+- preview length is capped at 240 characters
+- previews longer than 240 characters are truncated and suffixed with `...`
+- `outcome_truncated` indicates truncation
+- `outcome_source` is `result_summary`, `failure_reason`, or `null`
+
 ### 5.5 Occurrence Override Object
 
 ```json
@@ -807,6 +838,15 @@ Query params:
 - `limit`
 - `offset`
 
+Response:
+
+- `200 OK` with `Run Preview Object[]`
+
+Notes:
+
+- this endpoint is optimized for run list/archive surfaces
+- full outcomes are intentionally omitted from list payloads
+
 ### 10.2 Get Run
 
 `GET /api/v1/runs/{run_id}`
@@ -815,7 +855,33 @@ Response:
 
 - `200 OK` with `Run Object`
 
-### 10.3 Retry Failed One-Time Task
+### 10.3 Get Run Reader Detail
+
+`GET /api/v1/tasks/{task_id}/runs/{run_id}/reader`
+
+Response:
+
+- `200 OK`
+
+```json
+{
+  "data": {
+    "task": {},
+    "schedule": {},
+    "run": {},
+    "previous_run_id": "run_122",
+    "next_run_id": "run_121"
+  }
+}
+```
+
+Behavior:
+
+- returns full selected `run` outcome plus task/schedule context
+- `previous_run_id` and `next_run_id` are based on run archive ordering:
+  `created_at desc, run_id desc`
+
+### 10.4 Retry Failed One-Time Task
 
 `POST /api/v1/tasks/{task_id}/retry`
 
@@ -1035,7 +1101,9 @@ Response:
       "execution_mode": "one_time",
       "run_status": "completed",
       "finished_at": "2026-04-25T01:12:00+08:00",
-      "result_summary": "Summary generated successfully"
+      "outcome_preview": "Summary generated successfully",
+      "outcome_truncated": false,
+      "outcome_source": "result_summary"
     }
   ],
   "meta": {

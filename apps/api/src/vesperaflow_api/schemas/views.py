@@ -29,23 +29,23 @@ class HistoryItemResponse(BaseModel):
     execution_mode: ExecutionMode
     run_status: RunStatus
     finished_at: datetime
-    result_summary: str | None
-    failure_reason: str | None
+    outcome_preview: str | None
+    outcome_truncated: bool
+    outcome_source: str | None
 
     @classmethod
     def from_item(cls, item: HistoryItem) -> "HistoryItemResponse":
-        if item.run.finished_at is None:
-            raise ValueError("history item requires finished_at")
         return cls(
-            history_item_id=f"hist_{item.run.run_id}",
-            run_id=item.run.run_id,
-            task_id=item.task.task_id,
-            title=item.task.title,
-            execution_mode=item.task.execution_mode,
-            run_status=item.run.run_status,
-            finished_at=item.run.finished_at,
-            result_summary=item.run.result_summary,
-            failure_reason=item.run.failure_reason,
+            history_item_id=f"hist_{item.run_id}",
+            run_id=item.run_id,
+            task_id=item.task_id,
+            title=item.title,
+            execution_mode=item.execution_mode,
+            run_status=item.run_status,
+            finished_at=item.finished_at,
+            outcome_preview=item.outcome_preview,
+            outcome_truncated=item.outcome_truncated,
+            outcome_source=item.outcome_source,
         )
 
 

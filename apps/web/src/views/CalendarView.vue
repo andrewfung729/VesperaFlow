@@ -502,27 +502,11 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             </button>
           </div>
           <div class="flex items-center gap-2">
-            <UiButton
-              class="px-3"
-              :disabled="isLoading"
-              @click="movePeriod(-1)"
-            >
+            <UiButton class="px-3" :disabled="isLoading" @click="movePeriod(-1)">
               Previous
             </UiButton>
-            <UiButton
-              class="px-3"
-              :disabled="isLoading"
-              @click="moveToToday"
-            >
-              Today
-            </UiButton>
-            <UiButton
-              class="px-3"
-              :disabled="isLoading"
-              @click="movePeriod(1)"
-            >
-              Next
-            </UiButton>
+            <UiButton class="px-3" :disabled="isLoading" @click="moveToToday"> Today </UiButton>
+            <UiButton class="px-3" :disabled="isLoading" @click="movePeriod(1)"> Next </UiButton>
           </div>
           <label
             class="flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300"
@@ -530,12 +514,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
             <input v-model="includeCompleted" type="checkbox" />
             <span>Completed</span>
           </label>
-          <UiButton
-            :disabled="isLoading"
-            @click="refreshCalendar"
-          >
-            Refresh
-          </UiButton>
+          <UiButton :disabled="isLoading" @click="refreshCalendar"> Refresh </UiButton>
         </div>
       </div>
 
@@ -545,9 +524,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
         class="mb-4"
         title="No upcoming AI work scheduled"
       >
-        <UiButton variant="primary" @click="openAddTaskModal(new Date())">
-          Create Task
-        </UiButton>
+        <UiButton variant="primary" @click="openAddTaskModal(new Date())"> Create Task </UiButton>
       </PageStatePanel>
       <div v-if="!isLoading" class="grid gap-4">
         <div
@@ -578,9 +555,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
                 day.isOutsideMonth
                   ? 'bg-slate-50/70 text-slate-400 dark:bg-slate-900/50 dark:text-slate-500'
                   : 'bg-white text-slate-950 dark:bg-slate-900 dark:text-slate-50',
-                day.isToday
-                  ? 'ring-2 ring-inset ring-teal-600 dark:ring-teal-400'
-                  : '',
+                day.isToday ? 'ring-2 ring-inset ring-teal-600 dark:ring-teal-400' : '',
               ]"
               :data-testid="day.isToday ? 'calendar-today-cell' : undefined"
               :aria-label="addTaskLabel(defaultDaySlot(day))"
@@ -668,11 +643,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               v-for="day in timeGridDays"
               :key="day.key"
               class="border-l border-slate-200 dark:border-slate-700 px-3 py-3"
-              :class="
-                day.isToday
-                  ? 'bg-teal-50/80 dark:bg-teal-950/30'
-                  : ''
-              "
+              :class="day.isToday ? 'bg-teal-50/80 dark:bg-teal-950/30' : ''"
               :data-testid="day.isToday ? 'calendar-today-header' : undefined"
             >
               <div
@@ -705,9 +676,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               class="bg-slate-50 dark:bg-slate-800/50 px-3 text-xs font-semibold text-slate-500 dark:text-slate-400"
               :class="[
                 hourHasItems(hour) ? 'py-3' : 'py-2',
-                visibleToday && hour === currentHour
-                  ? 'text-teal-800 dark:text-teal-300'
-                  : '',
+                visibleToday && hour === currentHour ? 'text-teal-800 dark:text-teal-300' : '',
               ]"
             >
               {{ hourLabel(hour) }}
@@ -719,9 +688,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               :class="[
                 hourHasItems(hour) ? 'min-h-20 p-2' : 'min-h-9 px-2 py-1',
                 day.isToday ? 'bg-teal-50/30 dark:bg-teal-950/10' : '',
-                isCurrentHour(day, hour)
-                  ? 'bg-teal-50/80 dark:bg-teal-950/30'
-                  : '',
+                isCurrentHour(day, hour) ? 'bg-teal-50/80 dark:bg-teal-950/30' : '',
               ]"
               :aria-label="addTaskLabel(slotDate(day, hour))"
               role="button"
@@ -854,9 +821,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               {{ selectedItem.title }}
             </h3>
           </div>
-          <UiButton size="sm" @click="closeItemModal">
-            Close
-          </UiButton>
+          <UiButton size="sm" @click="closeItemModal"> Close </UiButton>
         </div>
         <dl class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
           <dt class="font-semibold text-slate-500 dark:text-slate-400">Time</dt>
@@ -881,9 +846,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           </dd>
         </dl>
         <div class="flex flex-wrap gap-2">
-          <UiButton variant="primary" @click="openSelectedTask">
-            Detail
-          </UiButton>
+          <UiButton variant="primary" @click="openSelectedTask"> Detail </UiButton>
           <UiButton
             v-if="selectedItem.execution_mode === 'recurring'"
             :disabled="actionItemId === selectedItem.calendar_item_id"
@@ -927,9 +890,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               {{ editingItem.title }} · {{ formatDateTime(editingItem.occurrence_at) }}
             </p>
           </div>
-          <UiButton size="sm" @click="editingItem = null">
-            Cancel
-          </UiButton>
+          <UiButton size="sm" @click="editingItem = null"> Cancel </UiButton>
         </div>
         <fieldset class="m-0 grid gap-2 border-0 p-0">
           <legend class="font-semibold text-slate-700 dark:text-slate-300">Scope</legend>
@@ -1003,9 +964,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
               New Calendar Task
             </h3>
           </div>
-          <UiButton size="sm" @click="closeAddTaskModal">
-            Cancel
-          </UiButton>
+          <UiButton size="sm" @click="closeAddTaskModal"> Cancel </UiButton>
         </div>
         <TextInput v-model="newTaskTitle" label="Title" placeholder="Run benchmark report" />
         <TextArea
@@ -1021,11 +980,7 @@ function sortedItems(calendarItems: CalendarItem[]): CalendarItem[] {
           placeholder="/Users/you/project"
         />
         <SelectField v-model="newTaskExecutor" label="Executor" :options="executorOptions" />
-        <UiButton
-          variant="primary"
-          :disabled="!canCreateTask || isCreatingTask"
-          type="submit"
-        >
+        <UiButton variant="primary" :disabled="!canCreateTask || isCreatingTask" type="submit">
           {{ isCreatingTask ? 'Saving...' : 'Save Task' }}
         </UiButton>
       </form>

@@ -17,6 +17,7 @@ from vesperaflow_store.errors import (
 
 from .dependencies import set_app_state
 from .routes.executors import router as executors_router
+from .routes.runs import router as runs_router
 from .routes.tasks import router as tasks_router
 from .routes.templates import router as templates_router
 from .routes.views import router as views_router
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router=tasks_router, prefix="/api/v1")
+    app.include_router(router=runs_router, prefix="/api/v1")
     app.include_router(router=templates_router, prefix="/api/v1")
     app.include_router(router=executors_router, prefix="/api/v1")
     app.include_router(router=views_router, prefix="/api/v1")

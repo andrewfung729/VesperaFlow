@@ -25,14 +25,12 @@ const scheduledItems = computed(() =>
 )
 const pausedItems = computed(() => items.value.filter((item) => item.schedule_status === 'paused'))
 
-const {
-  actionTaskId,
-  pauseTask,
-  resumeTask,
-  runNowTask,
-} = useRecurringTaskActions(refreshTodo, (message) => {
-  errorMessage.value = message
-})
+const { actionTaskId, pauseTask, resumeTask, runNowTask } = useRecurringTaskActions(
+  refreshTodo,
+  (message) => {
+    errorMessage.value = message
+  },
+)
 
 onMounted(() => {
   void refreshTodo()
@@ -115,12 +113,7 @@ function latestOutcome(item: RecurringTodoItem): string {
           </h2>
           <p class="m-0 text-sm text-slate-500 dark:text-slate-400">{{ total }} ongoing tasks</p>
         </div>
-        <UiButton
-          :disabled="isLoadingTodo"
-          @click="refreshTodo"
-        >
-          Refresh
-        </UiButton>
+        <UiButton :disabled="isLoadingTodo" @click="refreshTodo"> Refresh </UiButton>
       </div>
 
       <PageStatePanel v-if="isLoadingTodo" spacious title="Loading recurring tasks..." />

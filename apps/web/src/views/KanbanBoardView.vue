@@ -77,12 +77,7 @@ function emptyColumns(): KanbanBoard['columns'] {
             />
             Show canceled
           </label>
-          <UiButton
-            :disabled="isLoadingBoard"
-            @click="refreshBoard"
-          >
-            Refresh
-          </UiButton>
+          <UiButton :disabled="isLoadingBoard" @click="refreshBoard"> Refresh </UiButton>
         </div>
       </div>
 

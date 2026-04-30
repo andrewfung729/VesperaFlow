@@ -16,7 +16,7 @@ from vesperaflow_core import (
     TaskStatus,
 )
 from vesperaflow_store.models import OccurrenceOverride, Run, Schedule, Task
-from vesperaflow_store.repositories import TaskDetail
+from vesperaflow_store.repositories import RunPreview, RunReaderContext, TaskDetail
 
 
 class ErrorBody(BaseModel):
@@ -152,6 +152,40 @@ class RunResponse(BaseModel):
         return cls.model_validate(_model_dict(run))
 
 
+class RunPreviewResponse(BaseModel):
+    run_id: str
+    task_id: str
+    schedule_id: str | None
+    run_status: RunStatus
+    planned_start_at: datetime
+    actual_start_at: datetime | None
+    finished_at: datetime | None
+    occurrence_key: str | None
+    created_at: datetime
+    updated_at: datetime
+    outcome_preview: str | None
+    outcome_truncated: bool
+    outcome_source: str | None
+
+    @classmethod
+    def from_preview(cls, preview: RunPreview) -> "RunPreviewResponse":
+        return cls(
+            run_id=preview.run_id,
+            task_id=preview.task_id,
+            schedule_id=preview.schedule_id,
+            run_status=preview.run_status,
+            planned_start_at=preview.planned_start_at,
+            actual_start_at=preview.actual_start_at,
+            finished_at=preview.finished_at,
+            occurrence_key=preview.occurrence_key,
+            created_at=preview.created_at,
+            updated_at=preview.updated_at,
+            outcome_preview=preview.outcome_preview,
+            outcome_truncated=preview.outcome_truncated,
+            outcome_source=preview.outcome_source,
+        )
+
+
 class OccurrenceOverrideResponse(BaseModel):
     occurrence_override_id: str
     task_id: str
@@ -191,6 +225,28 @@ class TaskDetailResponse(BaseModel):
             latest_run=RunResponse.from_model(detail.latest_run)
             if detail.latest_run
             else None,
+        )
+
+
+class RunReaderDetailResponse(BaseModel):
+    task: TaskResponse
+    schedule: ScheduleResponse | None
+    run: RunResponse
+    previous_run_id: str | None
+    next_run_id: str | None
+
+    @classmethod
+    def from_context(cls, context: RunReaderContext) -> "RunReaderDetailResponse":
+        return cls(
+            task=TaskResponse.from_model(context.task),
+            schedule=(
+                ScheduleResponse.from_model(context.schedule)
+                if context.schedule
+                else None
+            ),
+            run=RunResponse.from_model(context.run),
+            previous_run_id=context.previous_run_id,
+            next_run_id=context.next_run_id,
         )
 
 

@@ -54,8 +54,47 @@ class TaskDetail:
 
 @dataclass(frozen=True, slots=True)
 class HistoryItem:
-    run: Run
+    run_id: str
+    task_id: str
+    title: str
+    execution_mode: ExecutionMode
+    run_status: RunStatus
+    finished_at: datetime
+    outcome_preview: str | None
+    outcome_truncated: bool
+    outcome_source: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RunPreview:
+    run_id: str
+    task_id: str
+    schedule_id: str | None
+    run_status: RunStatus
+    planned_start_at: datetime
+    actual_start_at: datetime | None
+    finished_at: datetime | None
+    occurrence_key: str | None
+    created_at: datetime
+    updated_at: datetime
+    outcome_preview: str | None
+    outcome_truncated: bool
+    outcome_source: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RunPreviewPage:
+    items: list[RunPreview]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class RunReaderContext:
     task: Task
+    schedule: Schedule | None
+    run: Run
+    previous_run_id: str | None
+    next_run_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +136,9 @@ class CalendarPage:
 class TemplatePage:
     items: list[Template]
     total: int
+
+
+RUN_OUTCOME_PREVIEW_LIMIT = 240
 
 
 async def create_one_time_task(
@@ -251,9 +293,7 @@ async def create_template(
         default_target_working_directory=default_target_working_directory,
         default_execution_mode=default_execution_mode,
         default_schedule_type=default_schedule_type,
-        default_planned_at=to_utc(default_planned_at)
-        if default_planned_at
-        else None,
+        default_planned_at=to_utc(default_planned_at) if default_planned_at else None,
         default_recurrence_rule=default_recurrence_rule,
         default_recurrence_timezone=default_recurrence_timezone,
         default_executor=default_executor,
@@ -476,6 +516,13 @@ async def get_schedule_for_task(session: AsyncSession, task_id: str) -> Schedule
     return schedule
 
 
+async def _get_schedule_for_task_or_none(
+    session: AsyncSession, task_id: str
+) -> Schedule | None:
+    statement = select(Schedule).where(Schedule.task_id == task_id)
+    return (await session.scalars(statement)).one_or_none()
+
+
 async def get_latest_run(session: AsyncSession, task_id: str) -> Run | None:
     statement = (
         select(Run)
@@ -486,12 +533,81 @@ async def get_latest_run(session: AsyncSession, task_id: str) -> Run | None:
     return (await session.scalars(statement)).one_or_none()
 
 
-async def list_runs_for_task(session: AsyncSession, task_id: str) -> list[Run]:
+async def list_run_previews_for_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    status: RunStatus | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> RunPreviewPage:
     _ = await get_task(session, task_id)
+    filters: list[ColumnElement[bool]] = [Run.task_id == task_id]
+    if status is not None:
+        filters.append(Run.run_status == status)
+
+    total_statement = select(func.count()).select_from(Run).where(*filters)
+    total = (await session.execute(total_statement)).scalar_one()
+
     statement = (
-        select(Run).where(Run.task_id == task_id).order_by(Run.created_at.desc())
+        select(Run)
+        .where(*filters)
+        .order_by(Run.created_at.desc(), Run.run_id.desc())
+        .limit(limit)
+        .offset(offset)
     )
-    return list(await session.scalars(statement))
+    runs = (await session.scalars(statement)).all()
+    return RunPreviewPage(
+        items=[_to_run_preview(run) for run in runs],
+        total=total,
+    )
+
+
+async def get_run_reader_context(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    run_id: str,
+) -> RunReaderContext:
+    run = await get_run(session, run_id)
+    if run.task_id != task_id:
+        raise NotFoundError(f"run not found for task: {run_id}")
+    task = await get_task(session, task_id)
+    schedule = await _get_schedule_for_task_or_none(session, task_id)
+
+    previous_statement = (
+        select(Run.run_id)
+        .where(
+            Run.task_id == task_id,
+            (
+                (Run.created_at > run.created_at)
+                | ((Run.created_at == run.created_at) & (Run.run_id > run.run_id))
+            ),
+        )
+        .order_by(Run.created_at.asc(), Run.run_id.asc())
+        .limit(1)
+    )
+    next_statement = (
+        select(Run.run_id)
+        .where(
+            Run.task_id == task_id,
+            (
+                (Run.created_at < run.created_at)
+                | ((Run.created_at == run.created_at) & (Run.run_id < run.run_id))
+            ),
+        )
+        .order_by(Run.created_at.desc(), Run.run_id.desc())
+        .limit(1)
+    )
+    previous_run_id = (await session.execute(previous_statement)).scalar_one_or_none()
+    next_run_id = (await session.execute(next_statement)).scalar_one_or_none()
+    return RunReaderContext(
+        task=task,
+        schedule=schedule,
+        run=run,
+        previous_run_id=previous_run_id,
+        next_run_id=next_run_id,
+    )
 
 
 async def list_history(
@@ -532,9 +648,29 @@ async def list_history(
         .limit(limit)
         .offset(offset)
     )
-    rows = (await session.execute(statement)).tuples().all()
+    rows: list[tuple[Run, Task]] = list((await session.execute(statement)).tuples())
+    items: list[HistoryItem] = []
+    for run, task in rows:
+        if run.finished_at is None:
+            continue
+        outcome_preview, outcome_truncated, outcome_source = (
+            _run_outcome_preview_values(run)
+        )
+        items.append(
+            HistoryItem(
+                run_id=run.run_id,
+                task_id=run.task_id,
+                title=task.title,
+                execution_mode=task.execution_mode,
+                run_status=run.run_status,
+                finished_at=run.finished_at,
+                outcome_preview=outcome_preview,
+                outcome_truncated=outcome_truncated,
+                outcome_source=outcome_source,
+            )
+        )
     return HistoryPage(
-        items=[HistoryItem(run=run, task=task) for run, task in rows],
+        items=items,
         total=total,
     )
 
@@ -1378,9 +1514,7 @@ async def _one_time_calendar_items(
     ]
     if not include_completed:
         filters.append(
-            Run.run_status.in_(
-                {RunStatus.PLANNED, RunStatus.QUEUED, RunStatus.RUNNING}
-            )
+            Run.run_status.in_({RunStatus.PLANNED, RunStatus.QUEUED, RunStatus.RUNNING})
         )
 
     statement = (
@@ -1524,6 +1658,42 @@ async def _occurrence_overrides_by_schedule_id(
             _db_datetime_to_utc(override.original_occurrence_at)
         ] = override
     return by_schedule
+
+
+def _run_outcome_preview_values(run: Run) -> tuple[str | None, bool, str | None]:
+    if run.result_summary is not None:
+        full_text = run.result_summary
+        source = "result_summary"
+    elif run.failure_reason is not None:
+        full_text = run.failure_reason
+        source = "failure_reason"
+    else:
+        return None, False, None
+
+    if len(full_text) > RUN_OUTCOME_PREVIEW_LIMIT:
+        return f"{full_text[: RUN_OUTCOME_PREVIEW_LIMIT - 3]}...", True, source
+    return full_text, False, source
+
+
+def _to_run_preview(run: Run) -> RunPreview:
+    outcome_preview, outcome_truncated, outcome_source = _run_outcome_preview_values(
+        run
+    )
+    return RunPreview(
+        run_id=run.run_id,
+        task_id=run.task_id,
+        schedule_id=run.schedule_id,
+        run_status=run.run_status,
+        planned_start_at=run.planned_start_at,
+        actual_start_at=run.actual_start_at,
+        finished_at=run.finished_at,
+        occurrence_key=run.occurrence_key,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        outcome_preview=outcome_preview,
+        outcome_truncated=outcome_truncated,
+        outcome_source=outcome_source,
+    )
 
 
 def _db_datetime_to_utc(value: datetime) -> datetime:

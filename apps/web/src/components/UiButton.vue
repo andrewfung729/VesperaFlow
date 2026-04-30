@@ -19,10 +19,7 @@ const props = withDefaults(
 )
 
 const buttonClass = computed(() => {
-  const sizeClass =
-    props.size === 'sm'
-      ? 'min-h-9 px-3 text-sm'
-      : 'min-h-10 px-4'
+  const sizeClass = props.size === 'sm' ? 'min-h-9 px-3 text-sm' : 'min-h-10 px-4'
   const baseClass =
     'cursor-pointer rounded-md border font-semibold transition disabled:cursor-not-allowed disabled:opacity-55'
 

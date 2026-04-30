@@ -12,6 +12,7 @@ from vesperaflow_api.app import create_app
 from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
 from vesperaflow_api.settings import get_settings as _cached_get_settings
+from vesperaflow_core import occurrence_key_for_datetime
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.models import Run, Task
@@ -691,8 +692,10 @@ async def test_history_returns_terminal_runs_with_filters(
     all_items: list[dict[str, Any]] = all_history.json()["data"]
     assert all_history.json()["meta"]["total"] == 2
     assert [item["title"] for item in all_items] == ["Failed", "Completed"]
-    assert all_items[0]["failure_reason"] == "Executor failed"
-    assert all_items[1]["result_summary"] == "Done"
+    assert all_items[0]["outcome_source"] == "failure_reason"
+    assert all_items[0]["outcome_preview"] == "Executor failed"
+    assert all_items[1]["outcome_source"] == "result_summary"
+    assert all_items[1]["outcome_preview"] == "Done"
 
     assert failed_history.status_code == 200
     failed_items: list[dict[str, Any]] = failed_history.json()["data"]
@@ -701,6 +704,158 @@ async def test_history_returns_terminal_runs_with_filters(
 
     assert empty_history.status_code == 200
     assert empty_history.json()["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_task_run_list_returns_preview_with_server_filter_and_pagination(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_recurring_payload("Run list"))
+    created_data: dict[str, Any] = created.json()["data"]
+    task_id = created_data["task"]["task_id"]
+    schedule_id = created_data["schedule"]["schedule_id"]
+    planned_a = datetime(2026, 4, 25, 8, 0, tzinfo=UTC)
+    planned_b = datetime(2026, 4, 26, 8, 0, tzinfo=UTC)
+
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            run_a = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=planned_a,
+                occurrence_key=occurrence_key_for_datetime(planned_a),
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            await repo.mark_run_queued(session, run_id=run_a.run_id)
+            await repo.mark_run_running(session, run_id=run_a.run_id)
+            await repo.mark_run_failed(
+                session,
+                run_id=run_a.run_id,
+                failure_reason="F" * 300,
+            )
+            run_b = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=planned_b,
+                occurrence_key=occurrence_key_for_datetime(planned_b),
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            await repo.mark_run_queued(session, run_id=run_b.run_id)
+            await repo.mark_run_running(session, run_id=run_b.run_id)
+            await repo.mark_run_completed(
+                session,
+                run_id=run_b.run_id,
+                result_summary="Completed run",
+            )
+
+    response = await client.get(
+        f"/api/v1/tasks/{task_id}/runs",
+        params={"status": "failed", "limit": 1, "offset": 0},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["meta"]["total"] == 1
+    item = response.json()["data"][0]
+    assert item["run_status"] == "failed"
+    assert item["outcome_source"] == "failure_reason"
+    assert item["outcome_truncated"] is True
+    assert item["outcome_preview"].endswith("...")
+    assert len(item["outcome_preview"]) == 240
+    assert "result_summary" not in item
+    assert "failure_reason" not in item
+
+
+@pytest.mark.asyncio
+async def test_get_run_endpoint_returns_full_outcome(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_create_payload("One-time"))
+    run_id = created.json()["data"]["run"]["run_id"]
+    long_summary = "Outcome " + ("x" * 280)
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            await repo.mark_run_queued(session, run_id=run_id)
+            await repo.mark_run_running(session, run_id=run_id)
+            await repo.mark_run_completed(
+                session,
+                run_id=run_id,
+                result_summary=long_summary,
+            )
+
+    response = await client.get(f"/api/v1/runs/{run_id}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["run_id"] == run_id
+    assert response.json()["data"]["result_summary"] == long_summary
+
+
+@pytest.mark.asyncio
+async def test_run_reader_endpoint_returns_selected_and_adjacent_ids(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_recurring_payload("Reader"))
+    created_data: dict[str, Any] = created.json()["data"]
+    task_id = created_data["task"]["task_id"]
+    schedule_id = created_data["schedule"]["schedule_id"]
+    oldest = datetime(2026, 4, 25, 8, 0, tzinfo=UTC)
+    middle = datetime(2026, 4, 26, 8, 0, tzinfo=UTC)
+    newest = datetime(2026, 4, 27, 8, 0, tzinfo=UTC)
+
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            oldest_run = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=oldest,
+                occurrence_key=occurrence_key_for_datetime(oldest),
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            middle_run = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=middle,
+                occurrence_key=occurrence_key_for_datetime(middle),
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            newest_run = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=newest,
+                occurrence_key=occurrence_key_for_datetime(newest),
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            oldest_run_id = oldest_run.run_id
+            middle_run_id = middle_run.run_id
+            newest_run_id = newest_run.run_id
+
+    response = await client.get(
+        f"/api/v1/tasks/{task_id}/runs/{middle_run_id}/reader"
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["task"]["task_id"] == task_id
+    assert body["run"]["run_id"] == middle_run_id
+    assert body["previous_run_id"] == newest_run_id
+    assert body["next_run_id"] == oldest_run_id
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getTaskDetail, getTaskRuns, type Run, type TaskDetail } from '@/api'
+import { getRunReaderDetail, type RunReaderDetail } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import MarkdownReader from '@/components/MarkdownReader.vue'
 import PageStatePanel from '@/components/PageStatePanel.vue'
@@ -20,26 +20,16 @@ const props = defineProps<{
 
 const router = useRouter()
 
-const selectedDetail = ref<TaskDetail | null>(null)
-const runs = ref<Run[]>([])
+const readerDetail = ref<RunReaderDetail | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const copyStatus = ref<'idle' | 'copied' | 'failed'>('idle')
 
 const { fontSize } = useReaderPreference()
 
-const selectedRun = computed(() => runs.value.find((run) => run.run_id === props.runId) ?? null)
-const selectedRunIndex = computed(() =>
-  runs.value.findIndex((run) => run.run_id === selectedRun.value?.run_id),
-)
-const previousRun = computed(() => {
-  const index = selectedRunIndex.value
-  return index > 0 ? runs.value[index - 1] : null
-})
-const nextRun = computed(() => {
-  const index = selectedRunIndex.value
-  return index >= 0 && index < runs.value.length - 1 ? runs.value[index + 1] : null
-})
+const selectedRun = computed(() => readerDetail.value?.run ?? null)
+const previousRunId = computed(() => readerDetail.value?.previous_run_id ?? null)
+const nextRunId = computed(() => readerDetail.value?.next_run_id ?? null)
 
 watch(
   () => [props.taskId, props.runId],
@@ -55,12 +45,9 @@ async function loadReader() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    selectedDetail.value = await getTaskDetail(props.taskId)
-    const runsResponse = await getTaskRuns(props.taskId)
-    runs.value = runsResponse.data
+    readerDetail.value = await getRunReaderDetail(props.taskId, props.runId)
   } catch (error) {
-    selectedDetail.value = null
-    runs.value = []
+    readerDetail.value = null
     errorMessage.value = readableError(error)
   } finally {
     isLoading.value = false
@@ -71,11 +58,11 @@ async function openArchive() {
   await router.push({ name: 'recurring-run-archive', params: { taskId: props.taskId } })
 }
 
-async function openRun(run: Run | null | undefined) {
-  if (!run) return
+async function openRun(runId: string | null | undefined) {
+  if (!runId) return
   await router.push({
     name: 'recurring-run-reader',
-    params: { taskId: props.taskId, runId: run.run_id },
+    params: { taskId: props.taskId, runId },
   })
 }
 
@@ -112,29 +99,16 @@ function cycleFontSize(direction: 'down' | 'up') {
       >
         <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap gap-2">
-            <UiButton size="sm" @click="openArchive">
-              Back to Archive
-            </UiButton>
-            <UiButton
-              size="sm"
-              :disabled="!previousRun"
-              @click="openRun(previousRun)"
-            >
+            <UiButton size="sm" @click="openArchive"> Back to Archive </UiButton>
+            <UiButton size="sm" :disabled="!previousRunId" @click="openRun(previousRunId)">
               Previous Run
             </UiButton>
-            <UiButton
-              size="sm"
-              :disabled="!nextRun"
-              @click="openRun(nextRun)"
-            >
+            <UiButton size="sm" :disabled="!nextRunId" @click="openRun(nextRunId)">
               Next Run
             </UiButton>
           </div>
           <div class="flex items-center gap-2">
-            <RunStatusBadge
-              v-if="selectedRun"
-              :status="selectedRun.run_status"
-            />
+            <RunStatusBadge v-if="selectedRun" :status="selectedRun.run_status" />
             <div
               class="inline-flex items-center rounded-md border border-slate-300 bg-white shadow-xs dark:border-slate-600 dark:bg-slate-800"
             >
@@ -160,11 +134,7 @@ function cycleFontSize(direction: 'down' | 'up') {
                 A+
               </button>
             </div>
-            <UiButton
-              size="sm"
-              :disabled="!selectedRun"
-              @click="copyOutcome"
-            >
+            <UiButton size="sm" :disabled="!selectedRun" @click="copyOutcome">
               {{
                 copyStatus === 'copied'
                   ? 'Copied'
@@ -177,7 +147,7 @@ function cycleFontSize(direction: 'down' | 'up') {
         </div>
       </div>
 
-      <article v-if="selectedDetail && selectedRun" class="mx-auto max-w-5xl">
+      <article v-if="readerDetail && selectedRun" class="mx-auto max-w-5xl">
         <header
           class="mb-8 rounded-md border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"
         >
@@ -187,7 +157,7 @@ function cycleFontSize(direction: 'down' | 'up') {
             Outcome Reader
           </p>
           <h2 class="m-0 text-3xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
-            {{ selectedDetail.task.title }}
+            {{ readerDetail.task.title }}
           </h2>
           <p class="m-0 mt-2 text-base font-semibold text-slate-700 dark:text-slate-300">
             {{ occurrenceLabel(selectedRun) }}
@@ -237,18 +207,10 @@ function cycleFontSize(direction: 'down' | 'up') {
         </div>
 
         <footer class="mx-auto mt-6 flex w-full max-w-[88ch] flex-wrap justify-between gap-3">
-          <UiButton
-            :disabled="!previousRun"
-            @click="openRun(previousRun)"
-          >
+          <UiButton :disabled="!previousRunId" @click="openRun(previousRunId)">
             Previous Run
           </UiButton>
-          <UiButton
-            :disabled="!nextRun"
-            @click="openRun(nextRun)"
-          >
-            Next Run
-          </UiButton>
+          <UiButton :disabled="!nextRunId" @click="openRun(nextRunId)"> Next Run </UiButton>
         </footer>
       </article>
 

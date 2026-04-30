@@ -189,12 +189,8 @@ async function useTemplate(template: TaskTemplate) {
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex justify-end gap-2">
-                    <UiButton size="sm" @click="useTemplate(template)">
-                      Use
-                    </UiButton>
-                    <UiButton size="sm" @click="editTemplate(template)">
-                      Edit
-                    </UiButton>
+                    <UiButton size="sm" @click="useTemplate(template)"> Use </UiButton>
+                    <UiButton size="sm" @click="editTemplate(template)"> Edit </UiButton>
                     <UiButton size="sm" variant="danger" @click="archiveSelected(template)">
                       Archive
                     </UiButton>
@@ -242,9 +238,7 @@ async function useTemplate(template: TaskTemplate) {
             <UiButton type="submit" variant="primary" :disabled="!canSave || isSaving">
               {{ isSaving ? 'Saving...' : editingTemplate ? 'Save Changes' : 'Create Template' }}
             </UiButton>
-            <UiButton v-if="editingTemplate" @click="resetForm">
-              Cancel
-            </UiButton>
+            <UiButton v-if="editingTemplate" @click="resetForm"> Cancel </UiButton>
           </div>
         </form>
       </div>

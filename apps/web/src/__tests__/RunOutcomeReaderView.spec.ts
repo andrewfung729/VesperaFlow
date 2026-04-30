@@ -9,7 +9,7 @@ import RunOutcomeReaderView from '@/views/RunOutcomeReaderView.vue'
 function stubFetch() {
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const url = String(input)
-    if (url.includes('/tasks/task-recurring-1/detail')) {
+    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-1/reader')) {
       return new Response(
         JSON.stringify({
           data: {
@@ -38,7 +38,7 @@ function stubFetch() {
               next_run_at: '2026-04-26T08:00:00+08:00',
               version: 2,
             },
-            latest_run: {
+            run: {
               run_id: 'run-recurring-1',
               task_id: 'task-recurring-1',
               schedule_id: 'schedule-task-recurring-1',
@@ -50,29 +50,57 @@ function stubFetch() {
               failure_reason: null,
               occurrence_key: '20260426T000000Z',
             },
+            previous_run_id: null,
+            next_run_id: null,
           },
         }),
         { status: 200 },
       )
     }
-    if (url.includes('/tasks/task-recurring-1/runs')) {
+    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-2/reader')) {
       return new Response(
         JSON.stringify({
-          data: [
-            {
-              run_id: 'run-recurring-1',
+          data: {
+            task: {
+              task_id: 'task-recurring-1',
+              title: 'Active Recurring',
+              instruction_source: 'Run this on a recurring schedule.',
+              target_working_directory: '/tmp',
+              execution_mode: 'recurring',
+              task_status: 'scheduled',
+              template_id: null,
+              executor: 'debug_printer',
+              version: 1,
+              created_at: '2026-04-25T09:00:00+08:00',
+              updated_at: '2026-04-25T09:00:00+08:00',
+              archived_at: null,
+            },
+            schedule: {
+              schedule_id: 'schedule-task-recurring-1',
+              task_id: 'task-recurring-1',
+              schedule_type: 'recurring_rule',
+              schedule_status: 'active',
+              planned_at: null,
+              recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+              recurrence_timezone: 'Asia/Hong_Kong',
+              next_run_at: '2026-04-27T08:00:00+08:00',
+              version: 2,
+            },
+            run: {
+              run_id: 'run-recurring-2',
               task_id: 'task-recurring-1',
               schedule_id: 'schedule-task-recurring-1',
-              run_status: 'completed',
-              planned_start_at: '2026-04-26T08:00:00+08:00',
-              actual_start_at: '2026-04-26T08:01:00+08:00',
-              finished_at: '2026-04-26T08:30:00+08:00',
-              result_summary: 'Daily recurring completed',
-              failure_reason: null,
-              occurrence_key: '20260426T000000Z',
+              run_status: 'failed',
+              planned_start_at: '2026-04-25T08:00:00+08:00',
+              actual_start_at: '2026-04-25T08:01:00+08:00',
+              finished_at: '2026-04-25T08:30:00+08:00',
+              result_summary: null,
+              failure_reason: 'Recurring executor failed',
+              occurrence_key: '20260425T000000Z',
             },
-          ],
-          meta: { total: 1 },
+            previous_run_id: 'run-recurring-1',
+            next_run_id: null,
+          },
         }),
         { status: 200 },
       )

@@ -365,7 +365,9 @@ describe('App', () => {
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/executors/preflight?executor=codex&target_working_directory=%2Ftmp'),
+      expect.stringContaining(
+        '/executors/preflight?executor=codex&target_working_directory=%2Ftmp',
+      ),
       expect.any(Object),
     )
     expect(fetchMock).toHaveBeenCalledWith(
@@ -420,8 +422,9 @@ describe('App', () => {
           execution_mode: 'recurring',
           run_status: 'completed',
           finished_at: '2026-04-26T08:30:00+08:00',
-          result_summary: 'Daily recurring completed',
-          failure_reason: null,
+          outcome_preview: 'Daily recurring completed',
+          outcome_truncated: false,
+          outcome_source: 'result_summary',
         },
       ],
     })
@@ -706,9 +709,9 @@ function stubFetch(options: StubFetchOptions = {}) {
       execution_mode: 'one_time',
       run_status: 'failed',
       finished_at: '2026-04-25T11:00:00+08:00',
-      result_summary: null,
-      failure_reason: 'Executor failed',
-      occurrence_key: null,
+      outcome_preview: 'Executor failed',
+      outcome_truncated: false,
+      outcome_source: 'failure_reason',
     },
   ]
   const recurringItems = options.recurringItems ?? [
@@ -902,8 +905,7 @@ function stubFetch(options: StubFetchOptions = {}) {
         },
         schedule: recurringScheduleResponse('task-recurring-1', {
           version: 3,
-          recurrence_rule:
-            requestBody.recurrence_rule ?? 'RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=15',
+          recurrence_rule: requestBody.recurrence_rule ?? 'RRULE:FREQ=DAILY;BYHOUR=10;BYMINUTE=15',
         }),
         run: null,
       })
@@ -954,18 +956,36 @@ function stubFetch(options: StubFetchOptions = {}) {
     }
 
     if (
+      url.includes('/tasks/task-recurring-1/runs/run-recurring-1/reader') ||
+      url.includes('/tasks/task-recurring-created/runs/run-recurring-1/reader')
+    ) {
+      return jsonResponse(runReaderDetailResponse('task-recurring-1', 'run-recurring-1'))
+    }
+
+    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-2/reader')) {
+      return jsonResponse(runReaderDetailResponse('task-recurring-1', 'run-recurring-2'))
+    }
+
+    if (
       url.includes('/tasks/task-recurring-1/runs') ||
       url.includes('/tasks/task-recurring-created/runs')
     ) {
-      return jsonResponse(recurringRunResponses('task-recurring-1'), { total: 2 })
+      const taskId = url.includes('/tasks/task-recurring-created/runs')
+        ? 'task-recurring-created'
+        : 'task-recurring-1'
+      const failedOnly = url.includes('status=failed')
+      const previewRuns = recurringRunPreviewResponses(taskId).filter((run) =>
+        failedOnly ? run.run_status === 'failed' : true,
+      )
+      return jsonResponse(previewRuns, { total: previewRuns.length })
     }
 
-    if (url.includes('/tasks/task-1/runs')) {
-      return jsonResponse(oneTimeRunResponses('task-1'), { total: 1 })
+    if (url.endsWith('/runs/run-1')) {
+      return jsonResponse(oneTimeRunResponses('task-1')[0])
     }
 
-    if (url.includes('/tasks/task-completed/runs')) {
-      return jsonResponse(completedRunResponses('task-completed'), { total: 1 })
+    if (url.endsWith('/runs/run-completed')) {
+      return jsonResponse(completedRunResponses('task-completed')[0])
     }
 
     if (
@@ -980,8 +1000,7 @@ function stubFetch(options: StubFetchOptions = {}) {
         taskId === 'task-recurring-1'
           ? taskRecurring1Instruction
           : 'Run this on a recurring schedule.'
-      const targetDirectory =
-        taskId === 'task-recurring-1' ? taskRecurring1TargetDirectory : '/tmp'
+      const targetDirectory = taskId === 'task-recurring-1' ? taskRecurring1TargetDirectory : '/tmp'
       const executor = taskId === 'task-recurring-1' ? taskRecurring1Executor : 'debug_printer'
       return jsonResponse({
         task: {
@@ -1110,6 +1129,53 @@ function recurringRunResponses(taskId: string) {
       occurrence_key: '20260425T000000Z',
     },
   ]
+}
+
+function recurringRunPreviewResponses(taskId: string) {
+  return [
+    {
+      run_id: 'run-recurring-1',
+      task_id: taskId,
+      schedule_id: `schedule-${taskId}`,
+      run_status: 'completed',
+      planned_start_at: '2026-04-26T08:00:00+08:00',
+      actual_start_at: '2026-04-26T08:01:00+08:00',
+      finished_at: '2026-04-26T08:30:00+08:00',
+      occurrence_key: '20260426T000000Z',
+      created_at: '2026-04-26T08:00:00+08:00',
+      updated_at: '2026-04-26T08:30:00+08:00',
+      outcome_preview: 'Daily recurring completed',
+      outcome_truncated: false,
+      outcome_source: 'result_summary',
+    },
+    {
+      run_id: 'run-recurring-2',
+      task_id: taskId,
+      schedule_id: `schedule-${taskId}`,
+      run_status: 'failed',
+      planned_start_at: '2026-04-25T08:00:00+08:00',
+      actual_start_at: '2026-04-25T08:01:00+08:00',
+      finished_at: '2026-04-25T08:30:00+08:00',
+      occurrence_key: '20260425T000000Z',
+      created_at: '2026-04-25T08:00:00+08:00',
+      updated_at: '2026-04-25T08:30:00+08:00',
+      outcome_preview: 'Recurring executor failed',
+      outcome_truncated: false,
+      outcome_source: 'failure_reason',
+    },
+  ]
+}
+
+function runReaderDetailResponse(taskId: string, runId: string) {
+  const run = recurringRunResponses(taskId).find((item) => item.run_id === runId)
+  if (!run) throw new Error(`Missing run ${runId}`)
+  return {
+    task: recurringTaskResponse(taskId, 'Active Recurring'),
+    schedule: recurringScheduleResponse(taskId),
+    run,
+    previous_run_id: runId === 'run-recurring-2' ? 'run-recurring-1' : null,
+    next_run_id: runId === 'run-recurring-1' ? 'run-recurring-2' : null,
+  }
 }
 
 function oneTimeRunResponses(taskId: string) {

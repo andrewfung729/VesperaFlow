@@ -487,11 +487,11 @@ async def test_history_lists_completed_and_failed_runs_in_reverse_finished_order
     history = await repo.list_history(session)
 
     assert history.total == 2
-    assert [item.run.run_id for item in history.items] == [
+    assert [item.run_id for item in history.items] == [
         failed.run.run_id,
         completed.run.run_id,
     ]
-    assert history.items[0].task.title == "Failed research"
+    assert history.items[0].title == "Failed research"
 
 
 @pytest.mark.asyncio
@@ -544,11 +544,154 @@ async def test_history_filters_by_status_mode_and_finished_window(
     limited = await repo.list_history(session, limit=1, offset=1)
 
     assert history.total == 1
-    assert history.items[0].run.run_id == completed.run.run_id
+    assert history.items[0].run_id == completed.run.run_id
     assert non_history_status.total == 0
     assert non_history_status.items == []
     assert limited.total == 2
     assert len(limited.items) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_preview_lists_support_filters_and_truncation(
+    session: AsyncSession,
+) -> None:
+    first_planned = datetime(2026, 4, 30, 0, 0, tzinfo=UTC)
+    second_planned = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Preview task",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+        )
+        first = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=first_planned,
+            occurrence_key=occurrence_key_for_datetime(first_planned),
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        await repo.mark_run_queued(session, run_id=first.run_id)
+        await repo.mark_run_running(session, run_id=first.run_id)
+        _ = await repo.mark_run_failed(
+            session,
+            run_id=first.run_id,
+            failure_reason="x" * 300,
+        )
+        second = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=second_planned,
+            occurrence_key=occurrence_key_for_datetime(second_planned),
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        await repo.mark_run_queued(session, run_id=second.run_id)
+        await repo.mark_run_running(session, run_id=second.run_id)
+        _ = await repo.mark_run_completed(
+            session,
+            run_id=second.run_id,
+            result_summary="Done",
+        )
+
+    failed_only = await repo.list_run_previews_for_task(
+        session,
+        task_id=bundle.task.task_id,
+        status=RunStatus.FAILED,
+        limit=1,
+        offset=0,
+    )
+
+    assert failed_only.total == 1
+    assert len(failed_only.items) == 1
+    assert failed_only.items[0].run_status is RunStatus.FAILED
+    assert failed_only.items[0].outcome_source == "failure_reason"
+    assert failed_only.items[0].outcome_truncated is True
+    assert failed_only.items[0].outcome_preview is not None
+    assert failed_only.items[0].outcome_preview.endswith("...")
+    assert len(failed_only.items[0].outcome_preview) == 240
+
+
+@pytest.mark.asyncio
+async def test_run_reader_context_returns_adjacent_runs_in_archive_order(
+    session: AsyncSession,
+) -> None:
+    oldest = datetime(2026, 4, 30, 0, 0, tzinfo=UTC)
+    middle = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+    newest = datetime(2026, 5, 2, 0, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Reader task",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+        )
+        first_run = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=oldest,
+            occurrence_key=occurrence_key_for_datetime(oldest),
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        second_run = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=middle,
+            occurrence_key=occurrence_key_for_datetime(middle),
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        third_run = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=None,
+            planned_start_at=newest,
+            occurrence_key=occurrence_key_for_datetime(newest),
+            workflow_id="vesperaflow-recurring-workflow",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        first_id = first_run.run_id
+        second_id = second_run.run_id
+        third_id = third_run.run_id
+
+    middle_context = await repo.get_run_reader_context(
+        session,
+        task_id=bundle.task.task_id,
+        run_id=second_id,
+    )
+    newest_context = await repo.get_run_reader_context(
+        session,
+        task_id=bundle.task.task_id,
+        run_id=third_id,
+    )
+    oldest_context = await repo.get_run_reader_context(
+        session,
+        task_id=bundle.task.task_id,
+        run_id=first_id,
+    )
+
+    assert middle_context.run.run_id == second_id
+    assert middle_context.previous_run_id == third_id
+    assert middle_context.next_run_id == first_id
+    assert newest_context.previous_run_id is None
+    assert newest_context.next_run_id == second_id
+    assert oldest_context.previous_run_id == second_id
+    assert oldest_context.next_run_id is None
 
 
 @pytest.mark.asyncio

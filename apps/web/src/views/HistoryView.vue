@@ -101,12 +101,7 @@ async function openHistoryItem(item: HistoryItem) {
             empty-label="All"
             @change="refreshHistory"
           />
-          <UiButton
-            :disabled="isLoadingHistory"
-            @click="refreshHistory"
-          >
-            Refresh
-          </UiButton>
+          <UiButton :disabled="isLoadingHistory" @click="refreshHistory"> Refresh </UiButton>
         </div>
       </div>
 

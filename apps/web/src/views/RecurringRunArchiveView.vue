@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getTaskDetail, getTaskRuns, type Run, type RunStatus, type TaskDetail } from '@/api'
+import { getTaskDetail, getTaskRuns, type RunPreview, type RunStatus, type TaskDetail } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import PageStatePanel from '@/components/PageStatePanel.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
@@ -20,7 +20,7 @@ const props = defineProps<{
 const router = useRouter()
 
 const selectedDetail = ref<TaskDetail | null>(null)
-const runs = ref<Run[]>([])
+const runs = ref<RunPreview[]>([])
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusFilter = ref<RunStatus | ''>('')
@@ -28,17 +28,18 @@ const archiveStatusOptions = runStatusOptions.filter((option) =>
   ['completed', 'failed', 'running', 'planned'].includes(option.value),
 )
 
-const filteredRuns = computed(() => {
-  if (!statusFilter.value) return runs.value
-  return runs.value.filter((run) => run.run_status === statusFilter.value)
-})
-
 const latestRun = computed(() => runs.value[0] ?? selectedDetail.value?.latest_run ?? null)
 
 watch(
   () => props.taskId,
   () => {
     statusFilter.value = ''
+  },
+)
+
+watch(
+  [() => props.taskId, statusFilter],
+  () => {
     void loadArchive()
   },
   { immediate: true },
@@ -50,7 +51,7 @@ async function loadArchive() {
   errorMessage.value = null
   try {
     selectedDetail.value = await getTaskDetail(props.taskId)
-    const runsResponse = await getTaskRuns(props.taskId)
+    const runsResponse = await getTaskRuns(props.taskId, { status: statusFilter.value })
     runs.value = runsResponse.data
   } catch (error) {
     selectedDetail.value = null
@@ -65,7 +66,7 @@ async function openTaskDetail() {
   await router.push({ name: 'task-detail', params: { taskId: props.taskId } })
 }
 
-async function openRun(run: Run) {
+async function openRun(run: RunPreview) {
   await router.push({
     name: 'recurring-run-reader',
     params: { taskId: props.taskId, runId: run.run_id },
@@ -96,9 +97,7 @@ async function openRun(run: Run) {
                 {{ runs.length }} recorded occurrences
               </p>
             </div>
-            <UiButton @click="openTaskDetail">
-              Task Detail
-            </UiButton>
+            <UiButton @click="openTaskDetail"> Task Detail </UiButton>
           </div>
 
           <dl class="m-0 mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -149,9 +148,9 @@ async function openRun(run: Run) {
           />
         </div>
 
-        <div v-if="filteredRuns.length > 0" class="grid gap-3">
+        <div v-if="runs.length > 0" class="grid gap-3">
           <article
-            v-for="run in filteredRuns"
+            v-for="run in runs"
             :key="run.run_id"
             class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 transition-colors hover:border-teal-300"
           >
@@ -173,9 +172,7 @@ async function openRun(run: Run) {
             >
               {{ runOutcome(run) }}
             </p>
-            <UiButton class="mt-3" size="sm" @click="openRun(run)">
-              Read Outcome
-            </UiButton>
+            <UiButton class="mt-3" size="sm" @click="openRun(run)"> Read Outcome </UiButton>
           </article>
         </div>
 

@@ -7,6 +7,8 @@ import {
   createTemplate,
   getCalendar,
   getHistory,
+  getRun,
+  getRunReaderDetail,
   getRecurringTodo,
   getTaskRuns,
   listTemplates,
@@ -191,7 +193,7 @@ describe('api', () => {
     )
   })
 
-  it('loads task runs and applies client-side status filtering', async () => {
+  it('loads task run previews with server-side filtering params', async () => {
     const fetchMock = vi.fn<typeof fetch>(
       async () =>
         new Response(
@@ -201,28 +203,19 @@ describe('api', () => {
                 run_id: 'run-1',
                 task_id: 'task-1',
                 schedule_id: 'schedule-1',
-                run_status: 'completed',
+                run_status: 'failed',
                 planned_start_at: '2026-04-25T10:00:00+08:00',
                 actual_start_at: '2026-04-25T10:01:00+08:00',
                 finished_at: '2026-04-25T11:00:00+08:00',
-                result_summary: 'Done',
-                failure_reason: null,
                 occurrence_key: null,
-              },
-              {
-                run_id: 'run-2',
-                task_id: 'task-1',
-                schedule_id: 'schedule-1',
-                run_status: 'failed',
-                planned_start_at: '2026-04-26T10:00:00+08:00',
-                actual_start_at: '2026-04-26T10:01:00+08:00',
-                finished_at: '2026-04-26T11:00:00+08:00',
-                result_summary: null,
-                failure_reason: 'Executor failed',
-                occurrence_key: null,
+                created_at: '2026-04-25T10:00:00+08:00',
+                updated_at: '2026-04-25T11:00:00+08:00',
+                outcome_preview: 'Executor failed',
+                outcome_truncated: false,
+                outcome_source: 'failure_reason',
               },
             ],
-            meta: { total: 2 },
+            meta: { total: 1 },
           }),
           { status: 200 },
         ),
@@ -232,9 +225,87 @@ describe('api', () => {
     const runs = await getTaskRuns('task-1', { status: 'failed' })
 
     expect(runs.meta.total).toBe(1)
-    expect(runs.data[0]?.run_id).toBe('run-2')
+    expect(runs.data[0]?.run_id).toBe('run-1')
+    expect(runs.data[0]?.outcome_preview).toBe('Executor failed')
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/tasks/task-1/runs?status=failed'),
+      expect.any(Object),
+    )
+  })
+
+  it('loads run detail and reader detail endpoints', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.includes('/tasks/task-1/runs/run-1/reader')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              task: {
+                task_id: 'task-1',
+                title: 'Task 1',
+                instruction_source: 'Run once',
+                target_working_directory: '/tmp',
+                execution_mode: 'one_time',
+                task_status: 'failed',
+                template_id: null,
+                executor: 'debug_printer',
+                version: 1,
+                created_at: '2026-04-25T09:00:00+08:00',
+                updated_at: '2026-04-25T11:00:00+08:00',
+                archived_at: null,
+              },
+              schedule: null,
+              run: {
+                run_id: 'run-1',
+                task_id: 'task-1',
+                schedule_id: 'schedule-1',
+                run_status: 'failed',
+                planned_start_at: '2026-04-25T10:00:00+08:00',
+                actual_start_at: '2026-04-25T10:01:00+08:00',
+                finished_at: '2026-04-25T11:00:00+08:00',
+                result_summary: null,
+                failure_reason: 'Executor failed',
+                occurrence_key: null,
+              },
+              previous_run_id: 'run-2',
+              next_run_id: null,
+            },
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          data: {
+            run_id: 'run-1',
+            task_id: 'task-1',
+            schedule_id: 'schedule-1',
+            run_status: 'failed',
+            planned_start_at: '2026-04-25T10:00:00+08:00',
+            actual_start_at: '2026-04-25T10:01:00+08:00',
+            finished_at: '2026-04-25T11:00:00+08:00',
+            result_summary: null,
+            failure_reason: 'Executor failed',
+            occurrence_key: null,
+          },
+        }),
+        { status: 200 },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const run = await getRun('run-1')
+    const reader = await getRunReaderDetail('task-1', 'run-1')
+
+    expect(run.failure_reason).toBe('Executor failed')
+    expect(reader.run.run_id).toBe('run-1')
+    expect(reader.previous_run_id).toBe('run-2')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/runs/run-1'),
+      expect.any(Object),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks/task-1/runs/run-1/reader'),
       expect.any(Object),
     )
   })

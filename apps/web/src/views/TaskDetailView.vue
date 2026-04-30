@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import {
   cancelTask,
+  getRun,
   getTaskDetail,
-  getTaskRuns,
   rescheduleTask,
   updateRecurringSchedule,
   updateTask,
@@ -43,7 +43,7 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const selectedDetail = ref<TaskDetail | null>(null)
-const taskRuns = ref<Run[]>([])
+const selectedRun = ref<Run | null>(null)
 const isLoadingDetail = ref(false)
 const errorMessage = ref<string | null>(null)
 const rescheduleAt = ref('')
@@ -66,10 +66,6 @@ const selectedOccurrenceAt = computed(() => {
   const value = route.query.occurrenceAt
   return typeof value === 'string' ? value : null
 })
-const selectedRun = computed(() => {
-  const matchingRun = taskRuns.value.find((run) => run.run_id === selectedRunId.value)
-  return matchingRun ?? taskRuns.value[0] ?? selectedDetail.value?.latest_run ?? null
-})
 const isRecurringTask = computed(() => selectedDetail.value?.task.execution_mode === 'recurring')
 const isTaskEditable = computed(() => {
   const status = selectedDetail.value?.task.task_status
@@ -87,7 +83,7 @@ const {
 })
 
 watch(
-  () => props.taskId,
+  () => [props.taskId, selectedRunId.value],
   () => {
     void loadTaskDetail()
   },
@@ -101,10 +97,10 @@ async function loadTaskDetail() {
   try {
     selectedDetail.value = await getTaskDetail(props.taskId)
     if (selectedDetail.value.task.execution_mode === 'one_time') {
-      const runsResponse = await getTaskRuns(props.taskId)
-      taskRuns.value = runsResponse.data
+      const runId = selectedRunId.value ?? selectedDetail.value.latest_run?.run_id
+      selectedRun.value = runId ? await getRun(runId) : selectedDetail.value.latest_run
     } else {
-      taskRuns.value = []
+      selectedRun.value = null
     }
     rescheduleAt.value = selectedDetail.value.schedule?.planned_at
       ? toDateTimeLocal(selectedDetail.value.schedule.planned_at)
@@ -115,7 +111,7 @@ async function loadTaskDetail() {
     isEditingRecurrence.value = route.query.edit === 'recurrence'
   } catch (error) {
     selectedDetail.value = null
-    taskRuns.value = []
+    selectedRun.value = null
     rescheduleAt.value = ''
     errorMessage.value = readableError(error)
   } finally {
@@ -305,9 +301,7 @@ async function openRunArchive() {
               >
                 Save Changes
               </UiButton>
-              <UiButton @click="cancelEditTask">
-                Cancel
-              </UiButton>
+              <UiButton @click="cancelEditTask"> Cancel </UiButton>
             </div>
           </template>
           <template v-else>
@@ -329,11 +323,7 @@ async function openRunArchive() {
               class="mt-6 mb-0 whitespace-pre-wrap rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-sm text-slate-900 dark:text-slate-100 wrap-anywhere"
               >{{ selectedDetail.task.instruction_source }}</pre
             >
-            <UiButton
-              v-if="isTaskEditable"
-              class="mt-4 w-fit"
-              @click="startEditTask"
-            >
+            <UiButton v-if="isTaskEditable" class="mt-4 w-fit" @click="startEditTask">
               Edit Task
             </UiButton>
           </template>
@@ -348,9 +338,7 @@ async function openRunArchive() {
                   Read each recurring outcome in a focused single-column reader.
                 </p>
               </div>
-              <UiButton variant="primary" @click="openRunArchive">
-                Open Run Archive
-              </UiButton>
+              <UiButton variant="primary" @click="openRunArchive"> Open Run Archive </UiButton>
             </div>
           </section>
           <section v-else class="mt-6">
@@ -487,16 +475,15 @@ async function openRunArchive() {
           </UiButton>
           <template v-if="!isRecurringTask">
             <TextInput v-model="rescheduleAt" label="Reschedule" type="datetime-local" />
-            <UiButton
-              :disabled="!selectedDetail.schedule"
-              @click="submitReschedule"
-            >
+            <UiButton :disabled="!selectedDetail.schedule" @click="submitReschedule">
               Reschedule
             </UiButton>
           </template>
           <template v-else>
             <UiButton
-              :disabled="!selectedDetail.schedule || isScheduleActionPending || isRecurringActionPending"
+              :disabled="
+                !selectedDetail.schedule || isScheduleActionPending || isRecurringActionPending
+              "
               @click="isEditingRecurrence = !isEditingRecurrence"
             >
               {{ isEditingRecurrence ? 'Close Recurrence Editor' : 'Edit Recurrence' }}
@@ -512,11 +499,7 @@ async function openRunArchive() {
                 v-model:weekdays="recurrenceWeekdays"
                 :timezone="recurrenceTimezone"
               />
-              <UiButton
-                variant="primary"
-                :disabled="isScheduleActionPending"
-                type="submit"
-              >
+              <UiButton variant="primary" :disabled="isScheduleActionPending" type="submit">
                 {{ isScheduleActionPending ? 'Saving...' : 'Save Recurrence' }}
               </UiButton>
             </form>
@@ -535,11 +518,7 @@ async function openRunArchive() {
               Resume
             </UiButton>
           </template>
-          <UiButton
-            variant="danger"
-            :disabled="!selectedDetail.schedule"
-            @click="submitCancel"
-          >
+          <UiButton variant="danger" :disabled="!selectedDetail.schedule" @click="submitCancel">
             {{ isRecurringTask ? 'Cancel Series' : 'Cancel Task' }}
           </UiButton>
         </aside>
