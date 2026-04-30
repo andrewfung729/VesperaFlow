@@ -210,6 +210,30 @@ async function stubApi(page: Page) {
       })
       return
     }
+    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-1/reader')) {
+      await route.fulfill({
+        json: {
+          data: {
+            task: taskResponse('task-recurring-1', 'Active Recurring', 'recurring'),
+            schedule: {
+              schedule_id: 'schedule-recurring-1',
+              task_id: 'task-recurring-1',
+              schedule_type: 'recurring_rule',
+              schedule_status: 'active',
+              planned_at: null,
+              recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
+              recurrence_timezone: 'Asia/Hong_Kong',
+              next_run_at: '2026-04-28T08:00:00+08:00',
+              version: 1,
+            },
+            run: recurringRunResponse(),
+            previous_run_id: null,
+            next_run_id: null,
+          },
+        },
+      })
+      return
+    }
     if (url.includes('/tasks/task-recurring-1/runs')) {
       await route.fulfill({
         json: {
