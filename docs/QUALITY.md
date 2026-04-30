@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-04-29. Update this whenever a major area improves or
+_Last updated: 2026-04-30. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -106,3 +106,6 @@ Update this file when any of these change:
 - 2026-04-29: Consolidated repeated apps/web alert, form, recurrence editor,
   execution/status badge, recurring action, and page state patterns into shared
   components, helpers, and composables.
+- 2026-04-30: Updated Codex Worker execution to use full-permission bypass mode
+  and added `VESPERAFLOW_CODEX_MODEL` for selecting the CLI model from Worker
+  runtime settings.

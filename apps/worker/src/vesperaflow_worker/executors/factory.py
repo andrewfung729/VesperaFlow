@@ -14,11 +14,12 @@ def build_executor(
     adapter_name: str,
     *,
     claude_env: Mapping[str, str] | None = None,
+    codex_model: str | None = None,
 ) -> ExecutorAdapter:
     claude_code = ClaudeCodeExecutor(
         env=dict(claude_env) if claude_env is not None else None,
     )
-    codex = CodexExecutor()
+    codex = CodexExecutor(model=codex_model)
     kimi_code = KimiCodeExecutor()
     if adapter_name in {"auto", "router"}:
         return ExecutorRouter(

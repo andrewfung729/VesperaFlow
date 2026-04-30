@@ -130,3 +130,44 @@ Expected successful execution artifacts under the run artifact directory:
 
 Expected classified failures include `executor_workspace_unavailable`,
 `executor_not_available`, `executor_not_authenticated`, and `executor_error`.
+
+## Codex Live Smoke
+
+Codex live smoke is opt-in because it uses the developer machine's local
+`codex` CLI installation, authentication state, selected workspace, and Codex
+full-permission execution mode. VesperaFlow does not store or print executor
+credentials.
+
+Prerequisites:
+
+- `codex` is installed and available on `PATH`.
+- Codex is authenticated through ChatGPT login, API-key setup, or the CLI's
+  supported configuration.
+- The target working directory is an existing absolute path.
+
+Start the API and Worker with the Codex executor, then create a one-time task in
+the web UI using the `codex` executor:
+
+```bash
+VESPERAFLOW_DEFAULT_EXECUTOR=codex uv run vesperaflow-api
+VESPERAFLOW_EXECUTOR_ADAPTER=codex VESPERAFLOW_CODEX_MODEL=gpt-5.2 uv run vesperaflow-worker
+```
+
+`VESPERAFLOW_CODEX_MODEL` is optional. When unset, Codex uses its own configured
+model default. The Worker invokes Codex with
+`--dangerously-bypass-approvals-and-sandbox`, so use a disposable or trusted
+target workspace for smoke testing.
+
+Use a harmless instruction such as asking Codex to inspect the repository and
+write a short summary into the run output only. Verify the executor preflight
+passes for the selected target directory, then verify task detail reaches a
+terminal completed or classified failed state.
+
+Expected successful execution artifacts under the run artifact directory:
+
+- `codex-last-message.txt` contains the last Codex assistant message.
+- `codex-events.jsonl` contains captured JSONL events from stdout.
+- `codex-stderr.txt` contains stderr diagnostics.
+
+Expected classified failures include `executor_workspace_unavailable`,
+`executor_not_available`, `executor_not_authenticated`, and `executor_error`.

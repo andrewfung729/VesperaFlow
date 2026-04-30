@@ -44,6 +44,7 @@ class WorkerSettings(BaseSettings):
         default=None,
         validation_alias="ANTHROPIC_MODEL",
     )
+    codex_model: str | None = None
 
     @field_validator("database_url", mode="after")
     @classmethod

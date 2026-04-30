@@ -23,6 +23,8 @@ _SIGINT_GRACE = 5.0
 
 @dataclass(slots=True)
 class CodexExecutor(ExecutorAdapter):
+    model: str | None = None
+
     @override
     async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
         workspace = _existing_directory(snapshot.target_working_directory)
@@ -52,17 +54,11 @@ class CodexExecutor(ExecutorAdapter):
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                binary,
-                "exec",
-                "--json",
-                "--output-last-message",
-                str(last_message_path),
-                "--skip-git-repo-check",
-                "-C",
-                str(workspace),
-                "--sandbox",
-                "workspace-write",
-                "-",
+                *self._command_args(
+                    binary=binary,
+                    last_message_path=last_message_path,
+                    workspace=workspace,
+                ),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -170,6 +166,28 @@ class CodexExecutor(ExecutorAdapter):
             result_artifact_ref=str(last_message_path),
             terminal_code="codex_completed",
         )
+
+    def _command_args(
+        self,
+        *,
+        binary: str,
+        last_message_path: Path,
+        workspace: Path,
+    ) -> tuple[str, ...]:
+        args = [
+            binary,
+            "exec",
+            "--json",
+            "--output-last-message",
+            str(last_message_path),
+            "--skip-git-repo-check",
+            "-C",
+            str(workspace),
+        ]
+        if self.model:
+            args.extend(["--model", self.model])
+        args.extend(["--dangerously-bypass-approvals-and-sandbox", "-"])
+        return tuple(args)
 
 
 async def _write_stdin(proc: asyncio.subprocess.Process, instruction: str) -> None:

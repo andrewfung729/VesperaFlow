@@ -240,6 +240,7 @@ def test_worker_settings_reads_claude_passthrough_from_dotenv(
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("VESPERAFLOW_DATABASE_URL", raising=False)
+    monkeypatch.delenv("VESPERAFLOW_CODEX_MODEL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
@@ -275,6 +276,47 @@ def test_worker_settings_process_env_overrides_dotenv_passthrough(
     env = settings.claude_executor_env()
 
     assert env["ANTHROPIC_BASE_URL"] == "https://process.example.com/v1"
+
+
+def test_worker_settings_reads_codex_model_from_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
+                "VESPERAFLOW_CODEX_MODEL=gpt-5.2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VESPERAFLOW_DATABASE_URL", raising=False)
+    monkeypatch.delenv("VESPERAFLOW_CODEX_MODEL", raising=False)
+    settings = WorkerSettings()
+
+    assert settings.codex_model == "gpt-5.2"
+
+
+def test_worker_settings_process_env_overrides_codex_model_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
+                "VESPERAFLOW_CODEX_MODEL=gpt-5.1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VESPERAFLOW_CODEX_MODEL", "gpt-5.2")
+    settings = WorkerSettings()
+
+    assert settings.codex_model == "gpt-5.2"
 
 
 @pytest.mark.asyncio
@@ -446,6 +488,21 @@ def test_executor_factory_builds_codex_without_function_body_import() -> None:
 
     assert isinstance(executor, CodexExecutor)
     assert "from .codex_cli import" not in source
+
+
+def test_executor_factory_passes_codex_model() -> None:
+    executor = build_executor("codex", codex_model="gpt-5.2")
+
+    assert isinstance(executor, CodexExecutor)
+    assert executor.model == "gpt-5.2"
+
+
+def test_executor_factory_passes_codex_model_to_router() -> None:
+    executor = build_executor("auto", codex_model="gpt-5.2")
+
+    assert isinstance(executor, ExecutorRouter)
+    assert isinstance(executor.codex, CodexExecutor)
+    assert executor.codex.model == "gpt-5.2"
 
 
 @pytest.mark.asyncio
@@ -669,8 +726,7 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
     assert outcome.result_artifact_ref == str(run_dir / "codex-last-message.txt")
     assert (run_dir / "codex-last-message.txt").read_text() == "Done from Codex"
     assert (run_dir / "codex-events.jsonl").read_text() == (
-        '{"msg":"turn.started"}\n'
-        '{"msg":"agent_message","message":"Done from Codex"}\n'
+        '{"msg":"turn.started"}\n{"msg":"agent_message","message":"Done from Codex"}\n'
     )
     assert (run_dir / "codex-stderr.txt").read_text() == ""
     args = cast(tuple[str, ...], proc.calls[0]["args"])
@@ -683,12 +739,56 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
         "--skip-git-repo-check",
         "-C",
         str(target_dir.resolve()),
-        "--sandbox",
-        "workspace-write",
+        "--dangerously-bypass-approvals-and-sandbox",
         "-",
     )
+    assert "--model" not in args
     assert proc.stdin_data is not None
     assert proc.stdin_data.decode("utf-8") == "Do work\n"
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_passes_configured_model(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    proc = _fake_subprocess(
+        stdout_lines=[b'{"msg":"agent_message","message":"Done from Codex"}\n'],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    executor = CodexExecutor(model="gpt-5.2")
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    assert args[1:] == (
+        "exec",
+        "--json",
+        "--output-last-message",
+        str(run_dir / "codex-last-message.txt"),
+        "--skip-git-repo-check",
+        "-C",
+        str(target_dir.resolve()),
+        "--model",
+        "gpt-5.2",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-",
+    )
 
 
 @pytest.mark.asyncio

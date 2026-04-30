@@ -36,6 +36,7 @@ async def run_worker() -> None:
         executor=build_executor(
             settings.executor_adapter,
             claude_env=settings.claude_executor_env(),
+            codex_model=settings.codex_model,
         ),
         run_workspace_root=settings.run_workspace_root,
     )
