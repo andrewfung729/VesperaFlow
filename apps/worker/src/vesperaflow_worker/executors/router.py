@@ -13,6 +13,7 @@ class ExecutorRouter(ExecutorAdapter):
     claude_code: ExecutorAdapter
     codex: ExecutorAdapter
     kimi_code: ExecutorAdapter
+    opencode: ExecutorAdapter
     debug_printer: ExecutorAdapter
 
     @override
@@ -29,4 +30,6 @@ class ExecutorRouter(ExecutorAdapter):
             return await self.debug_printer.execute(snapshot, runtime_config)
         if snapshot.executor is ExecutorName.KIMI_CODE:
             return await self.kimi_code.execute(snapshot, runtime_config)
+        if snapshot.executor is ExecutorName.OPENCODE:
+            return await self.opencode.execute(snapshot, runtime_config)
         raise ExecutorUnavailableError(f"unknown executor: {snapshot.executor}")

@@ -38,8 +38,8 @@ Run web checks from `apps/web`:
 
 ```bash
 bun run type-check
-bun run lint:check
-bun run format:check
+bun run lint
+bun run format
 bun run test:unit:run
 bun run test:e2e:smoke
 ```

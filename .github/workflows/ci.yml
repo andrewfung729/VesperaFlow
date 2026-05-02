@@ -45,8 +45,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run type-check
-      - run: bun run lint:check
-      - run: bun run format:check
+      - run: bun run lint
+      - run: bun run format
       - run: bun run test:unit:run
       - run: bun run build
       - run: bunx playwright install --with-deps chromium

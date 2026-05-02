@@ -36,6 +36,7 @@ this index to find the smallest document that answers the current question.
   semantics instead of independent labels.
 - `adr/006-kimi-code-executor.md`: Kimi Code text CLI transport decision and
   trade-offs.
+- `adr/007-opencode-cli-executor.md`: OpenCode CLI-over-ACP decision for v1.
 
 ## Agent Operating Context
 

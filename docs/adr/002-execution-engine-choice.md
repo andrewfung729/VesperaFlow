@@ -75,10 +75,11 @@ Supported executors for MVP:
 
 - `claude_code` — Anthropic's Claude Code, via the Claude Agent SDK (SDK integration)
 - `codex` — OpenAI Codex CLI, via non-interactive `codex exec` CLI transport
+- `opencode` — OpenCode CLI, via non-interactive `opencode run` CLI transport
 - `kimi_code` — Moonshot AI's Kimi Code, via the `kimi` CLI non-interactive text transport
 - `debug_printer` — local runtime simulator for end-to-end workflow testing
 
-`opencode` and additional executor integrations are post-MVP candidates. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
+Additional executor integrations remain possible behind the same adapter. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
 
 - accepts VesperaFlow's normalized instructions
 - performs the AI work against its own configured upstream LLM provider

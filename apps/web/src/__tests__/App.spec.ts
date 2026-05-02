@@ -108,6 +108,30 @@ describe('App', () => {
     )
   })
 
+  it('submits a custom OpenCode model through executor profiles', async () => {
+    const fetchMock = stubFetch()
+    const { wrapper } = await mountAppAt('/executors')
+
+    expect(wrapper.text()).toContain('OpenCode')
+    await wrapper.get('input[placeholder="Codex GPT-5.2"]').setValue('OpenCode Custom')
+    const executorSelect = wrapper.find('select')
+    await executorSelect.setValue('opencode')
+    await flushPromises()
+    const modelInput = wrapper.find('input[placeholder="Executor default"]')
+    if (!modelInput) throw new Error('Expected default model input to render')
+    await modelInput.setValue('custom/model')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).endsWith('/executor-profiles') && init?.method === 'POST',
+    )
+    if (!createCall) throw new Error('Expected executor profile create request')
+    const body = JSON.parse(String(createCall[1]?.body))
+    expect(body.executor).toBe('opencode')
+    expect(body.default_model).toBe('custom/model')
+  })
+
   it('renders the empty history state', async () => {
     stubFetch({ historyItems: [] })
 
@@ -367,6 +391,35 @@ describe('App', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(
         '/executors/preflight?executor=codex&executor_profile_id=codex&target_working_directory=%2Ftmp',
+      ),
+      expect.any(Object),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/tasks'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('checks OpenCode availability before creating an OpenCode task', async () => {
+    const fetchMock = stubFetch()
+    const { wrapper } = await mountAppAt('/compose')
+
+    await wrapper.get('input[placeholder="Nightly Deep Research"]').setValue('OpenCode Task')
+    await wrapper.get('textarea').setValue('Run this with OpenCode.')
+    const targetInput = wrapper
+      .findAll('input[type="text"]')
+      .find((input) => input.attributes('placeholder') === '/Users/you/project')
+    if (!targetInput) throw new Error('Expected target directory input to render')
+    await targetInput.setValue('/tmp')
+    const executorSelect = wrapper.findAll('select')[1]
+    if (!executorSelect) throw new Error('Expected executor select to render')
+    await executorSelect.setValue('opencode')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/executors/preflight?executor=opencode&executor_profile_id=opencode&target_working_directory=%2Ftmp',
       ),
       expect.any(Object),
     )
@@ -830,12 +883,11 @@ function stubFetch(options: StubFetchOptions = {}) {
         status: 'available',
         code: 'executor_preflight_passed',
         message: 'Claude Code target workspace is available',
-        details: { live: false },
       })
     }
 
     if (url.includes('/executor-profiles')) {
-      return jsonResponse(executorProfileResponses(), { total: 4 })
+      return jsonResponse(executorProfileResponses(), { total: 5 })
     }
 
     if (url.includes('/templates') && method === 'GET') {
@@ -1358,6 +1410,20 @@ function executorProfileResponses() {
       profile_id: 'kimi_code',
       name: 'Kimi Code',
       executor: 'kimi_code',
+      is_enabled: true,
+      is_default: true,
+      default_model: null,
+      env: {},
+      secret_env_keys: [],
+      version: 1,
+      created_at: '2026-04-25T09:00:00+08:00',
+      updated_at: '2026-04-25T09:00:00+08:00',
+      archived_at: null,
+    },
+    {
+      profile_id: 'opencode',
+      name: 'OpenCode',
+      executor: 'opencode',
       is_enabled: true,
       is_default: true,
       default_model: null,

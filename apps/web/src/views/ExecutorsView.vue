@@ -14,8 +14,8 @@ import SelectField from '@/components/SelectField.vue'
 import TextArea from '@/components/TextArea.vue'
 import TextInput from '@/components/TextInput.vue'
 import UiButton from '@/components/UiButton.vue'
-import { executorLabel, executorOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
+import { executorLabel, executorOptions, executorRegistry } from '@/lib/executors'
 
 const profiles = ref<ExecutorProfile[]>([])
 const editingProfile = ref<ExecutorProfile | null>(null)
@@ -31,6 +31,9 @@ const isSaving = ref(false)
 const errorMessage = ref<string | null>(null)
 
 const canSave = computed(() => name.value.trim().length > 0)
+const supportsModelSelection = computed(
+  () => executorRegistry[executor.value].supportsModelSelection,
+)
 
 onMounted(loadProfiles)
 
@@ -80,7 +83,6 @@ async function saveProfile() {
       name: name.value.trim(),
       is_enabled: isEnabled.value,
       is_default: isDefault.value,
-      default_model: defaultModel.value.trim() || null,
       env: parseEnvLines(envText.value),
     }
     const secretEnv = parseEnvLines(secretEnvText.value)
@@ -88,12 +90,16 @@ async function saveProfile() {
       await updateExecutorProfile(editingProfile.value.profile_id, {
         version: editingProfile.value.version,
         ...basePayload,
+        ...(supportsModelSelection.value
+          ? { default_model: defaultModel.value.trim() || null }
+          : {}),
         secret_env: secretEnv,
       })
     } else {
       await createExecutorProfile({
         executor: executor.value,
         ...basePayload,
+        default_model: supportsModelSelection.value ? defaultModel.value.trim() || null : null,
         secret_env: secretEnv,
       })
     }
@@ -150,9 +156,9 @@ function mapToLines(value: Record<string, string>): string {
         </h2>
       </div>
 
-      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div
-          class="overflow-hidden rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+          class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
         >
           <div v-if="isLoading" class="px-4 py-8 text-sm text-slate-500 dark:text-slate-400">
             Loading executor profiles...
@@ -217,7 +223,12 @@ function mapToLines(value: Record<string, string>): string {
             :options="executorOptions"
             :disabled="editingProfile !== null"
           />
-          <TextInput v-model="defaultModel" label="Default Model" placeholder="Executor default" />
+          <TextInput
+            v-if="supportsModelSelection"
+            v-model="defaultModel"
+            label="Default Model"
+            placeholder="Executor default"
+          />
           <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input v-model="isEnabled" type="checkbox" />
             Enabled

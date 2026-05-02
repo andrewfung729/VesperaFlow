@@ -22,9 +22,7 @@ Run these from `apps/web`:
 ```bash
 bun run dev
 bun run type-check
-bun run lint:check
 bun run lint
-bun run format:check
 bun run format
 bun run test:unit:run
 bun run test:e2e:smoke
@@ -57,9 +55,9 @@ when validating without edits.
 - Composer preflight should call `/executors/preflight` with
   `executor_profile_id` and `target_working_directory` when a profile is
   selected.
-- Preflight does not prove live authentication for Claude Code, Codex, or Kimi
-  Code. It checks profile usability, target workspace access, and CLI presence
-  where applicable.
+- Preflight does not prove live authentication for Claude Code, Codex, OpenCode,
+  or Kimi Code. It checks profile usability, target workspace access, and CLI
+  presence where applicable.
 
 ## Test Ownership
 

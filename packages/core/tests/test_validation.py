@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from vesperaflow_core import (
     ExecutionMode,
+    ExecutorName,
     RunStatus,
     ScheduleType,
     next_occurrence_after,
@@ -17,6 +18,10 @@ from vesperaflow_core import (
 def test_future_datetime_requires_timezone() -> None:
     with pytest.raises(ValueError, match="explicit timezone"):
         require_future_datetime(datetime(2026, 4, 25, 9, 0), field_name="planned_at")
+
+
+def test_executor_name_accepts_opencode() -> None:
+    assert ExecutorName("opencode") is ExecutorName.OPENCODE
 
 
 def test_one_time_schedule_consistency_rejects_recurring_mode() -> None:

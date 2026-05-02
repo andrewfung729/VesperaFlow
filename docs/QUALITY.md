@@ -21,13 +21,13 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/Claude/Kimi/debug executor contracts, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/OpenCode/Claude/Kimi/debug executor contracts, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, OpenCode CLI JSON event executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
 | `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; `apps/web/README.md` now captures local conventions. UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
-| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, Kimi text CLI executor alignment, executor/profile rules, frontend guide, and local full-stack runbooks are now present. |
+| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, CLI executor ADRs, executor/profile rules, frontend guide, and local full-stack runbooks are now present. |
 
 ## Known Gaps
 
@@ -41,7 +41,7 @@ Update this file when any of these change:
 - [x] Integration tests requiring the full Postgres/Temporal stack are opt-in and
       local-only; they will not become a required CI gate for MVP.
 - [ ] Web E2E coverage includes the MVP navigation path, but remains smoke-level.
-- [ ] Authenticated Claude Code, Codex, and Kimi Code live smokes are opt-in local
+- [ ] Authenticated Claude Code, Codex, OpenCode, and Kimi Code live smokes are opt-in local
       verification paths and are not automated CI gates.
 - [ ] Calendar, history, and recurring todo latest-run/context paths are
       implemented for materialized recurring runs, but live recurring stack
@@ -111,6 +111,9 @@ Update this file when any of these change:
   components, helpers, and composables.
 - 2026-04-30: Updated Codex Worker execution to use full-permission bypass mode;
   Codex model selection now belongs to executor profiles.
+- 2026-05-02: Added OpenCode CLI `opencode run --format json` as a
+  first-class profile-driven executor, including API preflight, Worker
+  artifacts/classification, Web profile model choices, tests, and ADR 007.
 - 2026-04-30: Added Worker JSON logs and persisted run event timelines across
   store/API/Worker/web, including Activity correlation metadata and UI timeline
   surfaces.

@@ -210,10 +210,11 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 
 - `claude_code` — Claude Agent SDK
 - `codex` — Codex CLI non-interactive `codex exec` transport
+- `opencode` — OpenCode CLI non-interactive `opencode run` transport
 - `kimi_code` — Kimi CLI text transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
-Clients must pass `executor_profile_id`, pass the legacy `executor` field, or reference a template that supplies a default executor/profile. If only `executor` is provided, the backend resolves that executor's default profile. There is no install-level executor fallback. `opencode` and additional runtimes are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
+Clients must pass `executor_profile_id`, pass the legacy `executor` field, or reference a template that supplies a default executor/profile. If only `executor` is provided, the backend resolves that executor's default profile. There is no install-level executor fallback. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
 
 Executor profile responses include `secret_env_keys` only. Secret env values are write-only in the API response even though this local-first v1 stores them in PostgreSQL.
 
@@ -357,11 +358,9 @@ executor output.
 - `warning`
 - `unavailable`
 
-`code` is stable enough for clients to branch on. Claude Code preflight may
-return `executor_workspace_unavailable` or `executor_preflight_passed` from the
-API without running an agent. Kimi Code and Codex additionally check that their
-CLI binary is available on `PATH`. Authentication and runtime configuration
-failures are reported by the Worker when a task runs.
+`code` is stable enough for clients to branch on. Preflight returns
+`executor_workspace_unavailable` or `executor_preflight_passed`. Authentication
+and runtime configuration failures are reported by the Worker when a task runs.
 
 ### 5.7 Executor Preflight Endpoint
 
@@ -369,7 +368,7 @@ failures are reported by the Worker when a task runs.
 
 Query params:
 
-- `executor`: `claude_code`, `codex`, `kimi_code`, or `debug_printer`; defaults to `claude_code`
+- `executor`: `claude_code`, `codex`, `opencode`, `kimi_code`, or `debug_printer`; defaults to `claude_code`
 - `target_working_directory`: absolute target workspace path to validate
 
 Response:
@@ -379,9 +378,8 @@ Response:
 Behavior:
 
 - `debug_printer` returns available without a target workspace
-- `claude_code`, `codex`, and `kimi_code` validate that the target workspace is an
-  existing absolute directory visible to the API process; `codex` and
-  `kimi_code` also verify that their CLI binary is on `PATH`
+- `claude_code`, `codex`, `opencode`, and `kimi_code` validate that the target workspace is an
+  existing absolute directory visible to the API process
 - live executor auth/configuration checks are intentionally not performed by
   the API because executor invocation belongs to Worker Activities
 

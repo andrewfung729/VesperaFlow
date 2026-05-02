@@ -99,7 +99,7 @@ Notes:
 - A task is the primary product object a user creates, reviews, edits, and inspects.
 - A task may exist before any run has happened.
 - A task may be created from a template but becomes independently editable after creation.
-- MVP supports `claude_code`, `codex`, `debug_printer`, and `kimi_code`; `opencode` is post-MVP.
+- MVP supports `claude_code`, `codex`, `opencode`, `debug_printer`, and `kimi_code`.
 - Executor profiles are the primary selection surface for new tasks/templates. The denormalized `executor` remains on tasks for compatibility and read-model clarity.
 - There is no install-level executor fallback; new executable tasks need an executor/profile from the request or template.
 - The target working directory is distinct from a run artifact directory. The target is the user project being changed; the run artifact directory is VesperaFlow-owned storage for executor output.

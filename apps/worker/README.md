@@ -15,6 +15,9 @@ recorded on the task snapshot.
   task's target working directory as SDK `cwd`.
 - `codex` invokes Codex CLI through non-interactive `codex exec --json` from an
   Activity, using the task's target working directory as CLI `cwd`.
+- `opencode` invokes OpenCode CLI through non-interactive
+  `opencode run --format json` from an Activity, using the task's target
+  working directory as CLI `--dir`.
 
 ## Temporal Rules
 
@@ -68,6 +71,14 @@ input. It requires the `codex` binary to be on `PATH` and
 authenticated/configured through Codex CLI itself. It writes
 `codex-last-message.txt`, `codex-events.jsonl`, and `codex-stderr.txt` under
 the run artifact directory.
+
+OpenCode runs via the `opencode` CLI in non-interactive run mode with
+`--format json`, `--dir <target>`, `--dangerously-skip-permissions`,
+`--title <run_id>`, optional profile `default_model` as `--model`, and stdin
+prompt input. It requires the `opencode` binary to be on `PATH` and
+authenticated/configured through OpenCode itself. It writes
+`opencode-events.jsonl`, `opencode-stderr.txt`, and `opencode-result.txt`
+under the run artifact directory.
 
 ## Tests
 

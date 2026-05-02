@@ -91,7 +91,6 @@ describe('api', () => {
               status: 'available',
               code: 'executor_preflight_passed',
               message: 'Codex target workspace is available',
-              details: { live: false },
             },
           }),
           { status: 200 },
@@ -108,6 +107,37 @@ describe('api', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(
         '/executors/preflight?executor=codex&target_working_directory=%2Ftmp%2Fproject',
+      ),
+      expect.any(Object),
+    )
+  })
+
+  it('requests OpenCode preflight with the target workspace', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              executor: 'opencode',
+              status: 'available',
+              code: 'executor_preflight_passed',
+              message: 'OpenCode target workspace is available',
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await preflightExecutor({
+      executor: 'opencode',
+      target_working_directory: '/tmp/project',
+    })
+
+    expect(result.status).toBe('available')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/executors/preflight?executor=opencode&target_working_directory=%2Ftmp%2Fproject',
       ),
       expect.any(Object),
     )

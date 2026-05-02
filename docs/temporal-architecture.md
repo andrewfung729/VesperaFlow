@@ -208,10 +208,9 @@ Supported executor:
 
 - `claude_code` via the Claude Agent SDK
 - `codex` via Codex CLI `codex exec --json`
+- `opencode` via OpenCode CLI `opencode run --format json`
 - `kimi_code` via the `kimi` CLI text transport
 - `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
-
-`opencode` and additional executor integrations are post-MVP candidates.
 
 Candidate Activities:
 
@@ -242,6 +241,7 @@ Secrets handling rules for Executor Activities:
 - the Worker may pass explicit executor profile environment settings, such as Claude SDK env values, into the executor process environment; it must not pass the full Worker environment
 - the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
 - Codex authentication and provider configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the Worker may pass the executor profile `default_model` as the `codex exec --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
+- OpenCode authentication and provider configuration are handled by the `opencode` CLI itself, such as through `opencode auth`, provider environment variables, or CLI-supported project configuration; the Worker may pass the executor profile `default_model` as the `opencode run --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
 - Kimi Code authentication is handled by the `kimi` CLI itself, such as through its OAuth token cache, API key environment, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
@@ -452,6 +452,7 @@ Claude Agent SDK compatibility policy:
 CLI executor compatibility policy:
 
 - Codex uses `codex exec --json --output-last-message --skip-git-repo-check -C <target> [--model <executor_profile.default_model>] --dangerously-bypass-approvals-and-sandbox -` from a Worker Activity.
+- OpenCode uses `opencode run --format json --dir <target> --dangerously-skip-permissions --title <run_id> [--model <executor_profile.default_model>]` from a Worker Activity and receives the prompt through stdin.
 - CLI adapters capture stdout/stderr and executor-owned summary artifacts under the run artifact directory instead of passing bulky streams through Workflow history.
 - CLI version or transport changes should update adapter tests, docs, and any local live smoke record together.
 

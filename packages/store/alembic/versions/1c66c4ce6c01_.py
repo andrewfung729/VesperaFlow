@@ -60,6 +60,8 @@ def upgrade() -> None:
             "executor",
             sa.Enum(
                 "claude_code",
+                "codex",
+                "opencode",
                 "kimi_code",
                 "debug_printer",
                 name="executorname",
@@ -111,6 +113,8 @@ def upgrade() -> None:
             "default_executor",
             sa.Enum(
                 "claude_code",
+                "codex",
+                "opencode",
                 "kimi_code",
                 "debug_printer",
                 name="executorname",

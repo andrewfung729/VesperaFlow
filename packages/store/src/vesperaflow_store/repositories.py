@@ -161,6 +161,7 @@ class ExecutorProfilePage:
 DEFAULT_EXECUTOR_PROFILE_NAMES: dict[ExecutorName, str] = {
     ExecutorName.CLAUDE_CODE: "Claude Code",
     ExecutorName.CODEX: "Codex",
+    ExecutorName.OPENCODE: "OpenCode",
     ExecutorName.KIMI_CODE: "Kimi Code",
     ExecutorName.DEBUG_PRINTER: "Debug Printer",
 }

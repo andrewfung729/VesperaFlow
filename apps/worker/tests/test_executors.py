@@ -25,6 +25,7 @@ from vesperaflow_worker.executors.codex_cli import CodexExecutor
 from vesperaflow_worker.executors.debug import DebugPrinterExecutor
 from vesperaflow_worker.executors.factory import build_executor
 from vesperaflow_worker.executors.kimi_code import KimiCodeExecutor
+from vesperaflow_worker.executors.opencode_cli import OpenCodeExecutor
 from vesperaflow_worker.executors.router import ExecutorRouter
 
 
@@ -144,6 +145,45 @@ def test_worker_package_and_workflows_do_not_import_codex_cli_module() -> None:
     assert loaded == {"root_loaded": False, "workflow_loaded": False}
 
 
+def test_worker_package_and_workflows_do_not_import_opencode_cli_module() -> None:
+    env = os.environ.copy()
+    pythonpath = os.pathsep.join(
+        [
+            str(Path.cwd() / "packages/core/src"),
+            str(Path.cwd() / "apps/worker/src"),
+            env.get("PYTHONPATH", ""),
+        ]
+    )
+    env["PYTHONPATH"] = pythonpath
+    check = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib, json, sys; "
+                "import vesperaflow_worker; "
+                "mod = 'vesperaflow_worker.executors.opencode_cli'; "
+                "root_loaded = mod in sys.modules; "
+                "importlib.import_module('vesperaflow_worker.workflows'); "
+                "print(json.dumps({"
+                "'root_loaded': root_loaded, "
+                "'workflow_loaded': mod in sys.modules"
+                "}))"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    loaded: dict[str, bool] = json.loads(
+        check.stdout.strip().splitlines()[-1],
+    )
+
+    assert loaded == {"root_loaded": False, "workflow_loaded": False}
+
+
 @pytest.mark.asyncio
 async def test_debug_printer_executor_logs_snapshot(
     snapshot: ExecutionSnapshot,
@@ -187,6 +227,7 @@ def test_executor_factory_builds_router_with_all_adapters() -> None:
     assert isinstance(executor.codex, CodexExecutor)
     assert isinstance(executor.debug_printer, DebugPrinterExecutor)
     assert isinstance(executor.kimi_code, KimiCodeExecutor)
+    assert isinstance(executor.opencode, OpenCodeExecutor)
 
 
 def test_executor_factory_uses_claude_runtime_defaults() -> None:
@@ -206,6 +247,7 @@ async def test_executor_router_rejects_unknown_executor(
         codex=DebugPrinterExecutor(),
         debug_printer=DebugPrinterExecutor(),
         kimi_code=DebugPrinterExecutor(),
+        opencode=DebugPrinterExecutor(),
     )
     invalid_snapshot = snapshot.model_copy(update={"executor": "unknown"})
 
@@ -379,6 +421,21 @@ async def test_executor_router_dispatches_codex(
     executor = build_executor()
 
     outcome = await executor.execute(codex_snapshot)
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_executor_router_dispatches_opencode(
+    snapshot: ExecutionSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    opencode_snapshot = snapshot.model_copy(update={"executor": ExecutorName.OPENCODE})
+    executor = build_executor()
+
+    outcome = await executor.execute(opencode_snapshot)
 
     assert outcome.terminal_status is RunStatus.FAILED
     assert outcome.terminal_code == "executor_not_available"
@@ -770,6 +827,247 @@ async def test_codex_executor_cancels_on_cancelled_error(
         snapshot.model_copy(
             update={
                 "executor": ExecutorName.CODEX,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.CANCELED
+    assert outcome.terminal_code == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_runs_subprocess_and_writes_artifacts(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    proc = _fake_subprocess(
+        stdout_lines=[
+            b'{"type":"step_start","part":{"id":"step-1"}}\n',
+            b'{"type":"text","part":{"text":"Done from OpenCode"}}\n',
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
+    executor = OpenCodeExecutor()
+    opencode_snapshot = snapshot.model_copy(
+        update={
+            "executor": ExecutorName.OPENCODE,
+            "working_directory": str(run_dir),
+            "target_working_directory": str(target_dir),
+        }
+    )
+
+    outcome = await executor.execute(opencode_snapshot)
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.terminal_code == "opencode_completed"
+    assert outcome.result_summary == "Done from OpenCode"
+    assert outcome.result_artifact_ref == str(run_dir / "opencode-result.txt")
+    assert (run_dir / "opencode-result.txt").read_text() == "Done from OpenCode"
+    assert (run_dir / "opencode-events.jsonl").read_text() == (
+        '{"type":"step_start","part":{"id":"step-1"}}\n'
+        '{"type":"text","part":{"text":"Done from OpenCode"}}\n'
+    )
+    assert (run_dir / "opencode-stderr.txt").read_text() == ""
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    assert args[0].endswith("opencode")
+    assert args[1:] == (
+        "run",
+        "--format",
+        "json",
+        "--dir",
+        str(target_dir.resolve()),
+        "--dangerously-skip-permissions",
+        "--title",
+        "run_123",
+    )
+    assert "--model" not in args
+    assert proc.stdin_data is not None
+    assert proc.stdin_data.decode("utf-8") == "Do work\n"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_passes_runtime_profile_model(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    proc = _fake_subprocess(
+        stdout_lines=[b'{"type":"text","part":{"text":"Done from OpenCode"}}\n'],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
+    executor = OpenCodeExecutor()
+    runtime_config = ExecutorRuntimeConfig(default_model="anthropic/claude-sonnet-4-5")
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.OPENCODE,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        ),
+        runtime_config,
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    assert args[1:] == (
+        "run",
+        "--format",
+        "json",
+        "--dir",
+        str(target_dir.resolve()),
+        "--dangerously-skip-permissions",
+        "--title",
+        "run_123",
+        "--model",
+        "anthropic/claude-sonnet-4-5",
+    )
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_rejects_invalid_workspace(
+    snapshot: ExecutionSnapshot,
+) -> None:
+    outcome = await OpenCodeExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.OPENCODE,
+                "target_working_directory": "/tmp/does-not-exist-vespera",
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_rejects_missing_binary(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = OpenCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.OPENCODE,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_maps_nonzero_auth_exit_to_failure(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        stderr_lines=[b"opencode: login required\n"],
+        returncode=1,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = OpenCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.OPENCODE,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_authenticated"
+    assert (tmp_path / "run" / "opencode-stderr.txt").read_text() == (
+        "opencode: login required\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_maps_error_event_to_failure(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[
+            b'{"type":"step_start","part":{"id":"step-1"}}\n',
+            b'{"type":"error","error":{"message":"provider unavailable"}}\n',
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = OpenCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.OPENCODE,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_error"
+    assert outcome.failure_reason == "provider unavailable"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_cancels_on_cancelled_error(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        cancel_on_stdout=True,
+        returncode=-signal.SIGINT,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = OpenCodeExecutor()
+
+    outcome = await executor.execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.OPENCODE,
                 "working_directory": str(tmp_path / "run"),
                 "target_working_directory": str(target_dir),
             }

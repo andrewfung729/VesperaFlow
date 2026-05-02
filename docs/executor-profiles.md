@@ -9,9 +9,9 @@ keeping Temporal payloads small and free of credentials.
 - `debug_printer`: deterministic local adapter for development and smoke tests.
 - `claude_code`: Claude Agent SDK adapter invoked from a Worker Activity.
 - `codex`: Codex CLI adapter invoked as `codex exec` from a Worker Activity.
+- `opencode`: OpenCode CLI adapter invoked as `opencode run --format json`
+  from a Worker Activity.
 - `kimi_code`: Kimi Code CLI adapter invoked from a Worker Activity.
-
-`opencode` and additional executors are post-MVP candidates.
 
 ## Selection Rules
 
@@ -41,9 +41,10 @@ keeping Temporal payloads small and free of credentials.
 - Profile `env` and `secret_env` are merged only inside the Activity runtime
   config. Secret values are write-only in API responses and must not be logged,
   stored in run events, or serialized into Temporal history.
-- `default_model` is executor-specific. Today it is passed to Codex as
-  `codex exec --model`; other adapters may ignore it until they support an
-  explicit model override.
+- `default_model` is executor-specific. It is passed to Codex as
+  `codex exec --model`, to Claude Code as `ANTHROPIC_MODEL`, and to OpenCode
+  as `opencode run --model`. Kimi Code and Debug Printer ignore it until they
+  support an explicit model override.
 
 ## Preflight Rules
 
@@ -51,8 +52,6 @@ keeping Temporal payloads small and free of credentials.
   `executor`, and `target_working_directory`.
 - If `executor_profile_id` is present, the profile determines the executor kind.
 - Preflight verifies profile usability and target workspace access.
-- Codex preflight also checks that `codex` is on `PATH`.
-- Kimi Code preflight also checks that `kimi` is on `PATH`.
 - Claude Code preflight checks workspace access but not live SDK
   authentication.
 - Live authentication/configuration failures are classified during Worker

@@ -67,7 +67,4 @@ class ExecutorPreflightResult(BaseModel):
 
     @property
     def available(self) -> bool:
-        return self.status in {
-            ExecutorPreflightStatus.AVAILABLE,
-            ExecutorPreflightStatus.WARNING,
-        }
+        return self.status == ExecutorPreflightStatus.AVAILABLE

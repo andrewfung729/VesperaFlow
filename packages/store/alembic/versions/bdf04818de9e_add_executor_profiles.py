@@ -30,6 +30,7 @@ def upgrade() -> None:
             sa.Enum(
                 "claude_code",
                 "codex",
+                "opencode",
                 "kimi_code",
                 "debug_printer",
                 name="executorname",

@@ -14,6 +14,7 @@ class ExecutionMode(StrEnum):
 class ExecutorName(StrEnum):
     CLAUDE_CODE = "claude_code"
     CODEX = "codex"
+    OPENCODE = "opencode"
     KIMI_CODE = "kimi_code"
     DEBUG_PRINTER = "debug_printer"
 
@@ -21,7 +22,6 @@ class ExecutorName(StrEnum):
 class ExecutorPreflightStatus(StrEnum):
     AVAILABLE = "available"
     UNAVAILABLE = "unavailable"
-    WARNING = "warning"
 
 
 class ScheduleType(StrEnum):

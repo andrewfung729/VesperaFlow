@@ -100,6 +100,11 @@ async def test_default_executor_profile_resolves_for_task(
             executor_profile_id=None,
             executor=ExecutorName.DEBUG_PRINTER,
         )
+        opencode_profile = await repo.resolve_executor_profile(
+            session,
+            executor_profile_id=None,
+            executor=ExecutorName.OPENCODE,
+        )
         bundle = await repo.create_one_time_task(
             session,
             title="Research",
@@ -113,6 +118,8 @@ async def test_default_executor_profile_resolves_for_task(
     task = await repo.get_task(session, bundle.task.task_id)
     assert task.executor is ExecutorName.DEBUG_PRINTER
     assert task.executor_profile_id == profile.profile_id
+    assert opencode_profile.name == "OpenCode"
+    assert opencode_profile.default_model is None
 
 
 @pytest.mark.asyncio

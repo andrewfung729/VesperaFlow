@@ -178,7 +178,7 @@ function templateExecutorLabel(template: TaskTemplate): string {
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div
-          class="overflow-hidden rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+          class="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
         >
           <div v-if="isLoading" class="px-4 py-8 text-sm text-slate-500 dark:text-slate-400">
             Loading templates...

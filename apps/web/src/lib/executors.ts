@@ -1,14 +1,32 @@
 import type { ExecutorName, ExecutorProfile } from '@/api'
 
+export interface ExecutorRegistryEntry {
+  label: string
+  supportsModelSelection: boolean
+}
+
+export const executorRegistry: Record<ExecutorName, ExecutorRegistryEntry> = {
+  debug_printer: { label: 'Debug Printer', supportsModelSelection: false },
+  claude_code: { label: 'Claude Code', supportsModelSelection: true },
+  codex: { label: 'Codex', supportsModelSelection: true },
+  kimi_code: { label: 'Kimi Code', supportsModelSelection: false },
+  opencode: { label: 'OpenCode', supportsModelSelection: true },
+}
+
 export const executorOptions: Array<{ label: string; value: ExecutorName }> = [
-  { label: 'Debug Printer', value: 'debug_printer' },
-  { label: 'Claude Code', value: 'claude_code' },
-  { label: 'Codex', value: 'codex' },
-  { label: 'Kimi Code', value: 'kimi_code' },
+  { label: executorRegistry.debug_printer.label, value: 'debug_printer' },
+  { label: executorRegistry.claude_code.label, value: 'claude_code' },
+  { label: executorRegistry.codex.label, value: 'codex' },
+  { label: executorRegistry.kimi_code.label, value: 'kimi_code' },
+  { label: executorRegistry.opencode.label, value: 'opencode' },
 ]
 
 export function executorLabel(executor: ExecutorName): string {
-  return executorOptions.find((option) => option.value === executor)?.label ?? executor
+  return executorRegistry[executor]?.label ?? executor
+}
+
+export function executorSupportsModelSelection(executor: ExecutorName): boolean {
+  return executorRegistry[executor].supportsModelSelection
 }
 
 export function executorProfileLabel(profile: ExecutorProfile): string {

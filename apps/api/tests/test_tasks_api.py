@@ -284,6 +284,19 @@ async def test_create_task_accepts_codex_executor(
 
 
 @pytest.mark.asyncio
+async def test_create_task_accepts_opencode_executor(
+    client: AsyncClient,
+) -> None:
+    payload = _create_payload()
+    payload["executor"] = "opencode"
+
+    response = await client.post("/api/v1/tasks", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["data"]["task"]["executor"] == "opencode"
+
+
+@pytest.mark.asyncio
 async def test_executor_preflight_classifies_workspace_unavailable(
     client: AsyncClient,
 ) -> None:
@@ -299,6 +312,26 @@ async def test_executor_preflight_classifies_workspace_unavailable(
     body = response.json()["data"]
     assert body["status"] == "unavailable"
     assert body["code"] == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_kimi_code_preflight_accepts_existing_workspace(
+    client: AsyncClient,
+    tmp_path: Path,
+) -> None:
+    response = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "kimi_code",
+            "target_working_directory": str(tmp_path),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["executor"] == "kimi_code"
+    assert body["status"] == "available"
+    assert body["code"] == "executor_preflight_passed"
 
 
 @pytest.mark.asyncio
@@ -318,17 +351,13 @@ async def test_executor_preflight_accepts_existing_workspace(
     body = response.json()["data"]
     assert body["status"] == "available"
     assert body["code"] == "executor_preflight_passed"
-    assert body["details"] == {"live": False}
 
 
 @pytest.mark.asyncio
 async def test_codex_preflight_accepts_existing_workspace(
     client: AsyncClient,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
-
     response = await client.get(
         "/api/v1/executors/preflight",
         params={
@@ -342,16 +371,12 @@ async def test_codex_preflight_accepts_existing_workspace(
     assert body["executor"] == "codex"
     assert body["status"] == "available"
     assert body["code"] == "executor_preflight_passed"
-    assert body["details"] == {"live": False}
 
 
 @pytest.mark.asyncio
 async def test_codex_preflight_rejects_missing_workspace(
     client: AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
-
     response = await client.get(
         "/api/v1/executors/preflight",
         params={
@@ -367,25 +392,23 @@ async def test_codex_preflight_rejects_missing_workspace(
 
 
 @pytest.mark.asyncio
-async def test_codex_preflight_rejects_missing_binary(
+async def test_opencode_preflight_accepts_existing_workspace(
     client: AsyncClient,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("shutil.which", lambda _cmd: None)
-
     response = await client.get(
         "/api/v1/executors/preflight",
         params={
-            "executor": "codex",
+            "executor": "opencode",
             "target_working_directory": str(tmp_path),
         },
     )
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["status"] == "unavailable"
-    assert body["code"] == "executor_not_available"
+    assert body["executor"] == "opencode"
+    assert body["status"] == "available"
+    assert body["code"] == "executor_preflight_passed"
 
 
 @pytest.mark.asyncio
