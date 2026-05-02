@@ -14,7 +14,6 @@ class KanbanCardResponse(BaseModel):
     kanban_column: str
     next_run_at: datetime | None
     latest_run_status: RunStatus | None
-    result_summary: str | None
 
 
 class KanbanBoardResponse(BaseModel):

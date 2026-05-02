@@ -854,7 +854,6 @@ function stubFetch(options: StubFetchOptions = {}) {
               kanban_column: 'upcoming',
               next_run_at: '2026-04-25T10:00:00+08:00',
               latest_run_status: null,
-              result_summary: null,
             },
           ],
           running: [],

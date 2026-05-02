@@ -1019,8 +1019,7 @@ Response:
             "title": "Overnight Research",
             "kanban_column": "upcoming",
             "next_run_at": "2026-04-24T23:30:00+08:00",
-            "latest_run_status": null,
-            "result_summary": null
+            "latest_run_status": null
           }
         ]
       }

@@ -43,9 +43,6 @@ async def get_kanban(
                     latest_run_status=detail.latest_run.run_status
                     if detail.latest_run
                     else None,
-                    result_summary=detail.latest_run.result_summary
-                    if detail.latest_run
-                    else None,
                 )
                 for detail in details
             ]

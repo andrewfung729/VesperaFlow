@@ -135,7 +135,6 @@ export interface KanbanCard {
   kanban_column: string
   next_run_at: string | null
   latest_run_status: RunStatus | null
-  result_summary: string | null
 }
 
 export interface KanbanBoard {
