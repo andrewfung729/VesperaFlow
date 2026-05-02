@@ -73,11 +73,12 @@ MVP supports two integration modes at the adapter layer:
 
 Supported executors for MVP:
 
-- `claude-code` — Anthropic's Claude Code, via the Claude Agent SDK (SDK integration)
+- `claude_code` — Anthropic's Claude Code, via the Claude Agent SDK (SDK integration)
+- `codex` — OpenAI Codex CLI, via non-interactive `codex exec` CLI transport
 - `kimi_code` — Moonshot AI's Kimi Code, via the `kimi` CLI non-interactive text transport
 - `debug_printer` — local runtime simulator for end-to-end workflow testing
 
-`codex`, `opencode`, and additional executor integrations are post-MVP candidates. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
+`opencode` and additional executor integrations are post-MVP candidates. The `Executor Adapter` interface defined in `docs/architecture.md` §6.4 remains narrow enough to add them later without changing task, schedule, or run ownership. For MVP, the adapter guarantees the executor:
 
 - accepts VesperaFlow's normalized instructions
 - performs the AI work against its own configured upstream LLM provider
@@ -87,12 +88,14 @@ Supported executors for MVP:
 
 Executor and integration-mode selection:
 
-- MVP supports install-level defaults of `claude_code`, `kimi_code`, or `debug_printer`
-- templates may optionally declare a default executor; valid resolved values are `claude_code`, `kimi_code`, and `debug_printer`
-- the domain model stores the resolved executor on `Task.executor` for traceability and future multi-executor support
+- executor profiles are the primary selection/default surface; they bind executor kind to optional model/env defaults
+- templates may optionally declare a default executor profile or legacy default executor
+- task creation must provide an executor/profile directly or inherit one from a template; there is no install-level executor fallback
+- if a request sends only the legacy `executor` field, the API resolves that executor's default profile and persists both the profile id and resolved executor
+- the domain model stores the resolved executor on `Task.executor` for traceability and future multi-executor support, while `Task.executor_profile_id` records the profile that supplied model/env defaults
 - integration mode is selected by the executor adapter and is not configurable per task in MVP
-- the configured default is recorded in environment configuration, not in the database
-- per-task UI switching is available for choosing between the supported MVP executors
+- profile defaults are stored in PostgreSQL, not Worker environment configuration
+- per-task UI selection is profile-primary and can choose between enabled supported executor profiles
 - the Claude Agent SDK dependency pin and lockfile are the source of truth for the validated SDK version; runtime preflight verifies importability and optional live execution instead of reimplementing version policy
 - one-time deferred tasks use one dedicated Temporal Schedule per product `Schedule`; VesperaFlow does not use a shared dispatcher Schedule for MVP
 

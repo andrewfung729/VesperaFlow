@@ -1,6 +1,6 @@
 # Temporal Surface Snapshot
 
-- Generated: 2026-04-30
+- Generated: 2026-05-02
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `apps/api/src/vesperaflow_api/temporal_scheduler.py`, `apps/worker/src/vesperaflow_worker/main.py`, `apps/worker/src/vesperaflow_worker/workflows/`, `apps/worker/src/vesperaflow_worker/activities/`, `packages/core/src/vesperaflow_core/contracts.py`
 - Limitations: generated from importable application metadata, not a live deployment.
@@ -47,6 +47,7 @@
 | `task_id` | `str` | yes |
 | `schedule_id` | `str | None` | no |
 | `executor` | `ExecutorName` | yes |
+| `executor_profile_id` | `str | None` | no |
 | `instruction_source` | `str` | yes |
 | `planned_start_at` | `datetime` | yes |
 | `working_directory` | `str` | yes |

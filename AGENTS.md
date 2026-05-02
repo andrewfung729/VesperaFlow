@@ -12,7 +12,8 @@ through Temporal-backed one-time and recurring schedules.
 
 - `apps/api`: FastAPI application, task routes, scheduler integration.
 - `apps/worker`: Temporal Worker, Workflows, Activities, executor adapters.
-- `apps/web`: Vue 3 UI, tests, Playwright smoke coverage.
+- `apps/web`: Vue 3 UI, tests, Playwright smoke coverage. See
+  `apps/web/README.md`.
 - `packages/core`: dependency-light domain enums, contracts, validation, IDs.
 - `packages/store`: SQLAlchemy models, repositories, Alembic migrations.
 - `infra`: local Postgres and Temporal development stack.
@@ -25,6 +26,7 @@ through Temporal-backed one-time and recurring schedules.
 - MVP implementation status: `docs/MVP_PROGRESS.md`
 - System architecture: `docs/architecture.md`
 - Temporal design: `docs/temporal-architecture.md`
+- Executor/profile rules: `docs/executor-profiles.md`
 - Domain rules: `docs/domain-model.md`
 - API contract: `docs/api-spec.md`
 - Documentation index: `docs/README.md`
@@ -49,6 +51,9 @@ Web commands run from `apps/web`:
 ```bash
 bun run type-check
 bun run lint:check
+bun run lint
+bun run format:check
+bun run format
 bun run test:unit:run
 bun run test:e2e:smoke
 ```

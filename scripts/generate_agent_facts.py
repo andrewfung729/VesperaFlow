@@ -68,7 +68,7 @@ def _db_schema(generated_at: str) -> str:
         for column in table.columns:
             default = ""
             if column.default is not None:
-                default = str(column.default.arg)
+                default = _default_value(column.default.arg)
             lines.append(
                 f"| `{column.name}` | `{column.type}` | "
                 f"{'yes' if column.nullable else 'no'} | `{default}` |"
@@ -251,6 +251,14 @@ def _type_name(annotation: Any) -> str:
     if annotation is None or annotation is types.NoneType:
         return "None"
     return getattr(annotation, "__name__", str(annotation).replace("typing.", ""))
+
+
+def _default_value(value: Any) -> str:
+    if isinstance(value, type):
+        return value.__name__
+    if isinstance(value, types.FunctionType):
+        return value.__name__
+    return str(value)
 
 
 def _activity_names() -> list[str]:

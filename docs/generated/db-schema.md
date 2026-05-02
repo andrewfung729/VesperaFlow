@@ -1,9 +1,30 @@
 # Database Schema Snapshot
 
-- Generated: 2026-04-30
+- Generated: 2026-05-02
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `packages/store/src/vesperaflow_store/models.py`, `packages/store/alembic/versions/`
 - Limitations: generated from importable application metadata, not a live deployment.
+
+## `executor_profiles`
+
+| Column | Type | Nullable | Default |
+|---|---|---:|---|
+| `profile_id` | `VARCHAR(48)` | no | `` |
+| `name` | `VARCHAR(120)` | no | `` |
+| `executor` | `VARCHAR(64)` | no | `` |
+| `is_enabled` | `BOOLEAN` | no | `True` |
+| `is_default` | `BOOLEAN` | no | `False` |
+| `default_model` | `VARCHAR(160)` | yes | `` |
+| `env` | `JSON` | no | `dict` |
+| `secret_env` | `JSON` | no | `dict` |
+| `version` | `INTEGER` | no | `1` |
+| `created_at` | `DATETIME` | no | `` |
+| `updated_at` | `DATETIME` | no | `` |
+| `archived_at` | `DATETIME` | yes | `` |
+
+- Primary key: `profile_id`
+- Index `ix_executor_profiles_archived_at`: `archived_at`
+- Index `ix_executor_profiles_executor_default`: `executor`, `is_default`
 
 ## `occurrence_overrides`
 
@@ -25,6 +46,28 @@
 - Foreign key: `task_id` -> `tasks.task_id`
 - Index `ix_occurrence_overrides_schedule_id`: `schedule_id`
 - Index `ix_occurrence_overrides_task_id`: `task_id`
+
+## `run_events`
+
+| Column | Type | Nullable | Default |
+|---|---|---:|---|
+| `run_event_id` | `VARCHAR(48)` | no | `` |
+| `run_id` | `VARCHAR(48)` | no | `` |
+| `task_id` | `VARCHAR(48)` | no | `` |
+| `schedule_id` | `VARCHAR(48)` | yes | `` |
+| `event_type` | `VARCHAR(96)` | no | `` |
+| `severity` | `VARCHAR(16)` | no | `` |
+| `message` | `TEXT` | no | `` |
+| `details` | `JSON` | no | `` |
+| `temporal_workflow_id` | `VARCHAR(240)` | yes | `` |
+| `temporal_workflow_run_id` | `VARCHAR(240)` | yes | `` |
+| `activity_type` | `VARCHAR(120)` | yes | `` |
+| `activity_attempt` | `INTEGER` | yes | `` |
+| `created_at` | `DATETIME` | no | `` |
+
+- Primary key: `run_event_id`
+- Foreign key: `run_id` -> `runs.run_id`
+- Index `ix_run_events_run_id_created_at`: `run_id`, `created_at`, `run_event_id`
 
 ## `runs`
 
@@ -88,12 +131,14 @@
 | `task_status` | `VARCHAR(64)` | no | `` |
 | `template_id` | `VARCHAR(48)` | yes | `` |
 | `executor` | `VARCHAR(64)` | no | `` |
+| `executor_profile_id` | `VARCHAR(48)` | yes | `` |
 | `version` | `INTEGER` | no | `1` |
 | `created_at` | `DATETIME` | no | `` |
 | `updated_at` | `DATETIME` | no | `` |
 | `archived_at` | `DATETIME` | yes | `` |
 
 - Primary key: `task_id`
+- Foreign key: `executor_profile_id` -> `executor_profiles.profile_id`
 
 ## `templates`
 
@@ -111,10 +156,12 @@
 | `default_recurrence_rule` | `TEXT` | yes | `` |
 | `default_recurrence_timezone` | `VARCHAR(128)` | yes | `` |
 | `default_executor` | `VARCHAR(64)` | yes | `` |
+| `default_executor_profile_id` | `VARCHAR(48)` | yes | `` |
 | `version` | `INTEGER` | no | `1` |
 | `created_at` | `DATETIME` | no | `` |
 | `updated_at` | `DATETIME` | no | `` |
 | `archived_at` | `DATETIME` | yes | `` |
 
 - Primary key: `template_id`
+- Foreign key: `default_executor_profile_id` -> `executor_profiles.profile_id`
 - Index `ix_templates_archived_at_created_at`: `archived_at`, `created_at`

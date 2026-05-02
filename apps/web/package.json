@@ -19,7 +19,8 @@
     "lint:check:eslint": "eslint .",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "oxfmt src/"
+    "format": "oxfmt src/",
+    "format:check": "oxfmt src/ --check"
   },
   "dependencies": {
     "dompurify": "^3.4.1",

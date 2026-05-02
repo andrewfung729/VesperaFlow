@@ -18,6 +18,8 @@ this index to find the smallest document that answers the current question.
 - `temporal-architecture.md`: Workflow, Activity, Schedule, task queue, retry,
   idempotency, and replay policy.
 - `api-spec.md`: application-facing API contract.
+- `executor-profiles.md`: executor/profile selection, no-fallback rules,
+  preflight, runtime resolution, and artifact policy.
 - `local-full-stack-runbook.md`: local Postgres, Temporal, API, Worker, web,
   and opt-in live executor smoke paths.
 - `adr/`: accepted architecture decisions and rationale.
@@ -49,9 +51,10 @@ this index to find the smallest document that answers the current question.
 | When changing | Also check |
 |---|---|
 | API payloads, endpoints, or errors | `api-spec.md`, `apps/api/README.md`, API tests |
+| Executor/profile selection, preflight, runtime env, or artifacts | `executor-profiles.md`, `api-spec.md`, `apps/worker/README.md`, executor tests |
 | Task, schedule, run, or status semantics | `domain-model.md`, `glossary.md`, core/store tests |
 | Temporal Workflow, Activity, Schedule, or task queue behavior | `temporal-architecture.md`, `adr/002-execution-engine-choice.md`, Worker tests |
-| UI labels, views, or interaction states | `ux-spec.md`, `functional-spec.md`, web tests |
+| UI labels, views, or interaction states | `apps/web/README.md`, `ux-spec.md`, `functional-spec.md`, web tests |
 | Architecture boundaries or durable decisions | `architecture.md`, a new or updated ADR, `QUALITY.md` |
 | Known debt, coverage, or enforcement posture | `QUALITY.md`, `scripts/check_agent_repo.py`, CI |
 | MVP feature status or delivery order | `MVP_PROGRESS.md`, relevant active plan, tests |

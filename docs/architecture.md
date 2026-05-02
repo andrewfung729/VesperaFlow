@@ -356,7 +356,7 @@ MVP supports these executors:
 
 `opencode` and additional executor integrations are post-MVP candidates.
 
-Executor selection is profile-primary. New task and template flows choose an executor profile that owns the executor kind plus default model/env. MVP still stores the resolved executor on the task so every run can be traced to the executor kind intended when the task was created.
+Executor selection is profile-primary. New task and template flows choose an executor profile that owns the executor kind plus default model/env. MVP still stores the resolved executor on the task so every run can be traced to the executor kind intended when the task was created. The focused rules live in `docs/executor-profiles.md`.
 
 #### Adapter Interface Shape
 
@@ -824,7 +824,7 @@ These items were previously open and are now architectural decisions for MVP:
 - A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
-- MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code`, `codex`, `kimi_code`, and `debug_printer`.
+- MVP resolves the executor from the task/template executor profile or explicit request executor and stores the resolved value on `Task.executor`. There is no install-level executor fallback. Supported MVP values are `claude_code`, `codex`, `kimi_code`, and `debug_printer`.
 - The API preflight checks target working-directory access. It also checks `codex` binary availability for `codex` and `kimi` binary availability for `kimi_code`. Codex Worker execution uses `codex exec` in full-permission bypass mode and may pass the executor profile `default_model` through as `--model`; Codex authentication and provider configuration remain owned by the CLI. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.

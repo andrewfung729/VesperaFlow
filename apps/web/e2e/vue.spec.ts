@@ -264,6 +264,15 @@ async function stubApi(page: Page) {
       })
       return
     }
+    if (url.includes('/executor-profiles')) {
+      await route.fulfill({
+        json: {
+          data: [executorProfileResponse()],
+          meta: { total: 1 },
+        },
+      })
+      return
+    }
     if (url.includes('/templates')) {
       await route.fulfill({
         json: {
@@ -283,6 +292,7 @@ async function stubApi(page: Page) {
                 recurrence_timezone: null,
               },
               default_executor: 'debug_printer',
+              default_executor_profile_id: 'xpr-debug',
               version: 1,
               created_at: '2026-04-27T09:00:00+08:00',
               updated_at: '2026-04-27T09:00:00+08:00',
@@ -368,6 +378,24 @@ function taskResponse(taskId: string, title: string, executionMode: 'one_time' |
     task_status: 'scheduled',
     template_id: null,
     executor: 'debug_printer',
+    executor_profile_id: 'xpr-debug',
+    version: 1,
+    created_at: '2026-04-27T09:00:00+08:00',
+    updated_at: '2026-04-27T09:00:00+08:00',
+    archived_at: null,
+  }
+}
+
+function executorProfileResponse() {
+  return {
+    profile_id: 'xpr-debug',
+    name: 'Debug Printer',
+    executor: 'debug_printer',
+    is_enabled: true,
+    is_default: true,
+    default_model: null,
+    env: {},
+    secret_env_keys: [],
     version: 1,
     created_at: '2026-04-27T09:00:00+08:00',
     updated_at: '2026-04-27T09:00:00+08:00',

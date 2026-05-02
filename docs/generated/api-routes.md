@@ -1,14 +1,20 @@
 # API Route Snapshot
 
-- Generated: 2026-04-30
+- Generated: 2026-05-02
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `apps/api/src/vesperaflow_api/app.py`, `apps/api/src/vesperaflow_api/routes/`, `apps/api/src/vesperaflow_api/schemas/`
 - Limitations: generated from importable application metadata, not a live deployment.
 
 | Methods | Path | Handler | Request model | Response annotation |
 |---|---|---|---|---|
+| `GET` | `/api/v1/executor-profiles` | `list_executor_profiles` | `` | `ListEnvelope` |
+| `POST` | `/api/v1/executor-profiles` | `create_executor_profile` | `ExecutorProfileCreateRequest` | `DataEnvelope` |
+| `GET` | `/api/v1/executor-profiles/{profile_id}` | `get_executor_profile` | `` | `DataEnvelope` |
+| `PATCH` | `/api/v1/executor-profiles/{profile_id}` | `update_executor_profile` | `ExecutorProfileUpdateRequest` | `DataEnvelope` |
+| `POST` | `/api/v1/executor-profiles/{profile_id}/archive` | `archive_executor_profile` | `VersionedCommand` | `DataEnvelope` |
 | `GET` | `/api/v1/executors/preflight` | `preflight_executor` | `` | `DataEnvelope` |
 | `GET` | `/api/v1/runs/{run_id}` | `get_run` | `` | `DataEnvelope` |
+| `GET` | `/api/v1/runs/{run_id}/events` | `list_run_events` | `` | `ListEnvelope` |
 | `GET` | `/api/v1/tasks` | `list_tasks` | `` | `ListEnvelope` |
 | `POST` | `/api/v1/tasks` | `create_task` | `TaskCreateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}` | `get_task` | `` | `DataEnvelope` |

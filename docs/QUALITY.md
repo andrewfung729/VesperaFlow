@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-04-30. Update this whenever a major area improves or
+_Last updated: 2026-05-02. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -25,14 +25,15 @@ Update this file when any of these change:
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
 | `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
-| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; UI behavior coverage is still shallow. |
+| `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; `apps/web/README.md` now captures local conventions. UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
-| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, Kimi text CLI executor alignment, and local full-stack runbooks are now present. |
+| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, Kimi text CLI executor alignment, executor/profile rules, frontend guide, and local full-stack runbooks are now present. |
 
 ## Known Gaps
 
-- [ ] Generated DB schema, API route map, Temporal surface, and dependency graph
-      exist, but refresh is manual.
+- [x] Generated DB schema, API route map, Temporal surface, and dependency graph
+      exist; repo health checks validate their headers and CI regenerates them
+      before checking `docs/generated` for drift.
 - [x] Worker startup, Activity execution, and run lifecycle now emit structured
       logs or persisted run timeline events with correlation identifiers.
 - [x] Temporal replay tests cover completed, failed, canceled, and
@@ -50,7 +51,7 @@ Update this file when any of these change:
 - [ ] No automated PR-opening cleanup loop yet; CI only detects the first set of drift patterns.
 - [ ] Package README coverage was added recently and should be kept current as ownership changes.
 - [ ] `docs/MVP_PROGRESS.md` now tracks MVP delivery state, but it is manually
-  maintained and not yet generated from tests or route/schema snapshots.
+      maintained and not yet generated from tests or route/schema snapshots.
 
 ## Golden Rules To Protect
 
@@ -116,3 +117,6 @@ Update this file when any of these change:
 - 2026-05-02: Removed install-level executor fallbacks from API and Worker
   runtime settings; new tasks now require a request or template
   executor/profile, and the Worker always routes by task snapshot.
+- 2026-05-02: Added focused web and executor-profile docs, wired them into
+  agent navigation, refreshed generated facts, added deterministic generated
+  schema defaults, and made CI fail when regenerated agent facts differ.

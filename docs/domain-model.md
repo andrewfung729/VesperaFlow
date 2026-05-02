@@ -87,7 +87,7 @@ Fields:
 - `execution_mode` enum: `one_time`, `recurring`
 - `task_status` enum, **derived** from schedule and latest run (see §4.4)
 - `template_id` nullable
-- `executor` enum: `claude_code`, `codex`, `debug_printer`, `kimi_code`; resolved from the install-level default or optional template default at task creation time
+- `executor` enum: `claude_code`, `codex`, `debug_printer`, `kimi_code`; resolved from the request executor/profile or optional template default at task creation time
 - `executor_profile_id` nullable reference to the profile that supplies executor model/env defaults for future runs; existing rows may be null
 - `version` monotonically increasing integer, used for optimistic concurrency
 - `created_at`
@@ -101,6 +101,7 @@ Notes:
 - A task may be created from a template but becomes independently editable after creation.
 - MVP supports `claude_code`, `codex`, `debug_printer`, and `kimi_code`; `opencode` is post-MVP.
 - Executor profiles are the primary selection surface for new tasks/templates. The denormalized `executor` remains on tasks for compatibility and read-model clarity.
+- There is no install-level executor fallback; new executable tasks need an executor/profile from the request or template.
 - The target working directory is distinct from a run artifact directory. The target is the user project being changed; the run artifact directory is VesperaFlow-owned storage for executor output.
 
 ### 3.3 Schedule
