@@ -356,13 +356,13 @@ MVP supports these executors:
 
 `opencode` and additional executor integrations are post-MVP candidates.
 
-Executor selection is resolved at task creation time from the install-level default, an optional template default, or the task creation request. MVP stores the resolved executor on the task so every run can be traced to the executor that was intended when the task was created.
+Executor selection is profile-primary. New task and template flows choose an executor profile that owns the executor kind plus default model/env. MVP still stores the resolved executor on the task so every run can be traced to the executor kind intended when the task was created.
 
 #### Adapter Interface Shape
 
 The adapter is invoked from executor Activities with a small, stable executor-oriented contract:
 
-- Input: an execution snapshot containing `run_id`, the selected executor name, normalized instructions, the run's working directory, optional executor-specific parameters, and an idempotency key derived from `run_id`
+- Input: an execution snapshot containing `run_id`, the selected executor name, optional executor profile id, normalized instructions, the run's working directory, optional executor-specific parameters, and an idempotency key derived from `run_id`
 - Output: a normalized execution outcome containing terminal status (`completed` / `failed`), a short `result_summary`, optional `result_artifact_ref` (path to files written inside the working directory), a terminal-outcome code from the executor, and a `failure_reason` category when not successful
 - Cancellation: the adapter must translate an Activity cancellation into the executor's native cancellation mechanism and must not retry after a cancellation signal
 
@@ -786,8 +786,8 @@ MVP observability baseline:
 MVP security posture:
 
 - authentication and authorization are intentionally out of scope for the single-local-user MVP, but the domain model must preserve a clean extension point for a future `user_id` association
-- VesperaFlow does not hold or manage LLM provider credentials; the supported executor SDK is authenticated by the user through its own configuration, for example the SDK's expected environment variable or runtime config file
-- Worker startup may pass an explicit allowlist of executor environment variables into the SDK invocation, but these values must not be logged, persisted, serialized into Temporal payloads, or expanded to the full Worker process environment
+- VesperaFlow may store executor profile env overrides, including write-only secret env values in the local PostgreSQL database for v1. These values are resolved only inside Worker Activities and must not be logged or serialized into Workflow history.
+- Worker Activities may pass explicit executor profile environment values into the executor invocation, but these values must not be logged, serialized into Temporal payloads, or expanded to the full Worker process environment
 - task `instruction_source` and executor output may contain sensitive content; they must not be serialized into Temporal Workflow input payloads beyond what is strictly required, and structured logs must not emit full instruction or output bodies at default log levels
 - PostgreSQL is assumed to be on trusted local storage for MVP; at-rest encryption is a deployment concern tracked in `docs/adr/004-security-posture.md`
 
@@ -825,7 +825,7 @@ These items were previously open and are now architectural decisions for MVP:
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
 - MVP resolves the executor from the install-level default, optional template default, or task creation request and stores the resolved value on `Task.executor`. Supported MVP values are `claude_code`, `codex`, `kimi_code`, and `debug_printer`.
-- The API preflight checks target working-directory access. It also checks `codex` binary availability for `codex` and `kimi` binary availability for `kimi_code`. Codex Worker execution uses `codex exec` in full-permission bypass mode and may pass `VESPERAFLOW_CODEX_MODEL` through as `--model`; Codex authentication and provider configuration remain owned by the CLI. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
+- The API preflight checks target working-directory access. It also checks `codex` binary availability for `codex` and `kimi` binary availability for `kimi_code`. Codex Worker execution uses `codex exec` in full-permission bypass mode and may pass the executor profile `default_model` through as `--model`; Codex authentication and provider configuration remain owned by the CLI. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
 - The Claude Agent SDK compatibility policy is dependency-lock driven: the Worker pins the validated SDK version and imports it normally instead of reimplementing package-version or optional-import policy at runtime.

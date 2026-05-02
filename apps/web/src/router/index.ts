@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import CalendarView from '@/views/CalendarView.vue'
 import HistoryView from '@/views/HistoryView.vue'
+import ExecutorsView from '@/views/ExecutorsView.vue'
 import KanbanBoardView from '@/views/KanbanBoardView.vue'
 import RecurringRunArchiveView from '@/views/RecurringRunArchiveView.vue'
 import RecurringTodoView from '@/views/RecurringTodoView.vue'
@@ -29,6 +30,11 @@ export const routes: RouteRecordRaw[] = [
     path: '/templates',
     name: 'templates',
     component: TemplatesView,
+  },
+  {
+    path: '/executors',
+    name: 'executors',
+    component: ExecutorsView,
   },
   {
     path: '/recurring',

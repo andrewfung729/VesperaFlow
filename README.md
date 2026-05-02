@@ -141,9 +141,6 @@ uv sync
 cp .env.example .env
 ```
 
-The checked-in `.env.example` uses `debug_printer` as the safe local executor.
-Keep live executor secrets in your shell or local `.env`; do not commit them.
-
 Install web dependencies:
 
 ```bash
@@ -165,16 +162,16 @@ Apply the database schema:
 uv run --directory packages/store alembic upgrade head
 ```
 
-Start the API with the safe debug executor:
+Start the API:
 
 ```bash
-VESPERAFLOW_DEFAULT_EXECUTOR=debug_printer uv run vesperaflow-api
+uv run vesperaflow-api
 ```
 
 Start the Worker in another terminal:
 
 ```bash
-VESPERAFLOW_EXECUTOR_ADAPTER=debug_printer uv run vesperaflow-worker
+uv run vesperaflow-worker
 ```
 
 Start the web app in another terminal:
@@ -196,26 +193,25 @@ For a deeper full-stack smoke run, see `docs/local-full-stack-runbook.md`.
 
 Use live executors only after the debug path works.
 
-Claude Code requires a configured local Claude Code runtime and any required
-provider credentials:
+Claude Code requires a configured local Claude Code runtime and an executor
+profile with any required provider environment values:
 
 ```bash
-VESPERAFLOW_DEFAULT_EXECUTOR=claude_code uv run vesperaflow-api
-VESPERAFLOW_EXECUTOR_ADAPTER=claude_code uv run vesperaflow-worker
+uv run vesperaflow-api
+uv run vesperaflow-worker
 ```
 
 Kimi Code requires the `kimi` CLI on `PATH` and a valid Kimi authentication
 method such as its OAuth cache or supported environment variables:
 
 ```bash
-VESPERAFLOW_DEFAULT_EXECUTOR=kimi_code uv run vesperaflow-api
-VESPERAFLOW_EXECUTOR_ADAPTER=kimi_code uv run vesperaflow-worker
+uv run vesperaflow-api
+uv run vesperaflow-worker
 ```
 
 For live runs, choose an existing absolute target working directory and start
-with a harmless instruction. VesperaFlow does not store provider credentials,
-but the Worker process can pass configured executor environment values to the
-executor runtime.
+with a harmless instruction. Executor profile secret values are write-only in
+API responses and are resolved only by Worker Activities.
 
 ## Checks
 

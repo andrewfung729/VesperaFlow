@@ -4,13 +4,17 @@ import shutil
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import (
     ExecutorName,
     ExecutorPreflightResult,
     ExecutorPreflightStatus,
 )
+from vesperaflow_store import repositories as repo
+from vesperaflow_store.errors import NotFoundError
 
+from ..dependencies import get_session
 from ..schemas.tasks import DataEnvelope
 
 router = APIRouter()
@@ -18,9 +22,33 @@ router = APIRouter()
 
 @router.get("/executors/preflight")
 async def preflight_executor(
+    session: Annotated[AsyncSession, Depends(get_session)],
     executor: ExecutorName = ExecutorName.CLAUDE_CODE,
+    executor_profile_id: Annotated[str | None, Query(min_length=1)] = None,
     target_working_directory: Annotated[str | None, Query(min_length=1)] = None,
 ) -> DataEnvelope:
+    if executor_profile_id is not None:
+        try:
+            profile = await repo.get_executor_profile(session, executor_profile_id)
+        except NotFoundError:
+            return DataEnvelope(
+                data=_result(
+                    executor=executor,
+                    status=ExecutorPreflightStatus.UNAVAILABLE,
+                    code="executor_profile_unavailable",
+                    message="Executor profile was not found",
+                ).model_dump()
+            )
+        if profile.archived_at is not None or not profile.is_enabled:
+            return DataEnvelope(
+                data=_result(
+                    executor=profile.executor,
+                    status=ExecutorPreflightStatus.UNAVAILABLE,
+                    code="executor_profile_unavailable",
+                    message="Executor profile is disabled or archived",
+                ).model_dump()
+            )
+        executor = profile.executor
     if executor is ExecutorName.DEBUG_PRINTER:
         return DataEnvelope(
             data=ExecutorPreflightResult(

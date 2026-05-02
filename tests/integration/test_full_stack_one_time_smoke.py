@@ -13,7 +13,6 @@ from vesperaflow_api.app import create_app
 from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
 from vesperaflow_api.temporal_scheduler import TemporalScheduler
-from vesperaflow_core import ExecutorName
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_worker.activities import TaskRunActivities
 from vesperaflow_worker.executors.debug import DebugPrinterExecutor
@@ -33,7 +32,6 @@ async def test_one_time_debug_printer_reaches_terminal_state(
 
     settings = ApiSettings(
         database_url=database_url,
-        default_executor=ExecutorName.DEBUG_PRINTER,
         run_workspace_root=str(tmp_path / "runs"),
     )
     engine = create_engine(settings.database_url)

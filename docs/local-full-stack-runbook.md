@@ -36,13 +36,13 @@ cd ../..
 In one terminal:
 
 ```bash
-VESPERAFLOW_DEFAULT_EXECUTOR=debug_printer uv run vesperaflow-api
+uv run vesperaflow-api
 ```
 
 In another terminal:
 
 ```bash
-VESPERAFLOW_EXECUTOR_ADAPTER=debug_printer uv run vesperaflow-worker
+uv run vesperaflow-worker
 ```
 
 ## Start Web
@@ -110,12 +110,12 @@ Prerequisites:
   CLI's supported configuration.
 - The target working directory is an existing absolute path.
 
-Start the API and Worker with the Kimi executor, then create a one-time task in
-the web UI using the `kimi_code` executor:
+Start the API and Worker, then create a one-time task in the web UI using a
+`kimi_code` executor profile:
 
 ```bash
-VESPERAFLOW_DEFAULT_EXECUTOR=kimi_code uv run vesperaflow-api
-VESPERAFLOW_EXECUTOR_ADAPTER=kimi_code uv run vesperaflow-worker
+uv run vesperaflow-api
+uv run vesperaflow-worker
 ```
 
 Use a harmless instruction such as asking Kimi Code to inspect the repository and
@@ -145,16 +145,17 @@ Prerequisites:
   supported configuration.
 - The target working directory is an existing absolute path.
 
-Start the API and Worker with the Codex executor, then create a one-time task in
-the web UI using the `codex` executor:
+Start the API and Worker, then create a one-time task in the web UI using a
+`codex` executor profile:
 
 ```bash
-VESPERAFLOW_DEFAULT_EXECUTOR=codex uv run vesperaflow-api
-VESPERAFLOW_EXECUTOR_ADAPTER=codex VESPERAFLOW_CODEX_MODEL=gpt-5.2 uv run vesperaflow-worker
+uv run vesperaflow-api
+uv run vesperaflow-worker
 ```
 
-`VESPERAFLOW_CODEX_MODEL` is optional. When unset, Codex uses its own configured
-model default. The Worker invokes Codex with
+Set the Codex profile's default model in the Executors view when a specific
+model is required. When the profile model is unset, Codex uses its own
+configured model default. The Worker invokes Codex with
 `--dangerously-bypass-approvals-and-sandbox`, so use a disposable or trusted
 target workspace for smoke testing.
 

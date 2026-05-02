@@ -13,7 +13,7 @@ from typing import override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
 
-from .base import ExecutorAdapter
+from .base import ExecutorAdapter, ExecutorRuntimeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,11 @@ _SIGINT_GRACE = 5.0
 @dataclass(slots=True)
 class KimiCodeExecutor(ExecutorAdapter):
     @override
-    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
+    async def execute(
+        self,
+        snapshot: ExecutionSnapshot,
+        runtime_config: ExecutorRuntimeConfig | None = None,
+    ) -> ExecutorOutcome:
         workspace = _existing_directory(snapshot.target_working_directory)
         if workspace is None:
             return _failed_outcome(
@@ -57,6 +61,7 @@ class KimiCodeExecutor(ExecutorAdapter):
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_subprocess_env(runtime_config),
                 start_new_session=True,
             )
 
@@ -128,6 +133,16 @@ class KimiCodeExecutor(ExecutorAdapter):
             result_artifact_ref=artifact_ref,
             terminal_code="kimi_code_completed",
         )
+
+
+def _subprocess_env(
+    runtime_config: ExecutorRuntimeConfig | None,
+) -> dict[str, str] | None:
+    if runtime_config is None or not runtime_config.env:
+        return None
+    env = dict(os.environ)
+    env.update(runtime_config.env)
+    return env
 
 
 async def _write_stdin(proc: asyncio.subprocess.Process, instruction: str) -> None:

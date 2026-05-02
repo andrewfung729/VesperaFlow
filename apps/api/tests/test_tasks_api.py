@@ -201,6 +201,76 @@ async def test_create_task_accepts_debug_printer_executor(
 
 
 @pytest.mark.asyncio
+async def test_create_task_requires_explicit_executor_or_profile(
+    client: AsyncClient,
+) -> None:
+    payload = _create_payload()
+    del payload["executor"]
+
+    response = await client.post("/api/v1/tasks", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == (
+        "executor_profile_id or executor is required"
+    )
+
+
+@pytest.mark.asyncio
+async def test_executor_profile_crud_masks_secret_env(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/executor-profiles",
+        json={
+            "name": "Codex Profile",
+            "executor": "codex",
+            "is_enabled": True,
+            "is_default": False,
+            "default_model": "gpt-5.2",
+            "env": {"FOO": "bar"},
+            "secret_env": {"TOKEN": "secret"},
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["secret_env_keys"] == ["TOKEN"]
+    assert "secret_env" not in data
+
+    updated = await client.patch(
+        f"/api/v1/executor-profiles/{data['profile_id']}",
+        json={"version": data["version"], "secret_env": {"TOKEN": None}},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["data"]["secret_env_keys"] == []
+
+
+@pytest.mark.asyncio
+async def test_create_task_accepts_executor_profile_id(client: AsyncClient) -> None:
+    profile_response = await client.post(
+        "/api/v1/executor-profiles",
+        json={
+            "name": "Debug Profile",
+            "executor": "debug_printer",
+            "is_enabled": True,
+            "is_default": False,
+            "default_model": None,
+            "env": {},
+            "secret_env": {},
+        },
+    )
+    profile_id = profile_response.json()["data"]["profile_id"]
+    payload = _create_payload()
+    payload["executor"] = "debug_printer"
+    payload["executor_profile_id"] = profile_id
+
+    response = await client.post("/api/v1/tasks", json=payload)
+
+    assert response.status_code == 201
+    task = response.json()["data"]["task"]
+    assert task["executor"] == "debug_printer"
+    assert task["executor_profile_id"] == profile_id
+
+
+@pytest.mark.asyncio
 async def test_create_task_accepts_codex_executor(
     client: AsyncClient,
 ) -> None:
@@ -1043,6 +1113,7 @@ class _CreatePayload(TypedDict):
     target_working_directory: NotRequired[str]
     execution_mode: str
     executor: NotRequired[str]
+    executor_profile_id: NotRequired[str | None]
     template_id: NotRequired[str | None]
     schedule: _SchedulePayload
 

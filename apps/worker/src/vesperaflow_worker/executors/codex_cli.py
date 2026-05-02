@@ -13,7 +13,7 @@ from typing import cast, override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
 
-from .base import ExecutorAdapter
+from .base import ExecutorAdapter, ExecutorRuntimeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,13 @@ _SIGINT_GRACE = 5.0
 
 @dataclass(slots=True)
 class CodexExecutor(ExecutorAdapter):
-    model: str | None = None
 
     @override
-    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
+    async def execute(
+        self,
+        snapshot: ExecutionSnapshot,
+        runtime_config: ExecutorRuntimeConfig | None = None,
+    ) -> ExecutorOutcome:
         workspace = _existing_directory(snapshot.target_working_directory)
         if workspace is None:
             return _failed_outcome(
@@ -58,10 +61,12 @@ class CodexExecutor(ExecutorAdapter):
                     binary=binary,
                     last_message_path=last_message_path,
                     workspace=workspace,
+                    runtime_config=runtime_config,
                 ),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_subprocess_env(runtime_config),
                 start_new_session=True,
             )
 
@@ -173,6 +178,7 @@ class CodexExecutor(ExecutorAdapter):
         binary: str,
         last_message_path: Path,
         workspace: Path,
+        runtime_config: ExecutorRuntimeConfig | None,
     ) -> tuple[str, ...]:
         args = [
             binary,
@@ -184,10 +190,21 @@ class CodexExecutor(ExecutorAdapter):
             "-C",
             str(workspace),
         ]
-        if self.model:
-            args.extend(["--model", self.model])
+        model = runtime_config.default_model if runtime_config else None
+        if model:
+            args.extend(["--model", model])
         args.extend(["--dangerously-bypass-approvals-and-sandbox", "-"])
         return tuple(args)
+
+
+def _subprocess_env(
+    runtime_config: ExecutorRuntimeConfig | None,
+) -> dict[str, str] | None:
+    if runtime_config is None or not runtime_config.env:
+        return None
+    env = dict(os.environ)
+    env.update(runtime_config.env)
+    return env
 
 
 async def _write_stdin(proc: asyncio.subprocess.Process, instruction: str) -> None:

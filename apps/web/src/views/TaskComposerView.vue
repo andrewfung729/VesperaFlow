@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 
 import {
   createTask,
+  listExecutorProfiles,
   listTemplates,
   preflightExecutor,
   type ExecutionMode,
-  type ExecutorPreflightResult,
   type ExecutorName,
+  type ExecutorProfile,
+  type ExecutorPreflightResult,
   type TaskTemplate,
 } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
@@ -19,7 +21,7 @@ import TextInput from '@/components/TextInput.vue'
 import UiButton from '@/components/UiButton.vue'
 import { defaultDateTimeLocal, isFutureLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { executionModeLabel, executionModeOptions } from '@/lib/executionModeDisplay'
-import { executorLabel, executorOptions } from '@/lib/executors'
+import { defaultExecutorProfileId, executorLabel, executorProfileOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 import {
   browserRecurrenceTimezone,
@@ -34,7 +36,7 @@ const route = useRoute()
 const title = ref('')
 const instructions = ref('')
 const targetWorkingDirectory = ref('')
-const executor = ref<ExecutorName>('debug_printer')
+const executorProfileId = ref('')
 const executionMode = ref<ExecutionMode>('one_time')
 const plannedAt = ref(defaultDateTimeLocal())
 const defaultPlannedAt = ref(plannedAt.value)
@@ -42,6 +44,7 @@ const recurrenceCadence = ref<RecurrenceCadence>('daily')
 const recurrenceTime = ref('08:00')
 const recurrenceWeekdays = ref<WeekdayCode[]>(['MO'])
 const templates = ref<TaskTemplate[]>([])
+const executorProfiles = ref<ExecutorProfile[]>([])
 const selectedTemplateId = ref('')
 const isSaving = ref(false)
 const isCheckingExecutor = ref(false)
@@ -54,6 +57,15 @@ const selectedTemplate = computed(() => {
     templates.value.find((template) => template.template_id === selectedTemplateId.value) ?? null
   )
 })
+const selectedExecutorProfile = computed(
+  () =>
+    executorProfiles.value.find((profile) => profile.profile_id === executorProfileId.value) ??
+    null,
+)
+const selectedExecutor = computed<ExecutorName | null>(
+  () => selectedExecutorProfile.value?.executor ?? null,
+)
+const executorProfileSelectOptions = computed(() => executorProfileOptions(executorProfiles.value))
 const templateOptions = computed(() =>
   templates.value.map((template) => ({ label: template.name, value: template.template_id })),
 )
@@ -67,12 +79,14 @@ const canSave = computed(
     title.value.trim().length > 0 &&
     instructions.value.trim().length > 0 &&
     targetWorkingDirectory.value.trim().startsWith('/') &&
+    selectedExecutor.value !== null &&
     (executionMode.value === 'one_time' ? isFutureLocal(plannedAt.value) : recurrenceIsValid.value),
 )
 const executorStatusText = computed(() => {
-  if (executor.value === 'debug_printer') return 'Debug printer is available.'
+  if (!selectedExecutor.value) return 'Select an executor profile.'
+  if (selectedExecutor.value === 'debug_printer') return 'Debug printer is available.'
   if (!executorPreflight.value)
-    return `${executorLabel(executor.value)} has not been checked for this target.`
+    return `${executorLabel(selectedExecutor.value)} has not been checked for this target.`
   return executorPreflight.value.message
 })
 const executorStatusClass = computed(() => {
@@ -86,7 +100,7 @@ const executorStatusClass = computed(() => {
   return 'border-emerald-200 bg-emerald-50 text-emerald-800'
 })
 
-onMounted(loadTemplates)
+onMounted(loadInitialData)
 
 watch(
   () => route.query.templateId,
@@ -110,10 +124,17 @@ watch(
   { immediate: true },
 )
 
-async function loadTemplates() {
+async function loadInitialData() {
   try {
-    const response = await listTemplates({ limit: 100 })
-    templates.value = response.data
+    const [templatesResponse, profilesResponse] = await Promise.all([
+      listTemplates({ limit: 100 }),
+      listExecutorProfiles({ limit: 100 }),
+    ])
+    templates.value = templatesResponse.data
+    executorProfiles.value = profilesResponse.data
+    if (!executorProfileId.value) {
+      executorProfileId.value = defaultExecutorProfileId(executorProfiles.value)
+    }
     const templateId = route.query.templateId
     if (typeof templateId === 'string') {
       selectedTemplateId.value = templateId
@@ -139,7 +160,8 @@ function applySelectedTemplate() {
   instructions.value = selectedTemplate.value.instruction_source
   targetWorkingDirectory.value =
     selectedTemplate.value.default_target_working_directory || targetWorkingDirectory.value
-  executor.value = selectedTemplate.value.default_executor || executor.value
+  executorProfileId.value =
+    selectedTemplate.value.default_executor_profile_id || executorProfileId.value
   executorPreflight.value = null
 }
 
@@ -147,14 +169,19 @@ async function submitTask() {
   if (!canSave.value) {
     errorMessage.value =
       executionMode.value === 'one_time'
-        ? 'Add a title, instructions, an absolute target directory, and a future execution time.'
-        : 'Add a title, instructions, an absolute target directory, and a valid recurrence.'
+        ? 'Add a title, instructions, executor profile, absolute target directory, and a future execution time.'
+        : 'Add a title, instructions, executor profile, absolute target directory, and a valid recurrence.'
+    return
+  }
+  const executor = selectedExecutor.value
+  if (executor === null) {
+    errorMessage.value = 'Select an executor profile.'
     return
   }
   isSaving.value = true
   errorMessage.value = null
   try {
-    if (executor.value !== 'debug_printer') {
+    if (executor !== 'debug_printer') {
       const preflight = await checkExecutor()
       if (preflight?.status === 'unavailable') {
         errorMessage.value = preflight.message
@@ -180,7 +207,8 @@ async function submitTask() {
       title: title.value.trim(),
       instruction_source: instructions.value.trim(),
       target_working_directory: targetWorkingDirectory.value.trim(),
-      executor: executor.value,
+      executor,
+      executor_profile_id: executorProfileId.value || null,
       template_id: selectedTemplateId.value || null,
       ...schedulePayload,
     })
@@ -198,7 +226,12 @@ async function submitTask() {
 }
 
 async function checkExecutor(): Promise<ExecutorPreflightResult | null> {
-  if (executor.value === 'debug_printer') {
+  const executor = selectedExecutor.value
+  if (executor === null) {
+    executorPreflight.value = null
+    return null
+  }
+  if (executor === 'debug_printer') {
     executorPreflight.value = {
       executor: 'debug_printer',
       status: 'available',
@@ -210,7 +243,7 @@ async function checkExecutor(): Promise<ExecutorPreflightResult | null> {
   }
   if (!targetWorkingDirectory.value.trim().startsWith('/')) {
     executorPreflight.value = {
-      executor: executor.value,
+      executor,
       status: 'unavailable',
       code: 'executor_workspace_unavailable',
       message: 'Target directory must be an existing absolute directory.',
@@ -221,13 +254,14 @@ async function checkExecutor(): Promise<ExecutorPreflightResult | null> {
   isCheckingExecutor.value = true
   try {
     executorPreflight.value = await preflightExecutor({
-      executor: executor.value,
+      executor,
+      executor_profile_id: executorProfileId.value || undefined,
       target_working_directory: targetWorkingDirectory.value.trim(),
     })
     return executorPreflight.value
   } catch (error) {
     executorPreflight.value = {
-      executor: executor.value,
+      executor,
       status: 'unavailable',
       code: 'executor_preflight_failed',
       message: readableError(error),
@@ -239,7 +273,7 @@ async function checkExecutor(): Promise<ExecutorPreflightResult | null> {
   }
 }
 
-watch([executor, targetWorkingDirectory], () => {
+watch([executorProfileId, targetWorkingDirectory], () => {
   executorPreflight.value = null
 })
 
@@ -334,7 +368,11 @@ function resetScheduleForMode(mode: ExecutionMode) {
           label="Target Directory"
           placeholder="/Users/you/project"
         />
-        <SelectField v-model="executor" label="Executor" :options="executorOptions" />
+        <SelectField
+          v-model="executorProfileId"
+          label="Executor Profile"
+          :options="executorProfileSelectOptions"
+        />
         <div class="grid gap-2">
           <div
             class="rounded-md border px-3 py-2 text-sm font-medium"
@@ -344,7 +382,7 @@ function resetScheduleForMode(mode: ExecutionMode) {
             {{ executorStatusText }}
           </div>
           <UiButton
-            v-if="executor !== 'debug_printer'"
+            v-if="selectedExecutor && selectedExecutor !== 'debug_printer'"
             class="w-fit"
             :disabled="isCheckingExecutor || targetWorkingDirectory.trim().length === 0"
             @click="checkExecutor"

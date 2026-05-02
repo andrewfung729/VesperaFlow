@@ -23,6 +23,7 @@ class TemplateCreateRequest(BaseModel):
     default_execution_mode: ExecutionMode
     default_schedule_config: TemplateScheduleConfig
     default_executor: ExecutorName | None = None
+    default_executor_profile_id: str | None = None
 
 
 class TemplateUpdateRequest(BaseModel):
@@ -35,6 +36,7 @@ class TemplateUpdateRequest(BaseModel):
     default_execution_mode: ExecutionMode | None = None
     default_schedule_config: TemplateScheduleConfig | None = None
     default_executor: ExecutorName | None = None
+    default_executor_profile_id: str | None = None
 
 
 class TemplateInstantiateRequest(BaseModel):
@@ -43,6 +45,7 @@ class TemplateInstantiateRequest(BaseModel):
     target_working_directory: str | None = Field(default=None, min_length=1)
     execution_mode: ExecutionMode | None = None
     executor: ExecutorName | None = None
+    executor_profile_id: str | None = None
     schedule: TemplateScheduleConfig | None = None
 
 
@@ -56,6 +59,7 @@ class TemplateResponse(BaseModel):
     default_execution_mode: ExecutionMode
     default_schedule_config: TemplateScheduleConfig
     default_executor: ExecutorName | None
+    default_executor_profile_id: str | None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -78,6 +82,7 @@ class TemplateResponse(BaseModel):
                 recurrence_timezone=template.default_recurrence_timezone,
             ),
             default_executor=template.default_executor,
+            default_executor_profile_id=template.default_executor_profile_id,
             version=template.version,
             created_at=template.created_at,
             updated_at=template.updated_at,

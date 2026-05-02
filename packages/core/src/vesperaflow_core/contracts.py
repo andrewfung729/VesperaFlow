@@ -19,6 +19,7 @@ class ExecutionSnapshot(BaseModel):
     task_id: str
     schedule_id: str | None = None
     executor: ExecutorName
+    executor_profile_id: str | None = None
     instruction_source: str
     planned_start_at: datetime
     working_directory: str

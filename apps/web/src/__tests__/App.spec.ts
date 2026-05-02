@@ -63,7 +63,7 @@ describe('App', () => {
     const { wrapper } = await mountAppAt('/tasks/task-1')
 
     expect(wrapper.text()).toContain('Detailed Task')
-    expect(wrapper.text()).toContain('Executor: debug_printer')
+    expect(wrapper.text()).toContain('Executor: Debug Printer')
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/tasks/task-1/detail'),
       expect.any(Object),
@@ -337,7 +337,7 @@ describe('App', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(
-        '/executors/preflight?executor=claude_code&target_working_directory=%2Ftmp',
+        '/executors/preflight?executor=claude_code&executor_profile_id=claude_code&target_working_directory=%2Ftmp',
       ),
       expect.any(Object),
     )
@@ -366,7 +366,7 @@ describe('App', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(
-        '/executors/preflight?executor=codex&target_working_directory=%2Ftmp',
+        '/executors/preflight?executor=codex&executor_profile_id=codex&target_working_directory=%2Ftmp',
       ),
       expect.any(Object),
     )
@@ -638,6 +638,7 @@ describe('App', () => {
           instruction_source: 'Updated recurring instructions.',
           target_working_directory: '/tmp/updated-project',
           executor: 'codex',
+          executor_profile_id: 'codex',
           recurrence_rule: 'RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0',
           recurrence_timezone: 'Asia/Hong_Kong',
         }),
@@ -833,6 +834,10 @@ function stubFetch(options: StubFetchOptions = {}) {
       })
     }
 
+    if (url.includes('/executor-profiles')) {
+      return jsonResponse(executorProfileResponses(), { total: 4 })
+    }
+
     if (url.includes('/templates') && method === 'GET') {
       return jsonResponse([templateResponse()], { total: 1 })
     }
@@ -865,6 +870,7 @@ function stubFetch(options: StubFetchOptions = {}) {
           task_status: 'scheduled',
           template_id: null,
           executor: 'debug_printer',
+          executor_profile_id: requestBody.executor_profile_id ?? 'debug_printer',
           version: 1,
           created_at: '2026-04-25T09:00:00+08:00',
           updated_at: '2026-04-25T09:00:00+08:00',
@@ -935,6 +941,7 @@ function stubFetch(options: StubFetchOptions = {}) {
           task_status: 'scheduled',
           template_id: null,
           executor: 'debug_printer',
+          executor_profile_id: 'debug_printer',
           version: 2,
           created_at: '2026-04-25T09:00:00+08:00',
           updated_at: '2026-04-25T09:00:00+08:00',
@@ -957,6 +964,7 @@ function stubFetch(options: StubFetchOptions = {}) {
           task_status: 'scheduled',
           template_id: null,
           executor: 'debug_printer',
+          executor_profile_id: 'debug_printer',
           version: 2,
           created_at: '2026-04-25T09:00:00+08:00',
           updated_at: '2026-04-25T09:00:00+08:00',
@@ -1071,6 +1079,7 @@ function stubFetch(options: StubFetchOptions = {}) {
           instruction_source: instruction,
           target_working_directory: targetDirectory,
           executor,
+          executor_profile_id: executor,
         },
         schedule: recurringScheduleResponse(taskId),
         latest_run: recurringRunResponses(taskId)[0],
@@ -1088,6 +1097,7 @@ function stubFetch(options: StubFetchOptions = {}) {
           task_status: 'scheduled',
           template_id: null,
           executor: 'debug_printer',
+          executor_profile_id: 'debug_printer',
           version: 1,
           created_at: '2026-04-25T09:00:00+08:00',
           updated_at: '2026-04-25T09:00:00+08:00',
@@ -1128,6 +1138,7 @@ function stubFetch(options: StubFetchOptions = {}) {
           task_status: 'completed',
           template_id: null,
           executor: 'debug_printer',
+          executor_profile_id: 'debug_printer',
           version: 1,
           created_at: '2026-04-25T09:00:00+08:00',
           updated_at: '2026-04-25T09:00:00+08:00',
@@ -1291,11 +1302,73 @@ function templateResponse() {
       recurrence_timezone: null,
     },
     default_executor: 'debug_printer',
+    default_executor_profile_id: 'debug_printer',
     version: 1,
     created_at: '2026-04-25T09:00:00+08:00',
     updated_at: '2026-04-25T09:00:00+08:00',
     archived_at: null,
   }
+}
+
+function executorProfileResponses() {
+  return [
+    {
+      profile_id: 'debug_printer',
+      name: 'Debug Printer',
+      executor: 'debug_printer',
+      is_enabled: true,
+      is_default: true,
+      default_model: null,
+      env: {},
+      secret_env_keys: [],
+      version: 1,
+      created_at: '2026-04-25T09:00:00+08:00',
+      updated_at: '2026-04-25T09:00:00+08:00',
+      archived_at: null,
+    },
+    {
+      profile_id: 'claude_code',
+      name: 'Claude Code',
+      executor: 'claude_code',
+      is_enabled: true,
+      is_default: true,
+      default_model: null,
+      env: {},
+      secret_env_keys: [],
+      version: 1,
+      created_at: '2026-04-25T09:00:00+08:00',
+      updated_at: '2026-04-25T09:00:00+08:00',
+      archived_at: null,
+    },
+    {
+      profile_id: 'codex',
+      name: 'Codex',
+      executor: 'codex',
+      is_enabled: true,
+      is_default: true,
+      default_model: null,
+      env: {},
+      secret_env_keys: [],
+      version: 1,
+      created_at: '2026-04-25T09:00:00+08:00',
+      updated_at: '2026-04-25T09:00:00+08:00',
+      archived_at: null,
+    },
+    {
+      profile_id: 'kimi_code',
+      name: 'Kimi Code',
+      executor: 'kimi_code',
+      is_enabled: true,
+      is_default: true,
+      default_model: null,
+      env: {},
+      secret_env_keys: [],
+      version: 1,
+      created_at: '2026-04-25T09:00:00+08:00',
+      updated_at: '2026-04-25T09:00:00+08:00',
+      archived_at: null,
+    },
+  ]
 }
 
 function recurringTaskResponse(taskId: string, title: string) {
@@ -1308,6 +1381,7 @@ function recurringTaskResponse(taskId: string, title: string) {
     task_status: 'scheduled',
     template_id: null,
     executor: 'debug_printer',
+    executor_profile_id: 'debug_printer',
     version: 1,
     created_at: '2026-04-25T09:00:00+08:00',
     updated_at: '2026-04-25T09:00:00+08:00',

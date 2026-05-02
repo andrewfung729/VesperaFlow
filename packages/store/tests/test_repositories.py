@@ -68,6 +68,54 @@ async def test_create_one_time_task_persists_debug_printer_executor(
 
 
 @pytest.mark.asyncio
+async def test_executor_profile_crud_masks_runtime_choices(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        profile = await repo.create_executor_profile(
+            session,
+            name="Codex GPT",
+            executor=ExecutorName.CODEX,
+            is_default=True,
+            default_model="gpt-5.2",
+            env={"FOO": "bar"},
+            secret_env={"TOKEN": "secret"},
+        )
+
+    stored = await repo.get_executor_profile(session, profile.profile_id)
+    assert stored.executor is ExecutorName.CODEX
+    assert stored.default_model == "gpt-5.2"
+    assert stored.env == {"FOO": "bar"}
+    assert stored.secret_env == {"TOKEN": "secret"}
+
+
+@pytest.mark.asyncio
+async def test_default_executor_profile_resolves_for_task(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        await repo.ensure_default_executor_profiles(session)
+        profile = await repo.resolve_executor_profile(
+            session,
+            executor_profile_id=None,
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=datetime.now(UTC) + timedelta(hours=1),
+            executor=profile.executor,
+            executor_profile_id=profile.profile_id,
+        )
+
+    task = await repo.get_task(session, bundle.task.task_id)
+    assert task.executor is ExecutorName.DEBUG_PRINTER
+    assert task.executor_profile_id == profile.profile_id
+
+
+@pytest.mark.asyncio
 async def test_reschedule_requires_observed_schedule_version(
     session: AsyncSession,
 ) -> None:
@@ -859,7 +907,6 @@ async def test_template_instantiation_copies_fields_without_tracking_edits(
             template_id=template.template_id,
             target_working_directory=None,
             planned_at=planned_at,
-            install_default_executor=ExecutorName.CLAUDE_CODE,
         )
         await repo.update_template(
             session,
@@ -892,13 +939,13 @@ async def test_archived_template_cannot_be_instantiated_but_tasks_remain_readabl
             default_target_working_directory=None,
             default_execution_mode=ExecutionMode.ONE_TIME,
             default_schedule_type=ScheduleType.SINGLE_RUN,
+            default_executor=ExecutorName.DEBUG_PRINTER,
         )
         bundle = await repo.instantiate_one_time_task_from_template(
             session,
             template_id=template.template_id,
             target_working_directory="/tmp",
             planned_at=datetime.now(UTC) + timedelta(hours=1),
-            install_default_executor=ExecutorName.CLAUDE_CODE,
         )
         task_id = bundle.task.task_id
         template_id = template.template_id
@@ -922,5 +969,33 @@ async def test_archived_template_cannot_be_instantiated_but_tasks_remain_readabl
                 template_id=template_id,
                 target_working_directory="/tmp",
                 planned_at=datetime.now(UTC) + timedelta(hours=2),
-                install_default_executor=ExecutorName.CLAUDE_CODE,
+            )
+
+
+@pytest.mark.asyncio
+async def test_template_instantiation_requires_explicit_executor_or_default(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        template = await repo.create_template(
+            session,
+            name="Research template",
+            description=None,
+            instruction_source="Original instructions",
+            default_task_title="Original title",
+            default_target_working_directory="/tmp",
+            default_execution_mode=ExecutionMode.ONE_TIME,
+            default_schedule_type=ScheduleType.SINGLE_RUN,
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="template instantiation requires executor_profile_id or executor",
+    ):
+        async with session.begin():
+            await repo.instantiate_one_time_task_from_template(
+                session,
+                template_id=template.template_id,
+                target_working_directory=None,
+                planned_at=datetime.now(UTC) + timedelta(hours=1),
             )

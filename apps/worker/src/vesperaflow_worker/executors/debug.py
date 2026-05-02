@@ -5,14 +5,19 @@ from typing import override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
 
-from .base import ExecutorAdapter
+from .base import ExecutorAdapter, ExecutorRuntimeConfig
 
 logger = logging.getLogger(__name__)
 
 
 class DebugPrinterExecutor(ExecutorAdapter):
     @override
-    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
+    async def execute(
+        self,
+        snapshot: ExecutionSnapshot,
+        runtime_config: ExecutorRuntimeConfig | None = None,
+    ) -> ExecutorOutcome:
+        _ = runtime_config
         logger.info("debug_printer_snapshot %s", snapshot.model_dump_json())
         return ExecutorOutcome(
             terminal_status=RunStatus.COMPLETED,

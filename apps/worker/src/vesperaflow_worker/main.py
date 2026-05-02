@@ -61,11 +61,7 @@ async def run_worker() -> None:
 
     logger.info("worker.executor.build.starting", extra=_settings_log_context(settings))
     try:
-        executor = build_executor(
-            settings.executor_adapter,
-            claude_env=settings.claude_executor_env(),
-            codex_model=settings.codex_model,
-        )
+        executor = build_executor()
     except Exception:
         logger.exception(
             "worker.executor.build.failed",
@@ -118,7 +114,5 @@ def _settings_log_context(settings: object) -> dict[str, object]:
         "temporal_address": getattr(settings, "temporal_address", None),
         "temporal_namespace": getattr(settings, "temporal_namespace", None),
         "task_queue": getattr(settings, "task_queue", None),
-        "executor_adapter": getattr(settings, "executor_adapter", None),
-        "codex_model_present": getattr(settings, "codex_model", None) is not None,
         "run_workspace_root": getattr(settings, "run_workspace_root", None),
     }

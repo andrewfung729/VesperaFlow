@@ -7,9 +7,11 @@ import {
   getRun,
   getRunEvents,
   getTaskDetail,
+  listExecutorProfiles,
   rescheduleTask,
   updateRecurringSchedule,
   updateTask,
+  type ExecutorProfile,
   type ExecutorName,
   type Run,
   type RunEvent,
@@ -27,7 +29,7 @@ import UiButton from '@/components/UiButton.vue'
 import { useRecurringTaskActions } from '@/composables/useRecurringTaskActions'
 import { formatDateTime, isFutureLocal, toDateTimeLocal, toIsoWithOffset } from '@/lib/dateTime'
 import { executionModeLabel } from '@/lib/executionModeDisplay'
-import { executorOptions } from '@/lib/executors'
+import { executorProfileLabel, executorProfileOptions } from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 import {
   browserRecurrenceTimezone,
@@ -48,6 +50,7 @@ const router = useRouter()
 const selectedDetail = ref<TaskDetail | null>(null)
 const selectedRun = ref<Run | null>(null)
 const runEvents = ref<RunEvent[]>([])
+const executorProfiles = ref<ExecutorProfile[]>([])
 const isLoadingDetail = ref(false)
 const isLoadingRunEvents = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -62,6 +65,7 @@ const isEditingTask = ref(false)
 const editTitle = ref('')
 const editInstructions = ref('')
 const editExecutor = ref<ExecutorName>('debug_printer')
+const editExecutorProfileId = ref('')
 const editTargetWorkingDirectory = ref('')
 const selectedRunId = computed(() => {
   const value = route.query.runId
@@ -78,6 +82,7 @@ const isTaskEditable = computed(() => {
     status !== undefined && status !== 'archived' && status !== 'running' && status !== 'completed'
   )
 })
+const executorProfileSelectOptions = computed(() => executorProfileOptions(executorProfiles.value))
 const {
   isActionPending: isRecurringActionPending,
   pauseTask,
@@ -101,6 +106,9 @@ async function loadTaskDetail() {
   errorMessage.value = null
   try {
     selectedDetail.value = await getTaskDetail(props.taskId)
+    if (executorProfiles.value.length === 0) {
+      executorProfiles.value = (await listExecutorProfiles({ limit: 100 })).data
+    }
     if (selectedDetail.value.task.execution_mode === 'one_time') {
       const runId = selectedRunId.value ?? selectedDetail.value.latest_run?.run_id
       selectedRun.value = runId ? await getRun(runId) : selectedDetail.value.latest_run
@@ -161,6 +169,7 @@ function startEditTask() {
   editTitle.value = selectedDetail.value.task.title
   editInstructions.value = selectedDetail.value.task.instruction_source
   editExecutor.value = selectedDetail.value.task.executor
+  editExecutorProfileId.value = selectedDetail.value.task.executor_profile_id ?? ''
   editTargetWorkingDirectory.value = selectedDetail.value.task.target_working_directory ?? ''
   isEditingTask.value = true
 }
@@ -170,6 +179,7 @@ function cancelEditTask() {
   editTitle.value = ''
   editInstructions.value = ''
   editExecutor.value = 'debug_printer'
+  editExecutorProfileId.value = ''
   editTargetWorkingDirectory.value = ''
 }
 
@@ -197,7 +207,8 @@ async function submitTaskUpdate() {
           title,
           instruction_source: instructionSource,
           target_working_directory: targetWorkingDirectory,
-          executor: editExecutor.value,
+          executor: selectedEditExecutor(),
+          executor_profile_id: editExecutorProfileId.value || null,
         },
       )
     } else {
@@ -278,6 +289,22 @@ function resetRecurrenceForm() {
 async function openRunArchive() {
   await router.push({ name: 'recurring-run-archive', params: { taskId: props.taskId } })
 }
+
+function selectedEditExecutor(): ExecutorName | undefined {
+  if (!editExecutorProfileId.value) return editExecutor.value
+  return (
+    executorProfiles.value.find((profile) => profile.profile_id === editExecutorProfileId.value)
+      ?.executor ?? editExecutor.value
+  )
+}
+
+function taskExecutorLabel(): string {
+  const profile = executorProfiles.value.find(
+    (candidate) => candidate.profile_id === selectedDetail.value?.task.executor_profile_id,
+  )
+  if (profile) return executorProfileLabel(profile)
+  return selectedDetail.value?.task.executor ?? 'unknown'
+}
 </script>
 
 <template>
@@ -300,7 +327,11 @@ async function openRunArchive() {
             <TextArea v-model="editInstructions" class="mt-4" label="Instructions" rows="9" />
             <template v-if="isRecurringTask">
               <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                <SelectField v-model="editExecutor" label="Executor" :options="executorOptions" />
+                <SelectField
+                  v-model="editExecutorProfileId"
+                  label="Executor Profile"
+                  :options="executorProfileSelectOptions"
+                />
                 <TextInput
                   v-model="editTargetWorkingDirectory"
                   label="Target Directory"
@@ -333,7 +364,7 @@ async function openRunArchive() {
               {{ selectedDetail.latest_run?.run_status ?? 'planned' }}
             </p>
             <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
-              Executor: {{ selectedDetail.task.executor }}
+              Executor: {{ taskExecutorLabel() }}
             </p>
             <p class="m-0 text-sm text-slate-500 dark:text-slate-400">
               Target: {{ selectedDetail.task.target_working_directory ?? 'none' }}

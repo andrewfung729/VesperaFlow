@@ -31,7 +31,15 @@ from vesperaflow_core import (
 )
 
 from .errors import ConflictError, InvalidStateTransitionError, NotFoundError
-from .models import OccurrenceOverride, Run, RunEvent, Schedule, Task, Template
+from .models import (
+    ExecutorProfile,
+    OccurrenceOverride,
+    Run,
+    RunEvent,
+    Schedule,
+    Task,
+    Template,
+)
 
 
 def new_id(prefix: str) -> str:
@@ -144,7 +152,205 @@ class TemplatePage:
     total: int
 
 
+@dataclass(frozen=True, slots=True)
+class ExecutorProfilePage:
+    items: list[ExecutorProfile]
+    total: int
+
+
+DEFAULT_EXECUTOR_PROFILE_NAMES: dict[ExecutorName, str] = {
+    ExecutorName.CLAUDE_CODE: "Claude Code",
+    ExecutorName.CODEX: "Codex",
+    ExecutorName.KIMI_CODE: "Kimi Code",
+    ExecutorName.DEBUG_PRINTER: "Debug Printer",
+}
+
+
 RUN_OUTCOME_PREVIEW_LIMIT = 240
+
+
+async def ensure_default_executor_profiles(session: AsyncSession) -> None:
+    for executor, name in DEFAULT_EXECUTOR_PROFILE_NAMES.items():
+        existing = await _default_executor_profile(session, executor)
+        if existing is not None:
+            continue
+        now = utc_now()
+        session.add(
+            ExecutorProfile(
+                profile_id=new_id("xpr"),
+                name=name,
+                executor=executor,
+                is_enabled=True,
+                is_default=True,
+                default_model=None,
+                env={},
+                secret_env={},
+                version=1,
+                created_at=now,
+                updated_at=now,
+                archived_at=None,
+            )
+        )
+    await session.flush()
+
+
+async def create_executor_profile(
+    session: AsyncSession,
+    *,
+    name: str,
+    executor: ExecutorName,
+    is_enabled: bool = True,
+    is_default: bool = False,
+    default_model: str | None = None,
+    env: dict[str, str] | None = None,
+    secret_env: dict[str, str] | None = None,
+) -> ExecutorProfile:
+    if is_default:
+        await _clear_default_executor_profile(session, executor)
+    now = utc_now()
+    profile = ExecutorProfile(
+        profile_id=new_id("xpr"),
+        name=name,
+        executor=executor,
+        is_enabled=is_enabled,
+        is_default=is_default,
+        default_model=default_model,
+        env=dict(env or {}),
+        secret_env=dict(secret_env or {}),
+        version=1,
+        created_at=now,
+        updated_at=now,
+        archived_at=None,
+    )
+    session.add(profile)
+    await session.flush()
+    return profile
+
+
+async def get_executor_profile(
+    session: AsyncSession, profile_id: str
+) -> ExecutorProfile:
+    profile = await session.get(ExecutorProfile, profile_id)
+    if profile is None:
+        raise NotFoundError(f"executor profile not found: {profile_id}")
+    return profile
+
+
+async def list_executor_profiles(
+    session: AsyncSession,
+    *,
+    include_archived: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+) -> ExecutorProfilePage:
+    filters: list[ColumnElement[bool]] = []
+    if not include_archived:
+        filters.append(ExecutorProfile.archived_at.is_(None))
+
+    total_statement = select(func.count()).select_from(ExecutorProfile).where(*filters)
+    total = (await session.execute(total_statement)).scalar_one()
+    statement = (
+        select(ExecutorProfile)
+        .where(*filters)
+        .order_by(
+            ExecutorProfile.executor.asc(),
+            ExecutorProfile.is_default.desc(),
+            ExecutorProfile.name.asc(),
+            ExecutorProfile.profile_id.asc(),
+        )
+        .limit(limit)
+        .offset(offset)
+    )
+    return ExecutorProfilePage(
+        items=list(await session.scalars(statement)), total=total
+    )
+
+
+async def update_executor_profile(
+    session: AsyncSession,
+    *,
+    profile_id: str,
+    version: int,
+    name: str | None = None,
+    is_enabled: bool | None = None,
+    is_default: bool | None = None,
+    default_model: str | None = None,
+    set_default_model: bool = False,
+    env: dict[str, str] | None = None,
+    set_env: bool = False,
+    secret_env: dict[str, str | None] | None = None,
+) -> ExecutorProfile:
+    profile = await get_executor_profile(session, profile_id)
+    _require_version(profile.version, version)
+    if profile.archived_at is not None:
+        raise InvalidStateTransitionError("archived executor profiles cannot be edited")
+
+    if is_default is True and not profile.is_default:
+        await _clear_default_executor_profile(session, profile.executor)
+    if name is not None:
+        profile.name = name
+    if is_enabled is not None:
+        profile.is_enabled = is_enabled
+    if is_default is not None:
+        profile.is_default = is_default
+    if set_default_model or default_model is not None:
+        profile.default_model = default_model
+    if set_env or env is not None:
+        profile.env = dict(env or {})
+    if secret_env is not None:
+        updated_secret_env = dict(profile.secret_env or {})
+        for key, value in secret_env.items():
+            if value is None:
+                _ = updated_secret_env.pop(key, None)
+            else:
+                updated_secret_env[key] = value
+        profile.secret_env = updated_secret_env
+
+    profile.version += 1
+    profile.updated_at = utc_now()
+    await session.flush()
+    return profile
+
+
+async def archive_executor_profile(
+    session: AsyncSession,
+    *,
+    profile_id: str,
+    version: int,
+) -> ExecutorProfile:
+    profile = await get_executor_profile(session, profile_id)
+    _require_version(profile.version, version)
+    if profile.archived_at is None:
+        now = utc_now()
+        profile.archived_at = now
+        profile.is_enabled = False
+        profile.is_default = False
+        profile.version += 1
+        profile.updated_at = now
+    await session.flush()
+    return profile
+
+
+async def resolve_executor_profile(
+    session: AsyncSession,
+    *,
+    executor_profile_id: str | None,
+    executor: ExecutorName,
+) -> ExecutorProfile:
+    if executor_profile_id is not None:
+        profile = await get_executor_profile(session, executor_profile_id)
+        if profile.executor != executor:
+            raise ValueError("executor_profile_id does not match executor")
+    else:
+        await ensure_default_executor_profiles(session)
+        profile = await _default_executor_profile(session, executor)
+        if profile is None:
+            raise ValueError(f"default executor profile not found for {executor.value}")
+    if profile.archived_at is not None:
+        raise InvalidStateTransitionError("archived executor profiles cannot be used")
+    if not profile.is_enabled:
+        raise InvalidStateTransitionError("disabled executor profiles cannot be used")
+    return profile
 
 
 async def create_one_time_task(
@@ -156,6 +362,7 @@ async def create_one_time_task(
     planned_at: datetime,
     template_id: str | None = None,
     executor: ExecutorName = ExecutorName.CLAUDE_CODE,
+    executor_profile_id: str | None = None,
 ) -> TaskBundle:
     planned_at_utc = to_utc(planned_at)
     require_future_datetime(planned_at_utc, field_name="planned_at")
@@ -171,6 +378,7 @@ async def create_one_time_task(
         task_status=TaskStatus.SCHEDULED,
         template_id=template_id,
         executor=executor,
+        executor_profile_id=executor_profile_id,
         version=1,
         created_at=now,
         updated_at=now,
@@ -221,6 +429,7 @@ async def create_recurring_task(
     recurrence_timezone: str,
     template_id: str | None = None,
     executor: ExecutorName = ExecutorName.CLAUDE_CODE,
+    executor_profile_id: str | None = None,
 ) -> TaskBundle:
     _require_recurring_schedule(
         schedule_type=ScheduleType.RECURRING_RULE,
@@ -243,6 +452,7 @@ async def create_recurring_task(
         task_status=TaskStatus.SCHEDULED,
         template_id=template_id,
         executor=executor,
+        executor_profile_id=executor_profile_id,
         version=1,
         created_at=now,
         updated_at=now,
@@ -282,6 +492,7 @@ async def create_template(
     default_recurrence_rule: str | None = None,
     default_recurrence_timezone: str | None = None,
     default_executor: ExecutorName | None = None,
+    default_executor_profile_id: str | None = None,
 ) -> Template:
     _require_template_defaults(
         default_execution_mode=default_execution_mode,
@@ -303,6 +514,7 @@ async def create_template(
         default_recurrence_rule=default_recurrence_rule,
         default_recurrence_timezone=default_recurrence_timezone,
         default_executor=default_executor,
+        default_executor_profile_id=default_executor_profile_id,
         version=1,
         created_at=now,
         updated_at=now,
@@ -366,6 +578,8 @@ async def update_template(
     set_default_recurrence_timezone: bool = False,
     default_executor: ExecutorName | None = None,
     set_default_executor: bool = False,
+    default_executor_profile_id: str | None = None,
+    set_default_executor_profile_id: bool = False,
 ) -> Template:
     template = await get_template(session, template_id)
     _require_version(template.version, version)
@@ -418,6 +632,8 @@ async def update_template(
         template.default_recurrence_timezone = default_recurrence_timezone
     if set_default_executor or default_executor is not None:
         template.default_executor = default_executor
+    if set_default_executor_profile_id or default_executor_profile_id is not None:
+        template.default_executor_profile_id = default_executor_profile_id
 
     template.version += 1
     template.updated_at = utc_now()
@@ -448,10 +664,10 @@ async def instantiate_one_time_task_from_template(
     template_id: str,
     target_working_directory: str | None,
     planned_at: datetime | None,
-    install_default_executor: ExecutorName,
     title: str | None = None,
     instruction_source: str | None = None,
     executor: ExecutorName | None = None,
+    executor_profile_id: str | None = None,
 ) -> TaskBundle:
     template = await get_template(session, template_id)
     if template.archived_at is not None:
@@ -469,6 +685,14 @@ async def instantiate_one_time_task_from_template(
     )
     if resolved_target_working_directory is None:
         raise ValueError("template instantiation requires target_working_directory")
+    resolved_executor = executor or template.default_executor
+    if resolved_executor is None:
+        raise ValueError(
+            "template instantiation requires executor_profile_id or executor"
+        )
+    resolved_executor_profile_id = (
+        executor_profile_id or template.default_executor_profile_id
+    )
     return await create_one_time_task(
         session,
         title=title or template.default_task_title or template.name,
@@ -476,7 +700,8 @@ async def instantiate_one_time_task_from_template(
         target_working_directory=resolved_target_working_directory,
         planned_at=resolved_planned_at,
         template_id=template.template_id,
-        executor=executor or template.default_executor or install_default_executor,
+        executor=resolved_executor,
+        executor_profile_id=resolved_executor_profile_id,
     )
 
 
@@ -1199,6 +1424,7 @@ async def update_recurring_task_schedule(
     instruction_source: str | None = None,
     target_working_directory: str | None = None,
     executor: ExecutorName | None = None,
+    executor_profile_id: str | None = None,
 ) -> TaskBundle:
     task = await get_task(session, task_id)
     schedule = await get_schedule_for_task(session, task_id)
@@ -1219,6 +1445,8 @@ async def update_recurring_task_schedule(
         task.target_working_directory = target_working_directory
     if executor is not None:
         task.executor = executor
+    if executor_profile_id is not None:
+        task.executor_profile_id = executor_profile_id
     schedule.recurrence_rule = recurrence_rule
     schedule.recurrence_timezone = recurrence_timezone
     schedule.next_run_at = (
@@ -2173,6 +2401,35 @@ def _require_active_recurring_task(
         )
 
 
+async def _default_executor_profile(
+    session: AsyncSession, executor: ExecutorName
+) -> ExecutorProfile | None:
+    statement = (
+        select(ExecutorProfile)
+        .where(
+            ExecutorProfile.executor == executor,
+            ExecutorProfile.is_default.is_(True),
+            ExecutorProfile.archived_at.is_(None),
+        )
+        .order_by(ExecutorProfile.created_at.asc(), ExecutorProfile.profile_id.asc())
+        .limit(1)
+    )
+    return await session.scalar(statement)
+
+
+async def _clear_default_executor_profile(
+    session: AsyncSession, executor: ExecutorName
+) -> None:
+    statement = select(ExecutorProfile).where(
+        ExecutorProfile.executor == executor,
+        ExecutorProfile.is_default.is_(True),
+        ExecutorProfile.archived_at.is_(None),
+    )
+    for profile in await session.scalars(statement):
+        profile.is_default = False
+        profile.updated_at = utc_now()
+
+
 def _materialized_run_response(
     *,
     run: Run,
@@ -2190,6 +2447,7 @@ def _materialized_run_response(
             task_id=task.task_id,
             schedule_id=run.schedule_id,
             executor=task.executor,
+            executor_profile_id=task.executor_profile_id,
             instruction_source=instruction_source or task.instruction_source,
             planned_start_at=run.planned_start_at,
             working_directory=str(Path(run_workspace_root) / run.run_id),

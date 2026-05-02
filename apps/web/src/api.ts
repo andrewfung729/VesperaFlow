@@ -21,6 +21,7 @@ export interface Task {
   task_status: TaskStatus
   template_id: string | null
   executor: ExecutorName
+  executor_profile_id: string | null
   version: number
   created_at: string
   updated_at: string
@@ -96,6 +97,21 @@ export interface ExecutorPreflightResult {
   code: string
   message: string
   details: Record<string, string | boolean | null>
+}
+
+export interface ExecutorProfile {
+  profile_id: string
+  name: string
+  executor: ExecutorName
+  is_enabled: boolean
+  is_default: boolean
+  default_model: string | null
+  env: Record<string, string>
+  secret_env_keys: string[]
+  version: number
+  created_at: string
+  updated_at: string
+  archived_at: string | null
 }
 
 export interface TaskDetail {
@@ -198,6 +214,7 @@ export interface TaskTemplate {
   default_execution_mode: ExecutionMode
   default_schedule_config: TemplateScheduleConfig
   default_executor: ExecutorName | null
+  default_executor_profile_id: string | null
   version: number
   created_at: string
   updated_at: string
@@ -220,7 +237,8 @@ type CreateTaskPayloadBase = {
   title: string
   instruction_source: string
   target_working_directory: string
-  executor: ExecutorName
+  executor?: ExecutorName
+  executor_profile_id?: string | null
   template_id?: string | null
 }
 
@@ -255,7 +273,8 @@ export async function createTask(payload: CreateTaskPayload): Promise<TaskBundle
       instruction_source: payload.instruction_source,
       target_working_directory: payload.target_working_directory,
       execution_mode: payload.execution_mode ?? 'one_time',
-      executor: payload.executor,
+      executor: payload.executor ?? null,
+      executor_profile_id: payload.executor_profile_id ?? null,
       template_id: payload.template_id ?? null,
       schedule,
     }),
@@ -263,14 +282,73 @@ export async function createTask(payload: CreateTaskPayload): Promise<TaskBundle
 }
 
 export async function preflightExecutor(params: {
-  executor: ExecutorName
+  executor?: ExecutorName
+  executor_profile_id?: string
   target_working_directory?: string
 }): Promise<ExecutorPreflightResult> {
-  const search = new URLSearchParams({ executor: params.executor })
+  const search = new URLSearchParams()
+  if (params.executor) search.set('executor', params.executor)
+  if (params.executor_profile_id) search.set('executor_profile_id', params.executor_profile_id)
   if (params.target_working_directory) {
     search.set('target_working_directory', params.target_working_directory)
   }
   return request<ExecutorPreflightResult>(`/executors/preflight?${search}`)
+}
+
+export async function listExecutorProfiles(
+  params: { include_archived?: boolean; limit?: number; offset?: number } = {},
+): Promise<ListEnvelope<ExecutorProfile>> {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      search.set(key, String(value))
+    }
+  }
+  const suffix = search.size > 0 ? `?${search}` : ''
+  return requestList<ExecutorProfile>(`/executor-profiles${suffix}`)
+}
+
+export async function createExecutorProfile(payload: {
+  name: string
+  executor: ExecutorName
+  is_enabled: boolean
+  is_default: boolean
+  default_model: string | null
+  env: Record<string, string>
+  secret_env: Record<string, string>
+}): Promise<ExecutorProfile> {
+  return request<ExecutorProfile>('/executor-profiles', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateExecutorProfile(
+  profileId: string,
+  payload: {
+    version: number
+    name?: string
+    is_enabled?: boolean
+    is_default?: boolean
+    default_model?: string | null
+    env?: Record<string, string>
+    secret_env?: Record<string, string | null>
+  },
+): Promise<ExecutorProfile> {
+  return request<ExecutorProfile>(`/executor-profiles/${profileId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function archiveExecutorProfile(
+  profileId: string,
+  version: number,
+): Promise<ExecutorProfile> {
+  return request<ExecutorProfile>(`/executor-profiles/${profileId}/archive`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  })
 }
 
 export async function getKanban(includeCanceled: boolean = false): Promise<KanbanBoard> {
@@ -433,6 +511,7 @@ export async function createTemplate(payload: {
   default_task_title: string | null
   default_target_working_directory: string | null
   default_executor: ExecutorName | null
+  default_executor_profile_id?: string | null
 }): Promise<TaskTemplate> {
   return request<TaskTemplate>('/templates', {
     method: 'POST',
@@ -473,6 +552,7 @@ export async function updateTemplate(
     default_task_title?: string | null
     default_target_working_directory?: string | null
     default_executor?: ExecutorName | null
+    default_executor_profile_id?: string | null
   },
 ): Promise<TaskTemplate> {
   return request<TaskTemplate>(`/templates/${templateId}`, {
@@ -509,6 +589,7 @@ export async function updateRecurringSchedule(
     instruction_source?: string
     target_working_directory?: string
     executor?: ExecutorName
+    executor_profile_id?: string | null
   } = {},
 ): Promise<TaskBundle> {
   return request<TaskBundle>(`/tasks/${taskId}/schedule`, {

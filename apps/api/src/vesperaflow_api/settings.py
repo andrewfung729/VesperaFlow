@@ -4,7 +4,6 @@ from functools import lru_cache
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from vesperaflow_core import ExecutorName
 
 
 class ApiSettings(BaseSettings):
@@ -19,11 +18,9 @@ class ApiSettings(BaseSettings):
     temporal_namespace: str = "default"
     task_queue: str = "vesperaflow-default"
     run_workspace_root: str = "/tmp/vesperaflow-runs"
-    default_executor: ExecutorName = ExecutorName.CLAUDE_CODE
     cors_origins: list[str] = ["http://localhost:15173"]
     host: str = "0.0.0.0"
     port: int = 18000
-
 
     @field_validator("database_url", mode="after")
     @classmethod

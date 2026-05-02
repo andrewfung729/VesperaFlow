@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast, override
 
@@ -23,7 +23,7 @@ from vesperaflow_core import (
     RunStatus,
 )
 
-from .base import ExecutorAdapter
+from .base import ExecutorAdapter, ExecutorRuntimeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +36,32 @@ PermissionMode = Literal[
 SettingSource = Literal["user", "project", "local"]
 
 CLAUDE_SETTING_SOURCES: tuple[SettingSource, ...] = ("user", "project", "local")
+DEFAULT_CLAUDE_ENV = {
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
+    "DISABLE_FEEDBACK_COMMAND": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ENABLE_LSP_TOOL": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_NO_FLICKER": "1",
+}
 
 
 @dataclass(slots=True)
 class ClaudeCodeExecutor(ExecutorAdapter):
     permission_mode: PermissionMode = "bypassPermissions"
     setting_sources: tuple[SettingSource, ...] = CLAUDE_SETTING_SOURCES
-    env: dict[str, str] | None = None
+    env: dict[str, str] | None = field(
+        default_factory=lambda: dict(DEFAULT_CLAUDE_ENV)
+    )
 
     @override
-    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
+    async def execute(
+        self,
+        snapshot: ExecutionSnapshot,
+        runtime_config: ExecutorRuntimeConfig | None = None,
+    ) -> ExecutorOutcome:
         workspace = _existing_directory(snapshot.target_working_directory)
         if workspace is None:
             return _failed_outcome(
@@ -61,7 +77,7 @@ class ClaudeCodeExecutor(ExecutorAdapter):
         client: ClaudeSDKClient | None = None
 
         try:
-            sdk = self._build_client(workspace)
+            sdk = self._build_client(workspace, runtime_config)
             client = sdk
             async with sdk:
                 await sdk.query(snapshot.instruction_source)
@@ -116,13 +132,18 @@ class ClaudeCodeExecutor(ExecutorAdapter):
             terminal_code="claude_code_completed",
         )
 
-    def _build_client(self, workspace: Path) -> ClaudeSDKClient:
-        if self.env:
+    def _build_client(
+        self,
+        workspace: Path,
+        runtime_config: ExecutorRuntimeConfig | None,
+    ) -> ClaudeSDKClient:
+        env = _runtime_env(self.env, runtime_config)
+        if env:
             options = ClaudeAgentOptions(
                 cwd=str(workspace),
                 permission_mode=self.permission_mode,
                 setting_sources=list(self.setting_sources),
-                env=dict(self.env),
+                env=env,
             )
         else:
             options = ClaudeAgentOptions(
@@ -131,6 +152,18 @@ class ClaudeCodeExecutor(ExecutorAdapter):
                 setting_sources=list(self.setting_sources),
             )
         return ClaudeSDKClient(options=options)
+
+
+def _runtime_env(
+    base_env: dict[str, str] | None,
+    runtime_config: ExecutorRuntimeConfig | None,
+) -> dict[str, str] | None:
+    env = dict(base_env or {})
+    if runtime_config and runtime_config.env:
+        env.update(runtime_config.env)
+    if runtime_config and runtime_config.default_model:
+        env["ANTHROPIC_MODEL"] = runtime_config.default_model
+    return env or None
 
 
 def _existing_directory(value: str | None) -> Path | None:

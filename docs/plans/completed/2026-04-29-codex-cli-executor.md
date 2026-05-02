@@ -13,7 +13,7 @@ Workflow orchestration.
 - Add `ExecutorName.CODEX` to shared domain contracts and generated/web types.
 - Add a Worker `CodexExecutor` CLI adapter behind the existing executor adapter
   boundary.
-- Route `codex` through `ExecutorRouter` and `build_executor("auto")`.
+- Route `codex` through `ExecutorRouter` and `build_executor()`.
 - Add shallow API preflight for target workspace and `codex` binary
   availability.
 - Expose Codex in web executor selectors and preflight gating.

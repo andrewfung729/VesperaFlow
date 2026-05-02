@@ -59,6 +59,9 @@ class Task(Base):
     task_status: Mapped[TaskStatus] = enum_column(TaskStatus)
     template_id: Mapped[str | None] = mapped_column(String(48))
     executor: Mapped[ExecutorName] = enum_column(ExecutorName)
+    executor_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("executor_profiles.profile_id")
+    )
     version: Mapped[int] = mapped_column(nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -80,6 +83,34 @@ class Task(Base):
         back_populates="task",
         cascade="all, delete-orphan",
     )
+    executor_profile: Mapped["ExecutorProfile | None"] = relationship()
+
+
+class ExecutorProfile(Base):
+    __tablename__: str = "executor_profiles"
+    __table_args__: tuple[Index, ...] = (
+        Index("ix_executor_profiles_executor_default", "executor", "is_default"),
+        Index("ix_executor_profiles_archived_at", "archived_at"),
+    )
+
+    profile_id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    executor: Mapped[ExecutorName] = enum_column(ExecutorName)
+    is_enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
+    is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
+    default_model: Mapped[str | None] = mapped_column(String(160))
+    env: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
+    secret_env: Mapped[dict[str, str]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    version: Mapped[int] = mapped_column(nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Template(Base):
@@ -109,6 +140,9 @@ class Template(Base):
             values_callable=enum_values,
         )
     )
+    default_executor_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("executor_profiles.profile_id")
+    )
     version: Mapped[int] = mapped_column(nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -117,6 +151,7 @@ class Template(Base):
         DateTime(timezone=True), nullable=False
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    default_executor_profile: Mapped[ExecutorProfile | None] = relationship()
 
 
 class Schedule(Base):

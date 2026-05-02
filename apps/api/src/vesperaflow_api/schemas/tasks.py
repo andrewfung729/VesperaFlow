@@ -52,6 +52,7 @@ class TaskCreateRequest(BaseModel):
     execution_mode: ExecutionMode
     template_id: str | None = None
     executor: ExecutorName | None = None
+    executor_profile_id: str | None = None
     schedule: ScheduleCreate
 
 
@@ -68,6 +69,7 @@ class ScheduleUpdateRequest(BaseModel):
     instruction_source: str | None = Field(default=None, min_length=1)
     target_working_directory: str | None = Field(default=None, min_length=1)
     executor: ExecutorName | None = None
+    executor_profile_id: str | None = None
     recurrence_rule: str | None = None
     recurrence_timezone: str | None = None
 
@@ -102,6 +104,7 @@ class TaskResponse(BaseModel):
     task_status: TaskStatus
     template_id: str | None
     executor: ExecutorName
+    executor_profile_id: str | None
     version: int
     created_at: datetime
     updated_at: datetime

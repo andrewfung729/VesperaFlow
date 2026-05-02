@@ -232,15 +232,16 @@ Executor integration rules:
 - CLI-based Executor Activities spawn the official CLI binary in a run-scoped working directory and capture stdout/stderr into artifacts.
 - Activity cancellation is propagated into the executor through the SDK's native cancellation token, context cancellation, `asyncio.CancelledError`, or process signal handling as the executor documents.
 - Concrete executor modules may import their SDK dependencies at module top level, but only if those modules are unreachable from Workflow imports.
+- Executor profile resolution happens in `execute_agent_run`, not in Workflow code. Workflow payloads carry only the profile id; Activity code loads profile model/env values from PostgreSQL immediately before invoking the adapter.
 - The SDK client instance or CLI subprocess is constructed inside the Activity execution path, not at module import time; Activity retries must not reuse stale runtime state across attempts.
 - The adapter must not rely on SDK or CLI internals beyond the stable documented API; coupling to internal types is forbidden.
 
 Secrets handling rules for Executor Activities:
 
-- VesperaFlow does not store or manage LLM provider credentials; the executor runtime is expected to be authenticated independently by the user before invocation
-- the Worker may pass explicit Claude SDK environment settings, such as `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`, into the executor SDK's process environment; it must not pass the full Worker environment
+- VesperaFlow stores executor profile secret env values in PostgreSQL for the local-first v1, but API/UI responses expose only secret keys. Secret values must not be written to structured logs, run events, or Temporal Workflow history.
+- the Worker may pass explicit executor profile environment settings, such as Claude SDK env values, into the executor process environment; it must not pass the full Worker environment
 - the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
-- Codex authentication and provider configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the Worker may pass `VESPERAFLOW_CODEX_MODEL` as the `codex exec --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
+- Codex authentication and provider configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the Worker may pass the executor profile `default_model` as the `codex exec --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
 - Kimi Code authentication is handled by the `kimi` CLI itself, such as through its OAuth token cache, API key environment, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
@@ -450,7 +451,7 @@ Claude Agent SDK compatibility policy:
 
 CLI executor compatibility policy:
 
-- Codex uses `codex exec --json --output-last-message --skip-git-repo-check -C <target> [--model <VESPERAFLOW_CODEX_MODEL>] --dangerously-bypass-approvals-and-sandbox -` from a Worker Activity.
+- Codex uses `codex exec --json --output-last-message --skip-git-repo-check -C <target> [--model <executor_profile.default_model>] --dangerously-bypass-approvals-and-sandbox -` from a Worker Activity.
 - CLI adapters capture stdout/stderr and executor-owned summary artifacts under the run artifact directory instead of passing bulky streams through Workflow history.
 - CLI version or transport changes should update adapter tests, docs, and any local live smoke record together.
 

@@ -4,11 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from vesperaflow_core import ExecutionMode, ScheduleType
+from vesperaflow_core import ExecutionMode, ExecutorName, ScheduleType
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
+from vesperaflow_store.models import ExecutorProfile
 
-from ..dependencies import get_scheduler, get_session, get_settings
+from ..dependencies import get_scheduler, get_session
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
@@ -21,7 +22,6 @@ from ..schemas.templates import (
     TemplateResponse,
     TemplateUpdateRequest,
 )
-from ..settings import ApiSettings
 from ..temporal_scheduler import TemporalScheduler
 from ._shared import observed_version, optional_existing_absolute_directory
 
@@ -38,6 +38,11 @@ async def create_template(
         payload.default_target_working_directory
     )
     async with session.begin():
+        default_executor_profile = await _resolve_optional_template_profile(
+            session,
+            executor_profile_id=payload.default_executor_profile_id,
+            executor=payload.default_executor,
+        )
         template = await repo.create_template(
             session,
             name=payload.name,
@@ -50,7 +55,16 @@ async def create_template(
             default_planned_at=schedule.planned_at,
             default_recurrence_rule=schedule.recurrence_rule,
             default_recurrence_timezone=schedule.recurrence_timezone,
-            default_executor=payload.default_executor,
+            default_executor=(
+                default_executor_profile.executor
+                if default_executor_profile
+                else payload.default_executor
+            ),
+            default_executor_profile_id=(
+                default_executor_profile.profile_id
+                if default_executor_profile
+                else None
+            ),
         )
     return DataEnvelope(data=TemplateResponse.from_model(template).model_dump())
 
@@ -100,7 +114,22 @@ async def update_template(
     default_target_working_directory = optional_existing_absolute_directory(
         payload.default_target_working_directory
     )
+    should_update_executor_profile = (
+        "default_executor_profile_id" in payload_fields
+        or "default_executor" in payload_fields
+    )
     async with session.begin():
+        default_executor_profile = await _resolve_optional_template_profile(
+            session,
+            executor_profile_id=(
+                payload.default_executor_profile_id
+                if should_update_executor_profile
+                else None
+            ),
+            executor=(
+                payload.default_executor if should_update_executor_profile else None
+            ),
+        )
         template = await repo.update_template(
             session,
             template_id=template_id,
@@ -125,8 +154,18 @@ async def update_template(
             if schedule
             else None,
             set_default_recurrence_timezone="recurrence_timezone" in schedule_fields,
-            default_executor=payload.default_executor,
-            set_default_executor="default_executor" in payload_fields,
+            default_executor=(
+                default_executor_profile.executor
+                if default_executor_profile
+                else payload.default_executor
+            ),
+            set_default_executor=should_update_executor_profile,
+            default_executor_profile_id=(
+                default_executor_profile.profile_id
+                if default_executor_profile
+                else payload.default_executor_profile_id
+            ),
+            set_default_executor_profile_id=should_update_executor_profile,
         )
     return DataEnvelope(data=TemplateResponse.from_model(template).model_dump())
 
@@ -152,7 +191,6 @@ async def archive_template(
 async def instantiate_template(
     template_id: str,
     payload: TemplateInstantiateRequest,
-    settings: Annotated[ApiSettings, Depends(get_settings)],
     scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
@@ -167,15 +205,21 @@ async def instantiate_template(
         payload.target_working_directory
     )
     async with session.begin():
+        executor_profile = await _resolve_instantiation_profile(
+            session,
+            template_id=template_id,
+            executor_profile_id=payload.executor_profile_id,
+            executor=payload.executor,
+        )
         bundle = await repo.instantiate_one_time_task_from_template(
             session,
             template_id=template_id,
             target_working_directory=target_working_directory,
             planned_at=schedule.planned_at if schedule else None,
-            install_default_executor=settings.default_executor,
             title=payload.title,
             instruction_source=payload.instruction_source,
-            executor=payload.executor,
+            executor=executor_profile.executor,
+            executor_profile_id=executor_profile.profile_id,
         )
         try:
             schedule_ref = await scheduler.create_one_time_schedule(
@@ -195,3 +239,67 @@ async def instantiate_template(
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )
+
+
+async def _resolve_optional_template_profile(
+    session: AsyncSession,
+    *,
+    executor_profile_id: str | None,
+    executor: ExecutorName | None,
+) -> ExecutorProfile | None:
+    if executor_profile_id is None and executor is None:
+        return None
+    if executor_profile_id is None:
+        if executor is None:
+            return None
+        return await repo.resolve_executor_profile(
+            session,
+            executor_profile_id=None,
+            executor=executor,
+        )
+    profile = await repo.get_executor_profile(session, executor_profile_id)
+    _require_usable_executor_profile(profile)
+    if executor is not None and profile.executor != executor:
+        raise ValueError("executor_profile_id does not match executor")
+    return profile
+
+
+async def _resolve_instantiation_profile(
+    session: AsyncSession,
+    *,
+    template_id: str,
+    executor_profile_id: str | None,
+    executor: ExecutorName | None,
+) -> ExecutorProfile:
+    if executor_profile_id is not None:
+        profile = await repo.get_executor_profile(session, executor_profile_id)
+        _require_usable_executor_profile(profile)
+        if executor is not None and profile.executor != executor:
+            raise ValueError("executor_profile_id does not match executor")
+        return profile
+    template = await repo.get_template(session, template_id)
+    if template.default_executor_profile_id is not None and executor is None:
+        profile = await repo.get_executor_profile(
+            session,
+            template.default_executor_profile_id,
+        )
+        _require_usable_executor_profile(profile)
+        return profile
+    return await repo.resolve_executor_profile(
+        session,
+        executor_profile_id=None,
+        executor=_required_executor(executor or template.default_executor),
+    )
+
+
+def _required_executor(executor: ExecutorName | None) -> ExecutorName:
+    if executor is None:
+        raise ValueError("executor_profile_id or executor is required")
+    return executor
+
+
+def _require_usable_executor_profile(profile: ExecutorProfile) -> None:
+    if profile.archived_at is not None:
+        raise InvalidStateTransitionError("archived executor profiles cannot be used")
+    if not profile.is_enabled:
+        raise InvalidStateTransitionError("disabled executor profiles cannot be used")

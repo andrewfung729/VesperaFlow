@@ -14,13 +14,21 @@ from vesperaflow_core import (
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
 from vesperaflow_worker.activities import TaskRunActivities
-from vesperaflow_worker.executors.base import ExecutorAdapter
+from vesperaflow_worker.executors.base import ExecutorAdapter, ExecutorRuntimeConfig
 from vesperaflow_worker.settings import WorkerSettings
 
 
 class FakeExecutor(ExecutorAdapter):
-    async def execute(self, snapshot: ExecutionSnapshot) -> ExecutorOutcome:
+    def __init__(self) -> None:
+        self.runtime_config: ExecutorRuntimeConfig | None = None
+
+    async def execute(
+        self,
+        snapshot: ExecutionSnapshot,
+        runtime_config: ExecutorRuntimeConfig | None = None,
+    ) -> ExecutorOutcome:
         _ = snapshot
+        self.runtime_config = runtime_config
         return ExecutorOutcome(
             terminal_status=RunStatus.COMPLETED,
             result_summary="Sensitive executor output",
@@ -29,7 +37,7 @@ class FakeExecutor(ExecutorAdapter):
 
 
 @pytest_asyncio.fixture
-async def activity_context(tmp_path) -> AsyncIterator[tuple[str, str, str]]:
+async def activity_context(tmp_path) -> AsyncIterator[tuple[str, str, str, str]]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'worker.db'}"
     engine = create_engine(database_url)
     async with engine.begin() as connection:
@@ -37,6 +45,14 @@ async def activity_context(tmp_path) -> AsyncIterator[tuple[str, str, str]]:
     session_factory = create_session_factory(engine)
     async with session_factory() as session:
         async with session.begin():
+            profile = await repo.create_executor_profile(
+                session,
+                name="Debug Activity Profile",
+                executor=ExecutorName.DEBUG_PRINTER,
+                default_model="debug-model",
+                env={"VISIBLE": "1"},
+                secret_env={"SECRET": "hidden"},
+            )
             bundle = await repo.create_one_time_task(
                 session,
                 title="Activity task",
@@ -44,25 +60,28 @@ async def activity_context(tmp_path) -> AsyncIterator[tuple[str, str, str]]:
                 target_working_directory="/tmp",
                 planned_at=datetime.now(UTC) + timedelta(hours=1),
                 executor=ExecutorName.DEBUG_PRINTER,
+                executor_profile_id=profile.profile_id,
             )
             if bundle.run is None:
                 raise AssertionError("one-time task should create a planned run")
             run_id = bundle.run.run_id
             task_id = bundle.task.task_id
+            profile_id = profile.profile_id
     await engine.dispose()
-    yield database_url, task_id, run_id
+    yield database_url, task_id, run_id, profile_id
 
 
 @pytest.mark.asyncio
 async def test_execute_agent_run_records_events_and_sanitized_logs(
-    activity_context: tuple[str, str, str],
+    activity_context: tuple[str, str, str, str],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    database_url, task_id, run_id = activity_context
+    database_url, task_id, run_id, profile_id = activity_context
     caplog.set_level("INFO")
+    fake_executor = FakeExecutor()
     activities = TaskRunActivities(
         database_url=database_url,
-        executor=FakeExecutor(),
+        executor=fake_executor,
         run_workspace_root="/tmp/vesperaflow-runs",
     )
     payload = TaskRunInput(
@@ -77,6 +96,7 @@ async def test_execute_agent_run_records_events_and_sanitized_logs(
             task_id=task_id,
             schedule_id="sch_123",
             executor=ExecutorName.DEBUG_PRINTER,
+            executor_profile_id=profile_id,
             instruction_source="Sensitive prompt text",
             planned_start_at=datetime.now(UTC),
             working_directory="/tmp/vesperaflow-runs/run_123",
@@ -96,11 +116,17 @@ async def test_execute_agent_run_records_events_and_sanitized_logs(
     await engine.dispose()
 
     assert outcome.terminal_status is RunStatus.COMPLETED
+    assert fake_executor.runtime_config is not None
+    assert fake_executor.runtime_config.default_model == "debug-model"
+    assert fake_executor.runtime_config.env == {"VISIBLE": "1", "SECRET": "hidden"}
     assert [event.event_type for event in events.items] == [
         "executor.started",
         "executor.completed",
     ]
     assert events.items[1].details["terminal_code"] == "fake_completed"
+    assert events.items[0].details["executor_profile_id"] == profile_id
+    assert events.items[0].details["executor_model"] == "debug-model"
+    assert "hidden" not in str(events.items[0].details)
     activity_records = [
         record
         for record in caplog.records
@@ -120,13 +146,8 @@ def test_worker_settings_log_context_is_sanitized() -> None:
 
     settings = WorkerSettings(
         database_url="postgresql+asyncpg://user:secret@localhost/db",
-        anthropic_api_key="sk-secret",
-        codex_model="gpt-5.2",
     )
 
     context = _settings_log_context(settings)
 
-    assert context["codex_model_present"] is True
     assert "database_url" not in context
-    assert "anthropic_api_key" not in context
-    assert "sk-secret" not in str(context)

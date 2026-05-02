@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import json
 import os
 import signal
@@ -17,13 +16,16 @@ from vesperaflow_worker.executors import (
 from vesperaflow_worker.executors import (
     claude_code as claude_code_module,
 )
-from vesperaflow_worker.executors.claude_code import ClaudeCodeExecutor
+from vesperaflow_worker.executors.base import ExecutorRuntimeConfig
+from vesperaflow_worker.executors.claude_code import (
+    DEFAULT_CLAUDE_ENV,
+    ClaudeCodeExecutor,
+)
 from vesperaflow_worker.executors.codex_cli import CodexExecutor
 from vesperaflow_worker.executors.debug import DebugPrinterExecutor
 from vesperaflow_worker.executors.factory import build_executor
 from vesperaflow_worker.executors.kimi_code import KimiCodeExecutor
 from vesperaflow_worker.executors.router import ExecutorRouter
-from vesperaflow_worker.settings import DEFAULT_CLAUDE_ENV, WorkerSettings
 
 
 def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
@@ -169,7 +171,7 @@ async def test_executor_router_dispatches_debug_printer(
     debug_snapshot = snapshot.model_copy(
         update={"executor": ExecutorName.DEBUG_PRINTER}
     )
-    executor = build_executor("auto")
+    executor = build_executor()
 
     outcome = await executor.execute(debug_snapshot)
 
@@ -177,146 +179,22 @@ async def test_executor_router_dispatches_debug_printer(
     assert outcome.terminal_code == "debug_printer_completed"
 
 
-def test_executor_factory_builds_claude_code_without_function_body_import() -> None:
-    executor = build_executor("claude_code")
-    source = inspect.getsource(build_executor)
+def test_executor_factory_builds_router_with_all_adapters() -> None:
+    executor = build_executor()
 
-    assert isinstance(executor, ClaudeCodeExecutor)
-    assert "from .claude_code import" not in source
-
-
-def test_executor_factory_passes_claude_env() -> None:
-    executor = build_executor(
-        "claude_code",
-        claude_env={
-            "ANTHROPIC_API_KEY": "sk-test",
-            "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
-            "ANTHROPIC_MODEL": "claude-sonnet-4-5",
-        },
-    )
-
-    assert isinstance(executor, ClaudeCodeExecutor)
-    assert executor.env == {
-        "ANTHROPIC_API_KEY": "sk-test",
-        "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
-        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
-    }
+    assert isinstance(executor, ExecutorRouter)
+    assert isinstance(executor.claude_code, ClaudeCodeExecutor)
+    assert isinstance(executor.codex, CodexExecutor)
+    assert isinstance(executor.debug_printer, DebugPrinterExecutor)
+    assert isinstance(executor.kimi_code, KimiCodeExecutor)
 
 
-def test_worker_settings_builds_claude_executor_env() -> None:
-    settings = WorkerSettings.model_validate(
-        {
-            "database_url": "postgresql+asyncpg://test@localhost/test",
-            "ANTHROPIC_API_KEY": "sk-test",
-            "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
-            "ANTHROPIC_MODEL": "claude-sonnet-4-5",
-        }
-    )
+def test_executor_factory_uses_claude_runtime_defaults() -> None:
+    executor = build_executor()
 
-    env = settings.claude_executor_env()
-
-    assert env == {
-        **DEFAULT_CLAUDE_ENV,
-        "ANTHROPIC_API_KEY": "sk-test",
-        "ANTHROPIC_BASE_URL": "https://proxy.example.com/v1",
-        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
-    }
-
-
-def test_worker_settings_reads_claude_passthrough_from_dotenv(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / ".env").write_text(
-        "\n".join(
-            [
-                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
-                "ANTHROPIC_API_KEY=sk-dotenv",
-                "ANTHROPIC_BASE_URL=https://dotenv-proxy.example.com/v1",
-                "ANTHROPIC_MODEL=claude-sonnet-4-5",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("VESPERAFLOW_DATABASE_URL", raising=False)
-    monkeypatch.delenv("VESPERAFLOW_CODEX_MODEL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
-    settings = WorkerSettings()
-
-    env = settings.claude_executor_env()
-
-    assert env == {
-        **DEFAULT_CLAUDE_ENV,
-        "ANTHROPIC_API_KEY": "sk-dotenv",
-        "ANTHROPIC_BASE_URL": "https://dotenv-proxy.example.com/v1",
-        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
-    }
-
-
-def test_worker_settings_process_env_overrides_dotenv_passthrough(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / ".env").write_text(
-        "\n".join(
-            [
-                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
-                "ANTHROPIC_BASE_URL=https://dotenv.example.com/v1",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://process.example.com/v1")
-    settings = WorkerSettings()
-
-    env = settings.claude_executor_env()
-
-    assert env["ANTHROPIC_BASE_URL"] == "https://process.example.com/v1"
-
-
-def test_worker_settings_reads_codex_model_from_dotenv(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / ".env").write_text(
-        "\n".join(
-            [
-                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
-                "VESPERAFLOW_CODEX_MODEL=gpt-5.2",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("VESPERAFLOW_DATABASE_URL", raising=False)
-    monkeypatch.delenv("VESPERAFLOW_CODEX_MODEL", raising=False)
-    settings = WorkerSettings()
-
-    assert settings.codex_model == "gpt-5.2"
-
-
-def test_worker_settings_process_env_overrides_codex_model_dotenv(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / ".env").write_text(
-        "\n".join(
-            [
-                "VESPERAFLOW_DATABASE_URL=postgresql+asyncpg://test@localhost/test",
-                "VESPERAFLOW_CODEX_MODEL=gpt-5.1",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("VESPERAFLOW_CODEX_MODEL", "gpt-5.2")
-    settings = WorkerSettings()
-
-    assert settings.codex_model == "gpt-5.2"
+    assert isinstance(executor, ExecutorRouter)
+    assert isinstance(executor.claude_code, ClaudeCodeExecutor)
+    assert executor.claude_code.env == DEFAULT_CLAUDE_ENV
 
 
 @pytest.mark.asyncio
@@ -474,37 +352,6 @@ async def test_claude_code_executor_interrupts_on_cancellation(
     assert sdk.clients[0].interrupted is True
 
 
-def test_executor_factory_builds_kimi_code_without_function_body_import() -> None:
-    executor = build_executor("kimi_code")
-    source = inspect.getsource(build_executor)
-
-    assert isinstance(executor, KimiCodeExecutor)
-    assert "from .kimi_code import" not in source
-
-
-def test_executor_factory_builds_codex_without_function_body_import() -> None:
-    executor = build_executor("codex")
-    source = inspect.getsource(build_executor)
-
-    assert isinstance(executor, CodexExecutor)
-    assert "from .codex_cli import" not in source
-
-
-def test_executor_factory_passes_codex_model() -> None:
-    executor = build_executor("codex", codex_model="gpt-5.2")
-
-    assert isinstance(executor, CodexExecutor)
-    assert executor.model == "gpt-5.2"
-
-
-def test_executor_factory_passes_codex_model_to_router() -> None:
-    executor = build_executor("auto", codex_model="gpt-5.2")
-
-    assert isinstance(executor, ExecutorRouter)
-    assert isinstance(executor.codex, CodexExecutor)
-    assert executor.codex.model == "gpt-5.2"
-
-
 @pytest.mark.asyncio
 async def test_executor_router_dispatches_kimi_code(
     snapshot: ExecutionSnapshot,
@@ -512,7 +359,7 @@ async def test_executor_router_dispatches_kimi_code(
 ) -> None:
     monkeypatch.setattr("shutil.which", lambda _cmd: None)
     kimi_snapshot = snapshot.model_copy(update={"executor": ExecutorName.KIMI_CODE})
-    executor = build_executor("auto")
+    executor = build_executor()
 
     outcome = await executor.execute(kimi_snapshot)
 
@@ -529,7 +376,7 @@ async def test_executor_router_dispatches_codex(
 ) -> None:
     monkeypatch.setattr("shutil.which", lambda _cmd: None)
     codex_snapshot = snapshot.model_copy(update={"executor": ExecutorName.CODEX})
-    executor = build_executor("auto")
+    executor = build_executor()
 
     outcome = await executor.execute(codex_snapshot)
 
@@ -748,7 +595,7 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
 
 
 @pytest.mark.asyncio
-async def test_codex_executor_passes_configured_model(
+async def test_codex_executor_passes_runtime_profile_model(
     snapshot: ExecutionSnapshot,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -762,7 +609,8 @@ async def test_codex_executor_passes_configured_model(
     )
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
     monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
-    executor = CodexExecutor(model="gpt-5.2")
+    executor = CodexExecutor()
+    runtime_config = ExecutorRuntimeConfig(default_model="gpt-5.2")
 
     outcome = await executor.execute(
         snapshot.model_copy(
@@ -771,7 +619,8 @@ async def test_codex_executor_passes_configured_model(
                 "working_directory": str(run_dir),
                 "target_working_directory": str(target_dir),
             }
-        )
+        ),
+        runtime_config,
     )
 
     assert outcome.terminal_status is RunStatus.COMPLETED

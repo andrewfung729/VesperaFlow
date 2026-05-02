@@ -5,8 +5,10 @@ import { useRouter } from 'vue-router'
 import {
   archiveTemplate,
   createTemplate,
+  listExecutorProfiles,
   listTemplates,
   updateTemplate,
+  type ExecutorProfile,
   type ExecutorName,
   type TaskTemplate,
 } from '@/api'
@@ -15,25 +17,31 @@ import SelectField from '@/components/SelectField.vue'
 import TextArea from '@/components/TextArea.vue'
 import TextInput from '@/components/TextInput.vue'
 import UiButton from '@/components/UiButton.vue'
-import { executorOptions } from '@/lib/executors'
+import {
+  defaultExecutorProfileId as defaultProfileId,
+  executorProfileLabel,
+  executorProfileOptions,
+} from '@/lib/executors'
 import { readableError } from '@/lib/errors'
 
 const router = useRouter()
 const installDefaultExecutor = '' as const
 
 const templates = ref<TaskTemplate[]>([])
+const executorProfiles = ref<ExecutorProfile[]>([])
 const editingTemplate = ref<TaskTemplate | null>(null)
 const name = ref('')
 const description = ref('')
 const defaultTaskTitle = ref('')
 const defaultTargetWorkingDirectory = ref('')
 const instructions = ref('')
-const defaultExecutor = ref<ExecutorName | typeof installDefaultExecutor>('debug_printer')
+const defaultExecutorProfileId = ref<string | typeof installDefaultExecutor>('')
 const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref<string | null>(null)
 
 const canSave = computed(() => name.value.trim().length > 0 && instructions.value.trim().length > 0)
+const executorProfileSelectOptions = computed(() => executorProfileOptions(executorProfiles.value))
 
 onMounted(loadTemplates)
 
@@ -41,8 +49,15 @@ async function loadTemplates() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    const response = await listTemplates({ limit: 100 })
-    templates.value = response.data
+    const [templatesResponse, profilesResponse] = await Promise.all([
+      listTemplates({ limit: 100 }),
+      listExecutorProfiles({ limit: 100 }),
+    ])
+    templates.value = templatesResponse.data
+    executorProfiles.value = profilesResponse.data
+    if (!defaultExecutorProfileId.value) {
+      defaultExecutorProfileId.value = defaultExecutorProfileIdValue()
+    }
   } catch (error) {
     errorMessage.value = readableError(error)
   } finally {
@@ -57,7 +72,7 @@ function editTemplate(template: TaskTemplate) {
   defaultTaskTitle.value = template.default_task_title ?? ''
   defaultTargetWorkingDirectory.value = template.default_target_working_directory ?? ''
   instructions.value = template.instruction_source
-  defaultExecutor.value = template.default_executor ?? installDefaultExecutor
+  defaultExecutorProfileId.value = template.default_executor_profile_id ?? installDefaultExecutor
 }
 
 function resetForm() {
@@ -67,7 +82,7 @@ function resetForm() {
   defaultTaskTitle.value = ''
   defaultTargetWorkingDirectory.value = ''
   instructions.value = ''
-  defaultExecutor.value = 'debug_printer'
+  defaultExecutorProfileId.value = defaultExecutorProfileIdValue()
 }
 
 async function saveTemplate() {
@@ -86,7 +101,8 @@ async function saveTemplate() {
         instruction_source: instructions.value.trim(),
         default_task_title: defaultTaskTitle.value.trim() || null,
         default_target_working_directory: defaultTargetWorkingDirectory.value.trim() || null,
-        default_executor: defaultExecutor.value || null,
+        default_executor: selectedExecutorForTemplate(),
+        default_executor_profile_id: defaultExecutorProfileId.value || null,
       })
     } else {
       await createTemplate({
@@ -95,7 +111,8 @@ async function saveTemplate() {
         instruction_source: instructions.value.trim(),
         default_task_title: defaultTaskTitle.value.trim() || null,
         default_target_working_directory: defaultTargetWorkingDirectory.value.trim() || null,
-        default_executor: defaultExecutor.value || null,
+        default_executor: selectedExecutorForTemplate(),
+        default_executor_profile_id: defaultExecutorProfileId.value || null,
       })
     }
     resetForm()
@@ -122,6 +139,26 @@ async function archiveSelected(template: TaskTemplate) {
 
 async function useTemplate(template: TaskTemplate) {
   await router.push({ name: 'compose', query: { templateId: template.template_id } })
+}
+
+function defaultExecutorProfileIdValue(): string {
+  return defaultProfileId(executorProfiles.value)
+}
+
+function selectedExecutorForTemplate(): ExecutorName | null {
+  if (!defaultExecutorProfileId.value) return null
+  return (
+    executorProfiles.value.find((profile) => profile.profile_id === defaultExecutorProfileId.value)
+      ?.executor ?? null
+  )
+}
+
+function templateExecutorLabel(template: TaskTemplate): string {
+  const profile = executorProfiles.value.find(
+    (candidate) => candidate.profile_id === template.default_executor_profile_id,
+  )
+  if (profile) return executorProfileLabel(profile)
+  return template.default_executor || 'No default'
 }
 </script>
 
@@ -185,7 +222,7 @@ async function useTemplate(template: TaskTemplate) {
                   {{ template.default_target_working_directory || 'choose when creating' }}
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
-                  {{ template.default_executor || 'install default' }}
+                  {{ templateExecutorLabel(template) }}
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex justify-end gap-2">
@@ -228,9 +265,9 @@ async function useTemplate(template: TaskTemplate) {
             placeholder="Describe the reusable AI work..."
           />
           <SelectField
-            v-model="defaultExecutor"
-            label="Default Executor"
-            :options="executorOptions"
+            v-model="defaultExecutorProfileId"
+            label="Default Executor Profile"
+            :options="executorProfileSelectOptions"
             empty-label="Install default"
             :empty-value="installDefaultExecutor"
           />

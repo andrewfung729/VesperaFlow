@@ -11,8 +11,13 @@ from temporalio import activity
 from vesperaflow_core import ExecutorOutcome, MaterializedRun, RunStatus, TaskRunInput
 from vesperaflow_store import create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
+from vesperaflow_store.errors import InvalidStateTransitionError, NotFoundError
 
-from vesperaflow_worker.executors.base import ExecutorAdapter, ExecutorUnavailableError
+from vesperaflow_worker.executors.base import (
+    ExecutorAdapter,
+    ExecutorRuntimeConfig,
+    ExecutorUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,15 +178,26 @@ class TaskRunActivities:
             "activity.execute_agent_run.starting",
             extra=_activity_log_context(payload=payload),
         )
+        runtime_config: ExecutorRuntimeConfig | None = None
+        profile_error: Exception | None = None
+        try:
+            runtime_config = await self._executor_runtime_config(payload)
+        except (InvalidStateTransitionError, NotFoundError, ValueError) as exc:
+            profile_error = exc
         await self._record_executor_event(
             payload,
             event_type="executor.started",
             message="Executor invocation started.",
-            details=_executor_event_details(payload),
+            details=_executor_event_details(payload, runtime_config),
         )
         heartbeat_task = asyncio.create_task(_heartbeat_loop(interval_seconds=60))
         try:
-            outcome = await self._executor.execute(payload.execution_snapshot)
+            if profile_error is not None:
+                raise ExecutorUnavailableError(str(profile_error))
+            outcome = await self._executor.execute(
+                payload.execution_snapshot,
+                runtime_config,
+            )
         except ExecutorUnavailableError as exc:
             outcome = ExecutorOutcome(
                 terminal_status=RunStatus.FAILED,
@@ -215,7 +231,7 @@ class TaskRunActivities:
                 if outcome.terminal_status is RunStatus.CANCELED
                 else "info",
                 details={
-                    **_executor_event_details(payload),
+                    **_executor_event_details(payload, runtime_config),
                     "terminal_status": outcome.terminal_status.value,
                     "terminal_code": outcome.terminal_code,
                     "has_result_summary": outcome.result_summary is not None,
@@ -383,6 +399,34 @@ class TaskRunActivities:
                     **_activity_event_context(),
                 )
 
+    async def _executor_runtime_config(
+        self,
+        payload: TaskRunInput,
+    ) -> ExecutorRuntimeConfig | None:
+        profile_id = payload.execution_snapshot.executor_profile_id
+        if profile_id is None:
+            return None
+        async with self._session_factory() as session:
+            profile = await repo.get_executor_profile(session, profile_id)
+            if profile.archived_at is not None:
+                raise InvalidStateTransitionError(
+                    "archived executor profiles cannot be used"
+                )
+            if not profile.is_enabled:
+                raise InvalidStateTransitionError(
+                    "disabled executor profiles cannot be used"
+                )
+            if profile.executor != payload.execution_snapshot.executor:
+                raise ValueError("executor profile does not match execution snapshot")
+            env = dict(profile.env or {})
+            env.update(profile.secret_env or {})
+            return ExecutorRuntimeConfig(
+                executor_profile_id=profile.profile_id,
+                executor_profile_name=profile.name,
+                default_model=profile.default_model,
+                env=env,
+            )
+
     async def close(self) -> None:
         await self._engine.dispose()
 
@@ -451,10 +495,18 @@ def _activity_event_context() -> ActivityEventContext:
     }
 
 
-def _executor_event_details(payload: TaskRunInput) -> dict[str, object]:
-    return {
+def _executor_event_details(
+    payload: TaskRunInput,
+    runtime_config: ExecutorRuntimeConfig | None = None,
+) -> dict[str, object]:
+    details: dict[str, object] = {
         "executor": payload.execution_snapshot.executor.value,
+        "executor_profile_id": payload.execution_snapshot.executor_profile_id,
     }
+    if runtime_config is not None:
+        details["executor_profile_name"] = runtime_config.executor_profile_name
+        details["executor_model"] = runtime_config.default_model
+    return details
 
 
 def _executor_terminal_event_type(status: RunStatus) -> str:

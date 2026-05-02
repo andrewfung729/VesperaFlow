@@ -1,8 +1,8 @@
 # VesperaFlow Worker
 
 Temporal Worker process for durable task execution. It registers Workflows and
-Activities, connects to Temporal, and invokes configured executor adapters from
-Activities.
+Activities, connects to Temporal, and routes each run to the executor adapter
+recorded on the task snapshot.
 
 ## Ownership
 
@@ -40,21 +40,15 @@ uv run vesperaflow-worker
 
 The VS Code task `dev: worker` runs the same command.
 
-## Executor Settings
+## Executor Runtime
 
-Environment variables use the `VESPERAFLOW_` prefix:
-
-- `VESPERAFLOW_EXECUTOR_ADAPTER`: `auto`, `router`, `debug_printer`,
-  `claude_code`, `codex`, or `kimi_code`.
-- `VESPERAFLOW_CLAUDE_ENV`: optional JSON object of explicit SDK env values.
-- `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL`: optional
-  Claude SDK env values loaded from the process environment or root `.env`.
-
-The Worker also adds Claude Code subprocess defaults for disabling telemetry,
+The Worker always routes by the executor recorded on each task snapshot. It also
+adds Claude Code subprocess defaults for disabling telemetry,
 error reporting, feedback prompts, autoupdates, nonessential traffic, and
-flicker, and for enabling the LSP tool and experimental agent teams. Override
-those flags, or the `ANTHROPIC_*` values, with `VESPERAFLOW_CLAUDE_ENV` if
-needed. These values are never written to Temporal payloads or logs.
+flicker, and for enabling the LSP tool and experimental agent teams. Executor
+profile env and secret env values are loaded from PostgreSQL inside the
+Activity immediately before invocation. These values are never written to
+Temporal payloads or logs.
 
 Claude Code runs with `permission_mode="bypassPermissions"` and loads
 `user`, `project`, and `local` setting sources. It writes full executor output
@@ -68,11 +62,12 @@ to be available through the CLI's own configuration. It writes
 `kimi-output.txt` and `kimi-result.json` under the run artifact directory.
 
 Codex runs via the `codex` CLI in non-interactive exec mode with `--json`,
-`--output-last-message`, `--skip-git-repo-check`, `-C <target>`,
-`--sandbox workspace-write`, and stdin prompt input. It requires the `codex`
-binary to be on `PATH` and authenticated/configured through Codex CLI itself.
-It writes `codex-last-message.txt`, `codex-events.jsonl`, and
-`codex-stderr.txt` under the run artifact directory.
+`--output-last-message`, `--skip-git-repo-check`, `-C <target>`, optional
+profile `default_model` as `--model`, full-permission bypass, and stdin prompt
+input. It requires the `codex` binary to be on `PATH` and
+authenticated/configured through Codex CLI itself. It writes
+`codex-last-message.txt`, `codex-events.jsonl`, and `codex-stderr.txt` under
+the run artifact directory.
 
 ## Tests
 

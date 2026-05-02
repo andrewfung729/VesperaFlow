@@ -152,6 +152,7 @@ class TemporalScheduler:
                 task_id=task.task_id,
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
+                executor_profile_id=task.executor_profile_id,
                 instruction_source=task.instruction_source,
                 planned_start_at=planned_at,
                 working_directory=str(
@@ -189,6 +190,7 @@ class TemporalScheduler:
                 task_id=task.task_id,
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
+                executor_profile_id=task.executor_profile_id,
                 instruction_source=task.instruction_source,
                 planned_start_at=planned_at,
                 working_directory=str(
@@ -241,6 +243,7 @@ class TemporalScheduler:
                 task_id=task.task_id,
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
+                executor_profile_id=task.executor_profile_id,
                 instruction_source=task.instruction_source,
                 planned_start_at=planned_at,
                 working_directory=str(
@@ -295,6 +298,7 @@ class TemporalScheduler:
                 task_id=task.task_id,
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
+                executor_profile_id=task.executor_profile_id,
                 instruction_source=task.instruction_source,
                 planned_start_at=planned_at,
                 working_directory=str(

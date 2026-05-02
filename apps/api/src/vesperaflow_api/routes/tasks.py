@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import (
     ExecutionMode,
+    ExecutorName,
     OccurrenceEditScope,
     RunStatus,
     ScheduleType,
@@ -13,9 +14,9 @@ from vesperaflow_core import (
 )
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
-from vesperaflow_store.models import OccurrenceOverride
+from vesperaflow_store.models import ExecutorProfile, OccurrenceOverride
 
-from ..dependencies import get_scheduler, get_session, get_settings
+from ..dependencies import get_scheduler, get_session
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
@@ -34,7 +35,6 @@ from ..schemas.tasks import (
     VersionedCommand,
     bundle_response,
 )
-from ..settings import ApiSettings
 from ..temporal_scheduler import TemporalScheduler
 from ._shared import observed_version, require_existing_absolute_directory
 
@@ -44,7 +44,6 @@ router = APIRouter()
 @router.post("/tasks", status_code=201)
 async def create_task(
     payload: TaskCreateRequest,
-    settings: Annotated[ApiSettings, Depends(get_settings)],
     scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
@@ -64,10 +63,16 @@ async def create_task(
         target_working_directory = require_existing_absolute_directory(
             raw_target_working_directory
         )
-        executor = (
-            payload.executor
-            or (template.default_executor if template else None)
-            or settings.default_executor
+        executor_profile = await _resolve_task_executor_profile(
+            session,
+            executor_profile_id=payload.executor_profile_id
+            or (
+                template.default_executor_profile_id
+                if template and payload.executor is None
+                else None
+            ),
+            executor=payload.executor
+            or (template.default_executor if template else None),
         )
         if payload.execution_mode is ExecutionMode.ONE_TIME:
             if (
@@ -84,7 +89,8 @@ async def create_task(
                 target_working_directory=target_working_directory,
                 planned_at=payload.schedule.planned_at,
                 template_id=payload.template_id,
-                executor=executor,
+                executor=executor_profile.executor,
+                executor_profile_id=executor_profile.profile_id,
             )
             create_schedule = scheduler.create_one_time_schedule
         else:
@@ -105,7 +111,8 @@ async def create_task(
                 recurrence_rule=payload.schedule.recurrence_rule,
                 recurrence_timezone=payload.schedule.recurrence_timezone,
                 template_id=payload.template_id,
-                executor=executor,
+                executor=executor_profile.executor,
+                executor_profile_id=executor_profile.profile_id,
             )
             create_schedule = scheduler.create_recurring_schedule
         try:
@@ -223,6 +230,11 @@ async def update_schedule(
                 run=bundle.run,
             )
         else:
+            executor_profile = await _resolve_optional_task_executor_profile(
+                session,
+                executor_profile_id=payload.executor_profile_id,
+                executor=payload.executor,
+            )
             recurrence_rule = (
                 payload.recurrence_rule or current_schedule.recurrence_rule
             )
@@ -248,7 +260,10 @@ async def update_schedule(
                 title=payload.title,
                 instruction_source=payload.instruction_source,
                 target_working_directory=target_working_directory,
-                executor=payload.executor,
+                executor=executor_profile.executor if executor_profile else None,
+                executor_profile_id=(
+                    executor_profile.profile_id if executor_profile else None
+                ),
             )
             schedule_ref = await scheduler.replace_recurring_schedule(
                 task=bundle.task,
@@ -262,6 +277,57 @@ async def update_schedule(
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )
+
+
+async def _resolve_task_executor_profile(
+    session: AsyncSession,
+    *,
+    executor_profile_id: str | None,
+    executor: ExecutorName | None,
+) -> ExecutorProfile:
+    if executor_profile_id is None:
+        if executor is None:
+            raise ValueError("executor_profile_id or executor is required")
+        return await repo.resolve_executor_profile(
+            session,
+            executor_profile_id=None,
+            executor=executor,
+        )
+    profile = await repo.get_executor_profile(session, executor_profile_id)
+    _require_usable_executor_profile(profile)
+    if executor is not None and profile.executor != executor:
+        raise ValueError("executor_profile_id does not match executor")
+    return profile
+
+
+async def _resolve_optional_task_executor_profile(
+    session: AsyncSession,
+    *,
+    executor_profile_id: str | None,
+    executor: ExecutorName | None,
+) -> ExecutorProfile | None:
+    if executor_profile_id is None and executor is None:
+        return None
+    if executor_profile_id is None:
+        if executor is None:
+            return None
+        return await repo.resolve_executor_profile(
+            session,
+            executor_profile_id=None,
+            executor=executor,
+        )
+    profile = await repo.get_executor_profile(session, executor_profile_id)
+    _require_usable_executor_profile(profile)
+    if executor is not None and profile.executor != executor:
+        raise ValueError("executor_profile_id does not match executor")
+    return profile
+
+
+def _require_usable_executor_profile(profile: ExecutorProfile) -> None:
+    if profile.archived_at is not None:
+        raise InvalidStateTransitionError("archived executor profiles cannot be used")
+    if not profile.is_enabled:
+        raise InvalidStateTransitionError("disabled executor profiles cannot be used")
 
 
 @router.post("/tasks/{task_id}/schedule/pause")

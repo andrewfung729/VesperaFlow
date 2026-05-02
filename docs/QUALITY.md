@@ -87,8 +87,8 @@ Update this file when any of these change:
 - 2026-04-26: Added the M4 recurring todo read model across store/API/web,
   including active/paused ordering, latest-run context, pause/resume list
   actions, tests, and refreshed generated API facts.
-- 2026-04-26: Added allowlisted Claude Agent SDK environment passthrough in the
-  Worker while keeping credentials out of Temporal payloads and logs.
+- 2026-04-26: Added executor profile environment passthrough in the Worker
+  while keeping credentials out of Temporal payloads and logs.
 - 2026-04-27: Added the M5 calendar and occurrence override slice across
   store/API/web, including scoped occurrence update/cancel commands, calendar
   projection, generated fact refresh, and repository/API/web smoke coverage.
@@ -108,9 +108,11 @@ Update this file when any of these change:
 - 2026-04-29: Consolidated repeated apps/web alert, form, recurrence editor,
   execution/status badge, recurring action, and page state patterns into shared
   components, helpers, and composables.
-- 2026-04-30: Updated Codex Worker execution to use full-permission bypass mode
-  and added `VESPERAFLOW_CODEX_MODEL` for selecting the CLI model from Worker
-  runtime settings.
+- 2026-04-30: Updated Codex Worker execution to use full-permission bypass mode;
+  Codex model selection now belongs to executor profiles.
 - 2026-04-30: Added Worker JSON logs and persisted run event timelines across
   store/API/Worker/web, including Activity correlation metadata and UI timeline
   surfaces.
+- 2026-05-02: Removed install-level executor fallbacks from API and Worker
+  runtime settings; new tasks now require a request or template
+  executor/profile, and the Worker always routes by task snapshot.

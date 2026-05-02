@@ -196,6 +196,7 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
   "task_status": "scheduled",
   "template_id": "tpl_123",
   "executor": "claude_code",
+  "executor_profile_id": "xpr_default_claude_code",
   "version": 1,
   "created_at": "2026-04-24T09:00:00+08:00",
   "updated_at": "2026-04-24T09:00:00+08:00",
@@ -205,14 +206,16 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 
 `task_status` is a server-derived projection; see `docs/domain-model.md` §4.4.
 
-`executor` identifies the resolved coding-agent runtime that will perform this task's runs. MVP supports:
+`executor` identifies the resolved coding-agent runtime that will perform this task's runs. `executor_profile_id` identifies the profile that supplied executor-level defaults such as model and environment for future runs. MVP supports:
 
 - `claude_code` — Claude Agent SDK
 - `codex` — Codex CLI non-interactive `codex exec` transport
 - `kimi_code` — Kimi CLI text transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
-Clients may omit `executor` on create requests; the backend resolves it from the template default or install-level default and stores the resolved value on the task. `opencode` and additional runtimes are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
+Clients must pass `executor_profile_id`, pass the legacy `executor` field, or reference a template that supplies a default executor/profile. If only `executor` is provided, the backend resolves that executor's default profile. There is no install-level executor fallback. `opencode` and additional runtimes are post-MVP. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
+
+Executor profile responses include `secret_env_keys` only. Secret env values are write-only in the API response even though this local-first v1 stores them in PostgreSQL.
 
 `target_working_directory` is the absolute existing directory where the executor performs user work. It is distinct from the per-run artifact workspace used by VesperaFlow to store summaries and transcripts.
 
@@ -537,6 +540,7 @@ Request for one-time:
   "instruction_source": "Research funding announcements...",
   "target_working_directory": "/Users/you/project",
   "execution_mode": "one_time",
+  "executor_profile_id": "xpr_default_claude_code",
   "template_id": null,
   "schedule": {
     "schedule_type": "single_run",
@@ -579,13 +583,14 @@ Validation:
 
 - `title` is required
 - `instruction_source` is required
+- request must include `executor_profile_id` or `executor`, unless a referenced template supplies a default executor/profile
 - `target_working_directory` is required unless a referenced template supplies `default_target_working_directory`; the resolved value must be absolute and must refer to an existing directory on the API/Worker host
 - `execution_mode` is required
 - one-time tasks must provide `planned_at` with a timezone offset in the future
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
 - `schedule.schedule_type` must match `execution_mode`
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
-- `executor`, if provided, must be `claude_code`, `codex`, `kimi_code`, or `debug_printer`; if omitted the template default or install default is used
+- `executor`, if provided, must be `claude_code`, `codex`, `kimi_code`, or `debug_printer`; if omitted the request or template must provide `executor_profile_id`
 - if the target working directory is invalid, the endpoint returns `422 validation_error`
 - recurring Temporal Schedule fires materialize a product run in the first Workflow Activity, keyed by `(schedule_id, occurrence_key)`
 - SDK import, authentication, and runtime configuration failures are reported by the Worker on run start
