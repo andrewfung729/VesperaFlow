@@ -4,6 +4,7 @@ import CalendarView from '@/views/CalendarView.vue'
 import HistoryView from '@/views/HistoryView.vue'
 import ExecutorsView from '@/views/ExecutorsView.vue'
 import KanbanBoardView from '@/views/KanbanBoardView.vue'
+import ArchivedView from '@/views/ArchivedView.vue'
 import RecurringRunArchiveView from '@/views/RecurringRunArchiveView.vue'
 import RecurringTodoView from '@/views/RecurringTodoView.vue'
 import RunOutcomeReaderView from '@/views/RunOutcomeReaderView.vue'
@@ -50,6 +51,11 @@ export const routes: RouteRecordRaw[] = [
     path: '/history',
     name: 'history',
     component: HistoryView,
+  },
+  {
+    path: '/archived',
+    name: 'archived',
+    component: ArchivedView,
   },
   {
     path: '/tasks/:taskId/runs',

@@ -12,6 +12,7 @@ from vesperaflow_core import (
     ScheduleType,
     TaskStatus,
     occurrence_key_for_datetime,
+    utc_now,
 )
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
@@ -754,7 +755,7 @@ async def test_run_preview_lists_support_filters_and_truncation(
     assert failed_only.items[0].outcome_truncated is True
     assert failed_only.items[0].outcome_preview is not None
     assert failed_only.items[0].outcome_preview.endswith("...")
-    assert len(failed_only.items[0].outcome_preview) == 240
+    assert len(failed_only.items[0].outcome_preview) == 80
 
 
 @pytest.mark.asyncio
@@ -890,6 +891,150 @@ async def test_templates_can_be_listed_updated_and_archived(
     assert archived_at is not None
     assert active_after_archive.total == 0
     assert all_after_archive.total == 1
+
+
+@pytest.mark.asyncio
+async def test_archive_one_time_task_sets_archived_at_and_derives_archived_status(
+    session: AsyncSession,
+) -> None:
+    planned_at = datetime.now(UTC) + timedelta(hours=1)
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=planned_at,
+        )
+    task_id = bundle.task.task_id
+    task_version = bundle.task.version
+
+    async with session.begin():
+        archived = await repo.archive_task(
+            session,
+            task_id=task_id,
+            version=task_version,
+        )
+
+    assert archived.archived_at is not None
+    assert archived.task_status is TaskStatus.ARCHIVED
+    assert archived.version == task_version + 1
+
+
+@pytest.mark.asyncio
+async def test_archive_recurring_task_sets_archived_at_and_derives_archived_status(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily standup",
+            instruction_source="Summarize progress",
+            target_working_directory="/tmp",
+            recurrence_rule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
+            recurrence_timezone="Asia/Taipei",
+        )
+    task_id = bundle.task.task_id
+    task_version = bundle.task.version
+
+    async with session.begin():
+        archived = await repo.archive_task(
+            session,
+            task_id=task_id,
+            version=task_version,
+        )
+
+    assert archived.archived_at is not None
+    assert archived.task_status is TaskStatus.ARCHIVED
+    assert archived.version == task_version + 1
+
+
+@pytest.mark.asyncio
+async def test_archive_running_task_rejected(
+    session: AsyncSession,
+) -> None:
+    planned_at = datetime.now(UTC) + timedelta(hours=1)
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=planned_at,
+        )
+        run = await repo.get_latest_run(session, bundle.task.task_id)
+        assert run is not None
+        run.run_status = RunStatus.RUNNING
+        run.actual_start_at = utc_now()
+        await repo._recompute_task_status(session, bundle.task)
+
+    with pytest.raises(
+        InvalidStateTransitionError, match="running tasks cannot be archived"
+    ):
+        async with session.begin():
+            await repo.archive_task(
+                session,
+                task_id=bundle.task.task_id,
+                version=bundle.task.version,
+            )
+
+
+@pytest.mark.asyncio
+async def test_unarchive_task_clears_archived_at_and_restores_status(
+    session: AsyncSession,
+) -> None:
+    planned_at = datetime.now(UTC) + timedelta(hours=1)
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=planned_at,
+        )
+    task_id = bundle.task.task_id
+
+    async with session.begin():
+        archived = await repo.archive_task(
+            session,
+            task_id=task_id,
+            version=bundle.task.version,
+        )
+    archived_version = archived.version
+
+    async with session.begin():
+        restored = await repo.unarchive_task(
+            session,
+            task_id=task_id,
+            version=archived_version,
+        )
+
+    assert restored.task.archived_at is None
+    assert restored.task.task_status is TaskStatus.SCHEDULED
+    assert restored.task.version == archived_version + 1
+
+
+@pytest.mark.asyncio
+async def test_unarchive_non_archived_task_rejected(
+    session: AsyncSession,
+) -> None:
+    planned_at = datetime.now(UTC) + timedelta(hours=1)
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=planned_at,
+        )
+
+    with pytest.raises(InvalidStateTransitionError, match="task is not archived"):
+        async with session.begin():
+            await repo.unarchive_task(
+                session,
+                task_id=bundle.task.task_id,
+                version=bundle.task.version,
+            )
 
 
 @pytest.mark.asyncio

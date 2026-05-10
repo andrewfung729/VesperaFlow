@@ -79,7 +79,89 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Failed Task')
     expect(wrapper.text()).toContain('Executor failed')
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/views/history?limit=50'),
+      expect.stringContaining('/views/history?limit=20'),
+      expect.any(Object),
+    )
+    expect(wrapper.text()).toContain('Page 1 of 1')
+    const prevButton = wrapper.findAll('button').find((button) => button.text() === 'Previous')
+    const nextButton = wrapper.findAll('button').find((button) => button.text() === 'Next')
+    expect(prevButton?.attributes('disabled')).toBeDefined()
+    expect(nextButton?.attributes('disabled')).toBeDefined()
+  })
+
+  it('paginates history results', async () => {
+    const historyItems = Array.from({ length: 25 }, (_, i) => ({
+      history_item_id: `hist_run-${i + 1}`,
+      run_id: `run-${i + 1}`,
+      task_id: `task-${i + 1}`,
+      title: `Task ${i + 1}`,
+      execution_mode: 'one_time' as const,
+      run_status: 'completed' as const,
+      finished_at: '2026-04-25T11:00:00+08:00',
+      outcome_preview: 'Done',
+      outcome_truncated: false,
+      outcome_source: 'result_summary',
+    }))
+    const fetchMock = stubFetch({ historyItems })
+
+    const { wrapper } = await mountAppAt('/history')
+
+    expect(wrapper.text()).toContain('Page 1 of 2')
+    expect(wrapper.text()).toContain('Showing 1 - 20 of 25')
+
+    const nextButton = wrapper.findAll('button').find((button) => button.text() === 'Next')
+    if (!nextButton) throw new Error('Expected Next button to render')
+    await nextButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Page 2 of 2')
+    expect(wrapper.text()).toContain('Showing 21 - 25 of 25')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/views/history?limit=20&offset=20'),
+      expect.any(Object),
+    )
+
+    const prevButton = wrapper.findAll('button').find((button) => button.text() === 'Previous')
+    if (!prevButton) throw new Error('Expected Previous button to render')
+    await prevButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Page 1 of 2')
+  })
+
+  it('resets to page 1 when history filters change', async () => {
+    const historyItems = Array.from({ length: 25 }, (_, i) => ({
+      history_item_id: `hist_run-${i + 1}`,
+      run_id: `run-${i + 1}`,
+      task_id: `task-${i + 1}`,
+      title: `Task ${i + 1}`,
+      execution_mode: 'one_time' as const,
+      run_status: i < 15 ? 'completed' : 'failed',
+      finished_at: '2026-04-25T11:00:00+08:00',
+      outcome_preview: 'Done',
+      outcome_truncated: false,
+      outcome_source: 'result_summary',
+    }))
+    const fetchMock = stubFetch({ historyItems })
+
+    const { wrapper } = await mountAppAt('/history')
+
+    const nextButton = wrapper.findAll('button').find((button) => button.text() === 'Next')
+    if (!nextButton) throw new Error('Expected Next button to render')
+    await nextButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Page 2 of 2')
+
+    const statusSelect = wrapper.find('select')
+    if (!statusSelect) throw new Error('Expected status select to render')
+    await statusSelect.setValue('failed')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Page 1 of')
+    expect(wrapper.text()).not.toContain('Page 2 of')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/views/history?status=failed&limit=20&offset=0'),
       expect.any(Object),
     )
   })

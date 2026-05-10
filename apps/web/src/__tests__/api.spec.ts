@@ -165,6 +165,24 @@ describe('api', () => {
     )
   })
 
+  it('sends history offset as query parameter', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ data: [], meta: { total: 0 } }), {
+          status: 200,
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const history = await getHistory({ offset: 20 })
+
+    expect(history.meta.total).toBe(0)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/views/history?offset=20'),
+      expect.any(Object),
+    )
+  })
+
   it('sends recurring todo and lifecycle requests', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)

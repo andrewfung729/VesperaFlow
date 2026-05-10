@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 // See here how to get started:
 // https://playwright.dev/docs/intro
@@ -42,6 +42,10 @@ test('renders the calendar route shell', async ({ page }) => {
 })
 
 test('covers the MVP navigation path', async ({ page }) => {
+  // Freeze time so the calendar's default week range covers the stubbed
+  // 2026-04-28 occurrences; otherwise the desktop time-grid renders no
+  // articles and only the md:hidden mobile agenda list matches the locator.
+  await page.clock.install({ time: new Date('2026-04-27T09:00:00+08:00') })
   await stubApi(page)
 
   await page.goto('/compose')
@@ -69,13 +73,17 @@ test('covers the MVP navigation path', async ({ page }) => {
   await page.getByRole('button', { name: 'Read Outcome' }).click()
   await expect(page.getByRole('heading', { name: 'Active Recurring' })).toBeVisible()
   await expect(page.getByText('Outcome Reader')).toBeVisible()
-  await expect(page.locator('.run-reader-content').getByText('Daily recurring completed')).toBeVisible()
+  await expect(
+    page.locator('.run-reader-content').getByText('Daily recurring completed'),
+  ).toBeVisible()
   await page.getByRole('button', { name: 'Back to Archive' }).click()
   await expect(page.getByRole('heading', { name: 'Run Archive' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Calendar' }).click()
   await expect(page.getByRole('button', { name: 'Day', exact: true })).toBeVisible()
-  const oneTimeCalendarItem = page.locator('[role="button"][aria-label*="One-Time Calendar"]').first()
+  const oneTimeCalendarItem = page
+    .locator('[role="button"][aria-label*="One-Time Calendar"]')
+    .first()
   const recurringCalendarItem = page
     .locator('[role="button"][aria-label*="Recurring Calendar"]')
     .first()

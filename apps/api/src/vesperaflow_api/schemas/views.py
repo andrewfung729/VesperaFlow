@@ -4,7 +4,12 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from vesperaflow_core import ExecutionMode, RunStatus, ScheduleStatus, TaskStatus
-from vesperaflow_store.repositories import CalendarItem, HistoryItem, RecurringTodoItem
+from vesperaflow_store.repositories import (
+    CalendarItem,
+    HistoryItem,
+    RecurringTodoItem,
+    run_outcome_preview_values,
+)
 
 
 class KanbanCardResponse(BaseModel):
@@ -91,8 +96,9 @@ class RecurringTodoItemResponse(BaseModel):
     latest_run_id: str | None
     latest_run_outcome: RunStatus | None
     latest_run_finished_at: datetime | None
-    result_summary: str | None
-    failure_reason: str | None
+    outcome_preview: str | None
+    outcome_truncated: bool = False
+    outcome_source: str | None
 
     @classmethod
     def from_item(cls, item: RecurringTodoItem) -> "RecurringTodoItemResponse":
@@ -100,6 +106,11 @@ class RecurringTodoItemResponse(BaseModel):
             raise ValueError("recurring todo item requires recurrence_rule")
         if item.schedule.recurrence_timezone is None:
             raise ValueError("recurring todo item requires recurrence_timezone")
+        preview, truncated, source = (
+            run_outcome_preview_values(item.latest_run)
+            if item.latest_run
+            else (None, False, None)
+        )
         return cls(
             item_id=f"todo_{item.task.task_id}",
             task_id=item.task.task_id,
@@ -115,6 +126,7 @@ class RecurringTodoItemResponse(BaseModel):
             latest_run_finished_at=(
                 item.latest_run.finished_at if item.latest_run else None
             ),
-            result_summary=item.latest_run.result_summary if item.latest_run else None,
-            failure_reason=item.latest_run.failure_reason if item.latest_run else None,
+            outcome_preview=preview,
+            outcome_truncated=truncated,
+            outcome_source=source,
         )

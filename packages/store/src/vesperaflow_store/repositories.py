@@ -167,7 +167,7 @@ DEFAULT_EXECUTOR_PROFILE_NAMES: dict[ExecutorName, str] = {
 }
 
 
-RUN_OUTCOME_PREVIEW_LIMIT = 240
+RUN_OUTCOME_PREVIEW_LIMIT = 80
 
 
 async def ensure_default_executor_profiles(session: AsyncSession) -> None:
@@ -943,8 +943,8 @@ async def list_history(
     for run, task in rows:
         if run.finished_at is None:
             continue
-        outcome_preview, outcome_truncated, outcome_source = (
-            _run_outcome_preview_values(run)
+        outcome_preview, outcome_truncated, outcome_source = run_outcome_preview_values(
+            run
         )
         items.append(
             HistoryItem(
@@ -1273,6 +1273,41 @@ async def update_task(
     task.updated_at = utc_now()
     await session.flush()
     return task
+
+
+async def archive_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+) -> Task:
+    task = await get_task(session, task_id)
+    _require_version(task.version, version)
+    if task.task_status is TaskStatus.RUNNING:
+        raise InvalidStateTransitionError("running tasks cannot be archived")
+    if task.archived_at is None:
+        task.archived_at = utc_now()
+        await _recompute_task_status(session, task)
+    await session.flush()
+    return task
+
+
+async def unarchive_task(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    version: int,
+) -> TaskBundle:
+    task = await get_task(session, task_id)
+    schedule = await get_schedule_for_task(session, task_id)
+    _require_version(task.version, version)
+    if task.archived_at is None:
+        raise InvalidStateTransitionError("task is not archived")
+    task.archived_at = None
+    latest_run = await get_latest_run(session, task_id)
+    await _recompute_task_status(session, task)
+    await session.flush()
+    return TaskBundle(task=task, schedule=schedule, run=latest_run)
 
 
 async def reschedule_one_time_task(
@@ -1900,7 +1935,10 @@ async def get_one_time_kanban(
 ) -> dict[str, list[TaskDetail]]:
     statement = (
         select(Task)
-        .where(Task.execution_mode == ExecutionMode.ONE_TIME)
+        .where(
+            Task.execution_mode == ExecutionMode.ONE_TIME,
+            Task.archived_at.is_(None),
+        )
         .options(selectinload(Task.schedules), selectinload(Task.runs))
         .order_by(Task.created_at.desc())
     )
@@ -2101,7 +2139,7 @@ async def _occurrence_overrides_by_schedule_id(
     return by_schedule
 
 
-def _run_outcome_preview_values(run: Run) -> tuple[str | None, bool, str | None]:
+def run_outcome_preview_values(run: Run) -> tuple[str | None, bool, str | None]:
     if run.result_summary is not None:
         full_text = run.result_summary
         source = "result_summary"
@@ -2117,9 +2155,7 @@ def _run_outcome_preview_values(run: Run) -> tuple[str | None, bool, str | None]
 
 
 def _to_run_preview(run: Run) -> RunPreview:
-    outcome_preview, outcome_truncated, outcome_source = _run_outcome_preview_values(
-        run
-    )
+    outcome_preview, outcome_truncated, outcome_source = run_outcome_preview_values(run)
     return RunPreview(
         run_id=run.run_id,
         task_id=run.task_id,

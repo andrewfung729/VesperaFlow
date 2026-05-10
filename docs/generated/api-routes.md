@@ -19,6 +19,7 @@
 | `POST` | `/api/v1/tasks` | `create_task` | `TaskCreateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}` | `get_task` | `` | `DataEnvelope` |
 | `PATCH` | `/api/v1/tasks/{task_id}` | `update_task` | `TaskUpdateRequest` | `DataEnvelope` |
+| `POST` | `/api/v1/tasks/{task_id}/archive` | `archive_task` | `VersionedCommand` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/detail` | `get_task_detail` | `` | `DataEnvelope` |
 | `POST` | `/api/v1/tasks/{task_id}/occurrences/cancel` | `cancel_occurrence` | `OccurrenceCancelRequest` | `DataEnvelope` |
 | `POST` | `/api/v1/tasks/{task_id}/occurrences/update` | `update_occurrence` | `OccurrenceUpdateRequest` | `DataEnvelope` |
@@ -30,6 +31,7 @@
 | `POST` | `/api/v1/tasks/{task_id}/schedule/cancel` | `cancel_schedule` | `VersionedCommand` | `DataEnvelope` |
 | `POST` | `/api/v1/tasks/{task_id}/schedule/pause` | `pause_schedule` | `VersionedCommand` | `DataEnvelope` |
 | `POST` | `/api/v1/tasks/{task_id}/schedule/resume` | `resume_schedule` | `VersionedCommand` | `DataEnvelope` |
+| `POST` | `/api/v1/tasks/{task_id}/unarchive` | `unarchive_task` | `VersionedCommand` | `DataEnvelope` |
 | `GET` | `/api/v1/templates` | `list_templates` | `` | `ListEnvelope` |
 | `POST` | `/api/v1/templates` | `create_template` | `TemplateCreateRequest` | `DataEnvelope` |
 | `GET` | `/api/v1/templates/{template_id}` | `get_template` | `` | `DataEnvelope` |

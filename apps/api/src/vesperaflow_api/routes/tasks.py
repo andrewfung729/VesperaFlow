@@ -9,6 +9,7 @@ from vesperaflow_core import (
     ExecutorName,
     OccurrenceEditScope,
     RunStatus,
+    ScheduleStatus,
     ScheduleType,
     TaskStatus,
 )
@@ -398,6 +399,76 @@ async def cancel_schedule(
                 version=version,
             )
         await scheduler.delete_schedule(bundle.schedule.schedule_id)
+    return DataEnvelope(
+        data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
+    )
+
+
+@router.post("/tasks/{task_id}/archive")
+async def archive_task(
+    task_id: str,
+    payload: VersionedCommand,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> DataEnvelope:
+    version = observed_version(payload.version, if_match)
+    async with session.begin():
+        task = await repo.archive_task(
+            session,
+            task_id=task_id,
+            version=version,
+        )
+        schedule = await repo.get_schedule_for_task(session, task_id)
+    await scheduler.delete_schedule(schedule.schedule_id)
+    return DataEnvelope(data=TaskResponse.from_model(task).model_dump())
+
+
+@router.post("/tasks/{task_id}/unarchive")
+async def unarchive_task(
+    task_id: str,
+    payload: VersionedCommand,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> DataEnvelope:
+    version = observed_version(payload.version, if_match)
+    async with session.begin():
+        bundle = await repo.unarchive_task(
+            session,
+            task_id=task_id,
+            version=version,
+        )
+
+    schedule_ref: str | None = None
+    if bundle.task.execution_mode == ExecutionMode.ONE_TIME:
+        if (
+            bundle.schedule.schedule_status == ScheduleStatus.ACTIVE
+            and bundle.run is not None
+        ):
+            schedule_ref = await scheduler.create_one_time_schedule(
+                task=bundle.task,
+                schedule=bundle.schedule,
+                run=bundle.run,
+            )
+    elif bundle.task.execution_mode == ExecutionMode.RECURRING:
+        if bundle.schedule.schedule_status in {
+            ScheduleStatus.ACTIVE,
+            ScheduleStatus.PAUSED,
+        }:
+            schedule_ref = await scheduler.create_recurring_schedule(
+                task=bundle.task,
+                schedule=bundle.schedule,
+            )
+
+    if schedule_ref is not None:
+        async with session.begin():
+            _ = await repo.set_schedule_external_ref(
+                session,
+                schedule_id=bundle.schedule.schedule_id,
+                external_schedule_ref=schedule_ref,
+            )
+
     return DataEnvelope(
         data=bundle_response(bundle.task, bundle.schedule, bundle.run).model_dump()
     )

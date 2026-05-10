@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
+  archiveTask,
   cancelTask,
   getRun,
   getRunEvents,
   getTaskDetail,
   listExecutorProfiles,
   rescheduleTask,
+  unarchiveTask,
   updateRecurringSchedule,
   updateTask,
   type ExecutorProfile,
@@ -271,6 +273,30 @@ async function submitCancel() {
   if (!confirmed) return
   try {
     await cancelTask(props.taskId, selectedDetail.value.schedule.version)
+    await loadTaskDetail()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  }
+}
+
+async function submitArchive() {
+  if (!selectedDetail.value?.task) return
+  const confirmed = window.confirm(`Archive "${selectedDetail.value.task.title}"?`)
+  if (!confirmed) return
+  try {
+    await archiveTask(props.taskId, selectedDetail.value.task.version)
+    await loadTaskDetail()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  }
+}
+
+async function submitUnarchive() {
+  if (!selectedDetail.value?.task) return
+  const confirmed = window.confirm(`Unarchive "${selectedDetail.value.task.title}"?`)
+  if (!confirmed) return
+  try {
+    await unarchiveTask(props.taskId, selectedDetail.value.task.version)
     await loadTaskDetail()
   } catch (error) {
     errorMessage.value = readableError(error)
@@ -575,6 +601,19 @@ function taskExecutorLabel(): string {
           </template>
           <UiButton variant="danger" :disabled="!selectedDetail.schedule" @click="submitCancel">
             {{ isRecurringTask ? 'Cancel Series' : 'Cancel Task' }}
+          </UiButton>
+          <UiButton
+            v-if="
+              selectedDetail.task.task_status !== 'archived' &&
+              selectedDetail.task.task_status !== 'running'
+            "
+            :disabled="!selectedDetail.schedule"
+            @click="submitArchive"
+          >
+            Archive
+          </UiButton>
+          <UiButton v-if="selectedDetail.task.task_status === 'archived'" @click="submitUnarchive">
+            Unarchive
           </UiButton>
         </aside>
       </div>

@@ -359,6 +359,25 @@ export async function getKanban(includeCanceled: boolean = false): Promise<Kanba
   return request<KanbanBoard>(`/views/kanban${query ? `?${query}` : ''}`)
 }
 
+export async function listTasks(
+  params: {
+    execution_mode?: ExecutionMode | ''
+    status?: TaskStatus | ''
+    include_archived?: boolean
+    limit?: number
+    offset?: number
+  } = {},
+): Promise<ListEnvelope<Task>> {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      search.set(key, String(value))
+    }
+  }
+  const suffix = search.size > 0 ? `?${search}` : ''
+  return requestList<Task>(`/tasks${suffix}`)
+}
+
 export async function getTaskDetail(taskId: string): Promise<TaskDetail> {
   return request<TaskDetail>(`/tasks/${taskId}/detail`)
 }
@@ -604,6 +623,20 @@ export async function updateRecurringSchedule(
 
 export async function cancelTask(taskId: string, version: number): Promise<TaskBundle> {
   return request<TaskBundle>(`/tasks/${taskId}/schedule/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  })
+}
+
+export async function archiveTask(taskId: string, version: number): Promise<Task> {
+  return request<Task>(`/tasks/${taskId}/archive`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  })
+}
+
+export async function unarchiveTask(taskId: string, version: number): Promise<TaskBundle> {
+  return request<TaskBundle>(`/tasks/${taskId}/unarchive`, {
     method: 'POST',
     body: JSON.stringify({ version }),
   })

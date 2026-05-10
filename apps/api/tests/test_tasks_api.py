@@ -12,7 +12,7 @@ from vesperaflow_api.app import create_app
 from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
 from vesperaflow_api.settings import get_settings as _cached_get_settings
-from vesperaflow_core import occurrence_key_for_datetime
+from vesperaflow_core import RunStatus, occurrence_key_for_datetime
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.models import Run, Task
@@ -610,7 +610,8 @@ async def test_recurring_todo_returns_recurring_items_with_latest_outcome(
     assert items[0]["schedule_status"] == "active"
     assert items[0]["task_status"] == "scheduled"
     assert items[0]["latest_run_outcome"] == "failed"
-    assert items[0]["failure_reason"] == "Executor failed"
+    assert items[0]["outcome_preview"] == "Executor failed"
+    assert items[0]["outcome_source"] == "failure_reason"
     assert items[1]["schedule_status"] == "paused"
     assert active_only.json()["meta"]["total"] == 1
     assert active_only.json()["data"][0]["title"] == "Active daily"
@@ -733,6 +734,39 @@ async def test_cancel_task_updates_kanban(client: AsyncClient) -> None:
         "columns"
     ]
     assert len(columns_with_canceled["canceled"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_archived_task_excluded_from_kanban(client: AsyncClient) -> None:
+    created = await client.post("/api/v1/tasks", json=_create_payload())
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    task_id = task["task_id"]
+
+    # Before archiving, the task appears in the upcoming column.
+    board_before = await client.get("/api/v1/views/kanban")
+    assert board_before.status_code == 200
+    columns_before: dict[str, list[dict[str, Any]]] = board_before.json()["data"][
+        "columns"
+    ]
+    assert any(card["task_id"] == task_id for card in columns_before["upcoming"])
+
+    archived = await client.post(
+        f"/api/v1/tasks/{task_id}/archive",
+        json={"version": task["version"]},
+    )
+    assert archived.status_code == 200
+    assert archived.json()["data"]["task_status"] == "archived"
+
+    # After archiving, the task must not appear in any kanban column
+    # (including the default upcoming fallthrough).
+    board_after = await client.get("/api/v1/views/kanban?include_canceled=true")
+    assert board_after.status_code == 200
+    columns_after: dict[str, list[dict[str, Any]]] = board_after.json()["data"][
+        "columns"
+    ]
+    for column_cards in columns_after.values():
+        assert all(card["task_id"] != task_id for card in column_cards)
 
 
 @pytest.mark.asyncio
@@ -860,13 +894,13 @@ async def test_task_run_list_returns_preview_with_server_filter_and_pagination(
     assert item["outcome_source"] == "failure_reason"
     assert item["outcome_truncated"] is True
     assert item["outcome_preview"].endswith("...")
-    assert len(item["outcome_preview"]) == 240
+    assert len(item["outcome_preview"]) == 80
     assert "result_summary" not in item
     assert "failure_reason" not in item
 
 
 @pytest.mark.asyncio
-async def test_get_run_endpoint_returns_full_outcome(
+async def test_get_run_endpoint_returns_outcome_preview(
     api_context: ApiTestContext,
 ) -> None:
     client = api_context.client
@@ -887,7 +921,10 @@ async def test_get_run_endpoint_returns_full_outcome(
 
     assert response.status_code == 200
     assert response.json()["data"]["run_id"] == run_id
-    assert response.json()["data"]["result_summary"] == long_summary
+    assert response.json()["data"]["outcome_truncated"] is True
+    assert response.json()["data"]["outcome_source"] == "result_summary"
+    assert response.json()["data"]["outcome_preview"].endswith("...")
+    assert len(response.json()["data"]["outcome_preview"]) == 80
 
 
 @pytest.mark.asyncio
@@ -939,9 +976,7 @@ async def test_run_reader_endpoint_returns_selected_and_adjacent_ids(
             middle_run_id = middle_run.run_id
             newest_run_id = newest_run.run_id
 
-    response = await client.get(
-        f"/api/v1/tasks/{task_id}/runs/{middle_run_id}/reader"
-    )
+    response = await client.get(f"/api/v1/tasks/{task_id}/runs/{middle_run_id}/reader")
 
     assert response.status_code == 200
     body = response.json()["data"]
@@ -1121,6 +1156,94 @@ async def test_template_default_target_directory_can_create_task(
 
     assert direct.status_code == 201
     assert direct.json()["data"]["task"]["target_working_directory"] == str(Path.cwd())
+
+
+@pytest.mark.asyncio
+async def test_archive_task_deletes_schedule(client: AsyncClient) -> None:
+    created = await client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    task = created.json()["data"]["task"]
+    task_id = task["task_id"]
+    version = task["version"]
+
+    archived = await client.post(
+        f"/api/v1/tasks/{task_id}/archive",
+        json={"version": version},
+    )
+    assert archived.status_code == 200
+    assert archived.json()["data"]["task_status"] == "archived"
+    assert archived.json()["data"]["archived_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_archive_running_task_rejected(api_context: ApiTestContext) -> None:
+    created = await api_context.client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    task = created.json()["data"]["task"]
+    task_id = task["task_id"]
+
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            run = await repo.get_latest_run(session, task_id)
+            assert run is not None
+            run.run_status = RunStatus.RUNNING
+            run.actual_start_at = datetime.now(UTC)
+            task_model = await repo.get_task(session, task_id)
+            await repo._recompute_task_status(session, task_model)
+            version = task_model.version
+
+    archived = await api_context.client.post(
+        f"/api/v1/tasks/{task_id}/archive",
+        json={"version": version},
+    )
+    assert archived.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_unarchive_task_recreates_schedule(client: AsyncClient) -> None:
+    created = await client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    task = created.json()["data"]["task"]
+    task_id = task["task_id"]
+    version = task["version"]
+
+    archived = await client.post(
+        f"/api/v1/tasks/{task_id}/archive",
+        json={"version": version},
+    )
+    assert archived.status_code == 200
+    archived_version = archived.json()["data"]["version"]
+
+    unarchived = await client.post(
+        f"/api/v1/tasks/{task_id}/unarchive",
+        json={"version": archived_version},
+    )
+    assert unarchived.status_code == 200
+    assert unarchived.json()["data"]["task"]["task_status"] == "scheduled"
+    assert unarchived.json()["data"]["task"]["archived_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_unarchive_recurring_task_recreates_schedule(client: AsyncClient) -> None:
+    created = await client.post("/api/v1/tasks", json=_recurring_payload())
+    assert created.status_code == 201
+    task = created.json()["data"]["task"]
+    task_id = task["task_id"]
+    version = task["version"]
+
+    archived = await client.post(
+        f"/api/v1/tasks/{task_id}/archive",
+        json={"version": version},
+    )
+    assert archived.status_code == 200
+    archived_version = archived.json()["data"]["version"]
+
+    unarchived = await client.post(
+        f"/api/v1/tasks/{task_id}/unarchive",
+        json={"version": archived_version},
+    )
+    assert unarchived.status_code == 200
+    assert unarchived.json()["data"]["task"]["task_status"] == "scheduled"
 
 
 class _SchedulePayload(TypedDict):

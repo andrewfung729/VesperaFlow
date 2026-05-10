@@ -15,7 +15,12 @@ from vesperaflow_core import (
     TaskStatus,
 )
 from vesperaflow_store.models import OccurrenceOverride, Run, RunEvent, Schedule, Task
-from vesperaflow_store.repositories import RunPreview, RunReaderContext, TaskDetail
+from vesperaflow_store.repositories import (
+    RunPreview,
+    RunReaderContext,
+    TaskDetail,
+    run_outcome_preview_values,
+)
 
 
 class ErrorBody(BaseModel):
@@ -86,16 +91,22 @@ class RunResponse(BaseModel):
     planned_start_at: datetime
     actual_start_at: datetime | None
     finished_at: datetime | None
-    result_summary: str | None
-    failure_reason: str | None
     external_execution_ref: str | None
     occurrence_key: str | None
     created_at: datetime
     updated_at: datetime
+    outcome_preview: str | None
+    outcome_truncated: bool = False
+    outcome_source: str | None
 
     @classmethod
     def from_model(cls, run: Run) -> "RunResponse":
-        return cls.model_validate(_model_dict(run))
+        data = _model_dict(run)
+        preview, truncated, source = run_outcome_preview_values(run)
+        data["outcome_preview"] = preview
+        data["outcome_truncated"] = truncated
+        data["outcome_source"] = source
+        return cls.model_validate(data)
 
 
 class RunEventResponse(BaseModel):

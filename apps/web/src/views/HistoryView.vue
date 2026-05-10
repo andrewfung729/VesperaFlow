@@ -6,6 +6,7 @@ import { getHistory, type ExecutionMode, type HistoryItem } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import ExecutionModeBadge from '@/components/ExecutionModeBadge.vue'
 import PageStatePanel from '@/components/PageStatePanel.vue'
+import PaginationControls from '@/components/PaginationControls.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import SelectField from '@/components/SelectField.vue'
 import UiButton from '@/components/UiButton.vue'
@@ -22,6 +23,8 @@ const isLoadingHistory = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusFilter = ref<HistoryItem['run_status'] | ''>('')
 const modeFilter = ref<ExecutionMode | ''>('')
+const currentPage = ref(1)
+const pageSize = 20
 const terminalStatusOptions: Array<{ label: string; value: HistoryItem['run_status'] }> = [
   { label: 'Completed', value: 'completed' },
   { label: 'Failed', value: 'failed' },
@@ -38,7 +41,8 @@ async function refreshHistory() {
     const response = await getHistory({
       status: statusFilter.value,
       execution_mode: modeFilter.value,
-      limit: 50,
+      limit: pageSize,
+      offset: (currentPage.value - 1) * pageSize,
     })
     items.value = response.data
     total.value = response.meta.total
@@ -49,6 +53,11 @@ async function refreshHistory() {
   } finally {
     isLoadingHistory.value = false
   }
+}
+
+function resetPageAndRefresh() {
+  currentPage.value = 1
+  void refreshHistory()
 }
 
 async function openHistoryItem(item: HistoryItem) {
@@ -91,7 +100,7 @@ async function openHistoryItem(item: HistoryItem) {
             label="Status"
             :options="terminalStatusOptions"
             empty-label="All"
-            @change="refreshHistory"
+            @change="resetPageAndRefresh"
           />
           <SelectField
             v-model="modeFilter"
@@ -99,7 +108,7 @@ async function openHistoryItem(item: HistoryItem) {
             label="Mode"
             :options="executionModeOptions"
             empty-label="All"
-            @change="refreshHistory"
+            @change="resetPageAndRefresh"
           />
           <UiButton :disabled="isLoadingHistory" @click="refreshHistory"> Refresh </UiButton>
         </div>
@@ -160,6 +169,13 @@ async function openHistoryItem(item: HistoryItem) {
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        v-if="!isLoadingHistory && items.length > 0"
+        v-model:current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        @update:current-page="refreshHistory"
+      />
     </section>
   </div>
 </template>
