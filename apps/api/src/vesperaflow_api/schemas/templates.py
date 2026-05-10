@@ -2,51 +2,10 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
-from vesperaflow_core import ExecutionMode, ExecutorName, ScheduleType
+from pydantic import BaseModel
+from vesperaflow_core import ExecutionMode, ExecutorName
+from vesperaflow_core.client_contracts import TemplateScheduleConfig
 from vesperaflow_store.models import Template
-
-
-class TemplateScheduleConfig(BaseModel):
-    schedule_type: ScheduleType
-    planned_at: datetime | None = None
-    recurrence_rule: str | None = None
-    recurrence_timezone: str | None = None
-
-
-class TemplateCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=240)
-    description: str | None = None
-    instruction_source: str = Field(min_length=1)
-    default_task_title: str | None = Field(default=None, min_length=1, max_length=240)
-    default_target_working_directory: str | None = Field(default=None, min_length=1)
-    default_execution_mode: ExecutionMode
-    default_schedule_config: TemplateScheduleConfig
-    default_executor: ExecutorName | None = None
-    default_executor_profile_id: str | None = None
-
-
-class TemplateUpdateRequest(BaseModel):
-    version: int | None = None
-    name: str | None = Field(default=None, min_length=1, max_length=240)
-    description: str | None = None
-    instruction_source: str | None = Field(default=None, min_length=1)
-    default_task_title: str | None = Field(default=None, min_length=1, max_length=240)
-    default_target_working_directory: str | None = Field(default=None, min_length=1)
-    default_execution_mode: ExecutionMode | None = None
-    default_schedule_config: TemplateScheduleConfig | None = None
-    default_executor: ExecutorName | None = None
-    default_executor_profile_id: str | None = None
-
-
-class TemplateInstantiateRequest(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=240)
-    instruction_source: str | None = Field(default=None, min_length=1)
-    target_working_directory: str | None = Field(default=None, min_length=1)
-    execution_mode: ExecutionMode | None = None
-    executor: ExecutorName | None = None
-    executor_profile_id: str | None = None
-    schedule: TemplateScheduleConfig | None = None
 
 
 class TemplateResponse(BaseModel):

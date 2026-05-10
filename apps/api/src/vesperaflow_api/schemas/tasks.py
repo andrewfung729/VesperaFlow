@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from vesperaflow_core import (
     ExecutionMode,
     ExecutorName,
-    OccurrenceEditScope,
     OccurrenceOverrideStatus,
     RunStatus,
     ScheduleStatus,
@@ -36,62 +35,6 @@ class DataEnvelope(BaseModel):
 class ListEnvelope(BaseModel):
     data: list[object]
     meta: dict[str, int]
-
-
-class ScheduleCreate(BaseModel):
-    schedule_type: ScheduleType
-    planned_at: datetime | None = None
-    recurrence_rule: str | None = None
-    recurrence_timezone: str | None = None
-
-
-class TaskCreateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=240)
-    instruction_source: str = Field(min_length=1)
-    target_working_directory: str | None = Field(default=None, min_length=1)
-    execution_mode: ExecutionMode
-    template_id: str | None = None
-    executor: ExecutorName | None = None
-    executor_profile_id: str | None = None
-    schedule: ScheduleCreate
-
-
-class TaskUpdateRequest(BaseModel):
-    version: int | None = None
-    title: str | None = Field(default=None, min_length=1, max_length=240)
-    instruction_source: str | None = Field(default=None, min_length=1)
-
-
-class ScheduleUpdateRequest(BaseModel):
-    version: int | None = None
-    planned_at: datetime | None = None
-    title: str | None = Field(default=None, min_length=1, max_length=240)
-    instruction_source: str | None = Field(default=None, min_length=1)
-    target_working_directory: str | None = Field(default=None, min_length=1)
-    executor: ExecutorName | None = None
-    executor_profile_id: str | None = None
-    recurrence_rule: str | None = None
-    recurrence_timezone: str | None = None
-
-
-class VersionedCommand(BaseModel):
-    version: int | None = None
-
-
-class OccurrenceUpdateRequest(BaseModel):
-    version: int | None = None
-    original_occurrence_at: datetime
-    scope: OccurrenceEditScope
-    planned_at: datetime | None = None
-    instruction_source: str | None = Field(default=None, min_length=1)
-    recurrence_rule: str | None = None
-    recurrence_timezone: str | None = None
-
-
-class OccurrenceCancelRequest(BaseModel):
-    version: int | None = None
-    original_occurrence_at: datetime
-    scope: OccurrenceEditScope
 
 
 class TaskResponse(BaseModel):

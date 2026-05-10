@@ -3,6 +3,7 @@ name = "vesperaflow"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "vesperaflow-cli",
     "vesperaflow-api",
     "vesperaflow-core",
     "vesperaflow-store",
@@ -20,9 +21,10 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["apps/api", "apps/worker", "packages/core", "packages/store"]
+members = ["apps/api", "apps/cli", "apps/worker", "packages/core", "packages/store"]
 
 [tool.uv.sources]
+vesperaflow-cli = { workspace = true }
 vesperaflow-api = { workspace = true }
 vesperaflow-core = { workspace = true }
 vesperaflow-store = { workspace = true }
@@ -30,6 +32,7 @@ vesperaflow-worker = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = [
+    "apps/cli/tests",
     "packages/core/tests",
     "packages/store/tests",
     "apps/api/tests",
@@ -50,6 +53,7 @@ markers = [
 pythonVersion = "3.13"
 typeCheckingMode = "recommended"
 include = [
+    "apps/cli/src",
     "packages/core/src",
     "packages/store/src",
     "apps/api/src",

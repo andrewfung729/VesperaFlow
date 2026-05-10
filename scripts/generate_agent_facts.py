@@ -208,6 +208,9 @@ def _dependency_graph(generated_at: str) -> str:
             '  api["apps/api"] --> core["packages/core"]',
             '  api --> store["packages/store"]',
             "  api --> temporalio[temporalio]",
+            '  cli["apps/cli"] --> core',
+            '  cli --> api_contract["HTTP /api/v1"]',
+            "  cli --> httpx[httpx]",
             "  store --> core",
             '  worker["apps/worker"] --> core',
             "  worker --> store",
@@ -221,6 +224,7 @@ def _dependency_graph(generated_at: str) -> str:
             "- `packages/core` is dependency-light and imported by Workflows.",
             "- `packages/store` owns SQLAlchemy models and repository behavior.",
             "- `apps/api` creates Temporal Schedules but does not execute agents.",
+            "- `apps/cli` is an API-only client for agents and scripts.",
             "- `apps/worker` executes Workflows and Activities and owns "
             "executor adapters.",
             "",

@@ -21,9 +21,10 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/OpenCode/Claude/Kimi/debug executor contracts, executor preflight contracts, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/OpenCode/Claude/Kimi/debug executor contracts, executor preflight contracts, shared API request DTOs, and template default validation. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
+| `apps/cli` | C | Agent-facing API-only CLI covers task creation, task/run reads, run-now, executor preflight, and profile listing with JSON output and mocked HTTP tests. Destructive/versioned commands are intentionally deferred. |
 | `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, OpenCode CLI JSON event executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
 | `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; `apps/web/README.md` now captures local conventions. UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
@@ -62,6 +63,8 @@ Update this file when any of these change:
   read models.
 - Executor credentials and full task instructions must not be written into
   Workflow history or default structured logs.
+- Shared API request DTOs may live in `packages/core`; API response models
+  stay in `apps/api` unless they are pure and mapper-free.
 
 ## Recently Fixed
 
@@ -123,3 +126,6 @@ Update this file when any of these change:
 - 2026-05-02: Added focused web and executor-profile docs, wired them into
   agent navigation, refreshed generated facts, added deterministic generated
   schema defaults, and made CI fail when regenerated agent facts differ.
+- 2026-05-10: Added the `vespera` API-only CLI workspace for agent task
+  creation, task/run inspection, run-now, executor preflight, and profile
+  listing.

@@ -4,15 +4,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from vesperaflow_core.client_contracts import (
+    ExecutorProfileCreateRequest,
+    ExecutorProfileUpdateRequest,
+    VersionedCommand,
+)
 from vesperaflow_store import repositories as repo
 
 from ..dependencies import get_session
-from ..schemas.executor_profiles import (
-    ExecutorProfileCreateRequest,
-    ExecutorProfileResponse,
-    ExecutorProfileUpdateRequest,
-)
-from ..schemas.tasks import DataEnvelope, ListEnvelope, VersionedCommand
+from ..schemas.executor_profiles import ExecutorProfileResponse
+from ..schemas.tasks import DataEnvelope, ListEnvelope
 from ._shared import observed_version
 
 router = APIRouter()

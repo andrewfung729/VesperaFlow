@@ -1,0 +1,4 @@
+interface:
+  display_name: "VesperaFlow CLI"
+  short_description: "Create and inspect scheduled VesperaFlow tasks"
+  default_prompt: "Use $vesperaflow-cli to create a scheduled VesperaFlow task from my request."

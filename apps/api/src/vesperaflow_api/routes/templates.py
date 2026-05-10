@@ -5,6 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import ExecutionMode, ExecutorName, ScheduleType
+from vesperaflow_core.client_contracts import (
+    TemplateCreateRequest,
+    TemplateInstantiateRequest,
+    TemplateUpdateRequest,
+    VersionedCommand,
+)
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
 from vesperaflow_store.models import ExecutorProfile
@@ -13,15 +19,9 @@ from ..dependencies import get_scheduler, get_session
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
-    VersionedCommand,
     bundle_response,
 )
-from ..schemas.templates import (
-    TemplateCreateRequest,
-    TemplateInstantiateRequest,
-    TemplateResponse,
-    TemplateUpdateRequest,
-)
+from ..schemas.templates import TemplateResponse
 from ..temporal_scheduler import TemporalScheduler
 from ._shared import observed_version, optional_existing_absolute_directory
 

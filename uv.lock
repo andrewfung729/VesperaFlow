@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 members = [
     "vesperaflow",
     "vesperaflow-api",
+    "vesperaflow-cli",
     "vesperaflow-core",
     "vesperaflow-store",
     "vesperaflow-worker",
@@ -1078,6 +1079,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "vesperaflow-api" },
+    { name = "vesperaflow-cli" },
     { name = "vesperaflow-core" },
     { name = "vesperaflow-store" },
     { name = "vesperaflow-worker" },
@@ -1096,6 +1098,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "vesperaflow-api", editable = "apps/api" },
+    { name = "vesperaflow-cli", editable = "apps/cli" },
     { name = "vesperaflow-core", editable = "packages/core" },
     { name = "vesperaflow-store", editable = "packages/store" },
     { name = "vesperaflow-worker", editable = "apps/worker" },
@@ -1132,6 +1135,23 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38.0" },
     { name = "vesperaflow-core", editable = "packages/core" },
     { name = "vesperaflow-store", editable = "packages/store" },
+]
+
+[[package]]
+name = "vesperaflow-cli"
+version = "0.1.0"
+source = { editable = "apps/cli" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "vesperaflow-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.13" },
+    { name = "vesperaflow-core", editable = "packages/core" },
 ]
 
 [[package]]

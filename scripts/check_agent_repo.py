@@ -25,6 +25,7 @@ REQUIRED_NONEMPTY_FILES = [
     "docs/plans/TEMPLATE.md",
     "docs/generated/README.md",
     "apps/api/README.md",
+    "apps/cli/README.md",
     "apps/worker/README.md",
     "apps/web/README.md",
     "packages/core/README.md",
@@ -83,6 +84,7 @@ GENERATED_FACTS = {
     "docs/generated/dependency-graph.md": [
         "pyproject.toml",
         "apps/api/pyproject.toml",
+        "apps/cli/pyproject.toml",
         "apps/worker/pyproject.toml",
         "packages/core/pyproject.toml",
         "packages/store/pyproject.toml",

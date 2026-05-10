@@ -12,6 +12,14 @@ from vesperaflow_core import (
     ScheduleType,
     TaskStatus,
 )
+from vesperaflow_core.client_contracts import (
+    OccurrenceCancelRequest,
+    OccurrenceUpdateRequest,
+    ScheduleUpdateRequest,
+    TaskCreateRequest,
+    TaskUpdateRequest,
+    VersionedCommand,
+)
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
 from vesperaflow_store.models import ExecutorProfile, OccurrenceOverride
@@ -20,19 +28,13 @@ from ..dependencies import get_scheduler, get_session
 from ..schemas.tasks import (
     DataEnvelope,
     ListEnvelope,
-    OccurrenceCancelRequest,
     OccurrenceOverrideResponse,
-    OccurrenceUpdateRequest,
     RunPreviewResponse,
     RunReaderDetailResponse,
     RunResponse,
     ScheduleResponse,
-    ScheduleUpdateRequest,
-    TaskCreateRequest,
     TaskDetailResponse,
     TaskResponse,
-    TaskUpdateRequest,
-    VersionedCommand,
     bundle_response,
 )
 from ..temporal_scheduler import TemporalScheduler
