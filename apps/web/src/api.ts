@@ -120,10 +120,16 @@ export interface TaskDetail {
   latest_run: Run | null
 }
 
+export interface RunReaderRun extends Run {
+  created_at: string
+  updated_at: string
+  external_execution_ref: string | null
+}
+
 export interface RunReaderDetail {
   task: Task
   schedule: Schedule | null
-  run: Run
+  run: RunReaderRun
   previous_run_id: string | null
   next_run_id: string | null
 }

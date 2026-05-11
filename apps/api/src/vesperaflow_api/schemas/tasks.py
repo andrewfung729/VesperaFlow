@@ -205,10 +205,30 @@ class TaskDetailResponse(BaseModel):
         )
 
 
+class RunReaderRunResponse(BaseModel):
+    run_id: str
+    task_id: str
+    schedule_id: str | None
+    run_status: RunStatus
+    planned_start_at: datetime
+    actual_start_at: datetime | None
+    finished_at: datetime | None
+    external_execution_ref: str | None
+    occurrence_key: str | None
+    created_at: datetime
+    updated_at: datetime
+    result_summary: str | None
+    failure_reason: str | None
+
+    @classmethod
+    def from_model(cls, run: Run) -> "RunReaderRunResponse":
+        return cls.model_validate(_model_dict(run))
+
+
 class RunReaderDetailResponse(BaseModel):
     task: TaskResponse
     schedule: ScheduleResponse | None
-    run: RunResponse
+    run: RunReaderRunResponse
     previous_run_id: str | None
     next_run_id: str | None
 
@@ -221,7 +241,7 @@ class RunReaderDetailResponse(BaseModel):
                 if context.schedule
                 else None
             ),
-            run=RunResponse.from_model(context.run),
+            run=RunReaderRunResponse.from_model(context.run),
             previous_run_id=context.previous_run_id,
             next_run_id=context.next_run_id,
         )
