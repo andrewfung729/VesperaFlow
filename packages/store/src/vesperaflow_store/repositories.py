@@ -1071,7 +1071,7 @@ async def upsert_occurrence_override(
         version=version,
         action="edited",
     )
-    original_at_utc = to_utc(original_occurrence_at)
+    original_at_utc = to_utc(original_occurrence_at).replace(microsecond=0)
     _require_projected_occurrence(schedule, original_at_utc)
     await _require_occurrence_not_started(
         session,
@@ -1081,7 +1081,9 @@ async def upsert_occurrence_override(
     if planned_at is None and instruction_source is None:
         raise ValueError("occurrence update requires planned_at or instruction_source")
 
-    override_at_utc = to_utc(planned_at) if planned_at is not None else None
+    override_at_utc = (
+        to_utc(planned_at).replace(microsecond=0) if planned_at is not None else None
+    )
     if override_at_utc is not None:
         require_future_datetime(override_at_utc, field_name="planned_at")
         if override_at_utc < original_at_utc:
@@ -1113,6 +1115,38 @@ async def upsert_occurrence_override(
             override.override_instruction_delta = instruction_source
         override.override_status = OccurrenceOverrideStatus.ACTIVE
         override.updated_at = now
+
+    if override_at_utc is not None:
+        if override.rescheduled_run_id is not None:
+            rescheduled_run = await get_run(session, override.rescheduled_run_id)
+            rescheduled_run.planned_start_at = override_at_utc
+            rescheduled_run.updated_at = now
+        else:
+            rescheduled_run = Run(
+                run_id=new_id("run"),
+                task_id=task.task_id,
+                schedule_id=schedule.schedule_id,
+                run_status=RunStatus.PLANNED,
+                planned_start_at=override_at_utc,
+                actual_start_at=None,
+                finished_at=None,
+                result_summary=None,
+                failure_reason=None,
+                external_execution_ref=None,
+                occurrence_key=occurrence_key_for_datetime(override_at_utc),
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(rescheduled_run)
+            override.rescheduled_run_id = rescheduled_run.run_id
+    else:
+        if override.rescheduled_run_id is not None:
+            rescheduled_run = await get_run(session, override.rescheduled_run_id)
+            rescheduled_run.run_status = RunStatus.CANCELED
+            rescheduled_run.finished_at = now
+            rescheduled_run.updated_at = now
+            override.rescheduled_run_id = None
+
     schedule.version += 1
     schedule.updated_at = now
     task.version += 1
@@ -1134,7 +1168,7 @@ async def cancel_occurrence(
         version=version,
         action="canceled",
     )
-    original_at_utc = to_utc(original_occurrence_at)
+    original_at_utc = to_utc(original_occurrence_at).replace(microsecond=0)
     _require_projected_occurrence(schedule, original_at_utc)
     await _require_occurrence_not_started(
         session,
@@ -1163,6 +1197,11 @@ async def cancel_occurrence(
     else:
         override.override_status = OccurrenceOverrideStatus.CANCELED
         override.updated_at = now
+        if override.rescheduled_run_id is not None:
+            rescheduled_run = await get_run(session, override.rescheduled_run_id)
+            rescheduled_run.run_status = RunStatus.CANCELED
+            rescheduled_run.finished_at = now
+            rescheduled_run.updated_at = now
     schedule.version += 1
     schedule.updated_at = now
     task.version += 1
@@ -1650,8 +1689,57 @@ async def materialize_run(
     override = await _get_occurrence_override(
         session,
         schedule_id=schedule.schedule_id,
-        original_occurrence_at=planned_start_at_utc,
+        original_occurrence_at=planned_start_at_utc.replace(microsecond=0),
     )
+    if override is not None and override.rescheduled_run_id is not None:
+        noop_run = Run(
+            run_id=new_id("run"),
+            task_id=task.task_id,
+            schedule_id=schedule.schedule_id,
+            run_status=RunStatus.CANCELED,
+            planned_start_at=planned_start_at_utc,
+            actual_start_at=None,
+            finished_at=now,
+            result_summary=None,
+            failure_reason="recurring occurrence was rescheduled to a different time",
+            external_execution_ref=workflow_id,
+            occurrence_key=occurrence_key,
+            created_at=now,
+            updated_at=now,
+        )
+        schedule.last_materialized_at = planned_start_at_utc
+        if schedule.schedule_status is ScheduleStatus.ACTIVE:
+            if schedule.recurrence_rule is None or schedule.recurrence_timezone is None:
+                raise InvalidStateTransitionError(
+                    "recurring schedule is missing recurrence"
+                )
+            schedule.next_run_at = next_occurrence_after(
+                recurrence_rule=schedule.recurrence_rule,
+                recurrence_timezone=schedule.recurrence_timezone,
+                after=planned_start_at_utc,
+            )
+        schedule.updated_at = now
+        session.add(noop_run)
+        await _recompute_task_status(session, task)
+        await session.flush()
+        _ = await record_run_event(
+            session,
+            run_id=noop_run.run_id,
+            event_type="run.skipped_rescheduled",
+            message=(
+                "Recurring occurrence skipped because it was"
+                " rescheduled to a different time."
+            ),
+            details={"occurrence_key": occurrence_key},
+            severity="warning",
+            temporal_workflow_id=workflow_id,
+        )
+        return _materialized_run_response(
+            run=noop_run,
+            task=task,
+            workflow_id=workflow_id,
+            run_workspace_root=run_workspace_root,
+        )
     run_status = (
         RunStatus.PLANNED
         if (
@@ -2254,6 +2342,15 @@ async def _get_active_recurring_task_and_schedule(
             f"only active recurring schedules can be {action}"
         )
     return task, schedule
+
+
+async def get_occurrence_override(
+    session: AsyncSession, occurrence_override_id: str
+) -> OccurrenceOverride:
+    override = await session.get(OccurrenceOverride, occurrence_override_id)
+    if override is None:
+        raise NotFoundError(f"occurrence override not found: {occurrence_override_id}")
+    return override
 
 
 async def _get_occurrence_override(

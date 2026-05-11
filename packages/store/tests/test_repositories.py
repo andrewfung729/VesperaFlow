@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_core import (
     ExecutionMode,
     ExecutorName,
+    OccurrenceOverrideStatus,
     RunStatus,
     ScheduleStatus,
     ScheduleType,
@@ -573,6 +574,201 @@ async def test_occurrence_override_moves_and_cancels_single_occurrence(
         window_to=moved_at + timedelta(minutes=1),
     )
     assert calendar_after_cancel.total == 0
+
+
+@pytest.mark.asyncio
+async def test_upsert_occurrence_override_creates_rescheduled_run(
+    session: AsyncSession,
+) -> None:
+    original_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2030, 1, 1, 2, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily override task",
+            instruction_source="Original instructions",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        override = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            planned_at=moved_at,
+            instruction_source="Override instructions",
+        )
+
+    assert override.rescheduled_run_id is not None
+    rescheduled_run = await repo.get_run(session, override.rescheduled_run_id)
+    assert rescheduled_run.run_status is RunStatus.PLANNED
+    assert rescheduled_run.planned_start_at.replace(tzinfo=UTC) == moved_at
+    assert rescheduled_run.occurrence_key == occurrence_key_for_datetime(moved_at)
+
+
+@pytest.mark.asyncio
+async def test_upsert_occurrence_override_removes_rescheduled_run(
+    session: AsyncSession,
+) -> None:
+    original_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2030, 1, 1, 2, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily override task",
+            instruction_source="Original instructions",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        override = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            planned_at=moved_at,
+            instruction_source="Override instructions",
+        )
+        run_id = override.rescheduled_run_id
+        assert run_id is not None
+
+    async with session.begin():
+        updated = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            instruction_source="Instruction-only override",
+        )
+
+    assert updated.rescheduled_run_id is None
+    canceled_run = await repo.get_run(session, run_id)
+    assert canceled_run.run_status is RunStatus.CANCELED
+
+
+@pytest.mark.asyncio
+async def test_cancel_occurrence_cancels_rescheduled_run(
+    session: AsyncSession,
+) -> None:
+    original_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2030, 1, 1, 2, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily override task",
+            instruction_source="Original instructions",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        override = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            planned_at=moved_at,
+            instruction_source="Override instructions",
+        )
+        run_id = override.rescheduled_run_id
+        assert run_id is not None
+
+    async with session.begin():
+        canceled = await repo.cancel_occurrence(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+        )
+
+    assert canceled.override_status is OccurrenceOverrideStatus.CANCELED
+    canceled_run = await repo.get_run(session, run_id)
+    assert canceled_run.run_status is RunStatus.CANCELED
+
+
+@pytest.mark.asyncio
+async def test_materialize_run_skips_rescheduled_occurrence(
+    session: AsyncSession,
+) -> None:
+    original_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2030, 1, 1, 2, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily override task",
+            instruction_source="Original instructions",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        _ = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            planned_at=moved_at,
+            instruction_source="Override instructions",
+        )
+
+    materialized = await repo.materialize_run(
+        session,
+        payload_task_id=bundle.task.task_id,
+        payload_schedule_id=bundle.schedule.schedule_id,
+        payload_run_id=None,
+        planned_start_at=original_at,
+        occurrence_key=occurrence_key_for_datetime(original_at),
+        workflow_id="wf-original-time",
+        run_workspace_root="/tmp/vesperaflow-runs",
+    )
+
+    assert materialized.run_status is RunStatus.CANCELED
+    assert materialized.execution_snapshot.planned_start_at == original_at
+
+
+@pytest.mark.asyncio
+async def test_materialize_run_finds_override_despite_microsecond_drift(
+    session: AsyncSession,
+) -> None:
+    original_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    moved_at = datetime(2030, 1, 1, 2, 0, tzinfo=UTC)
+    async with session.begin():
+        bundle = await repo.create_recurring_task(
+            session,
+            title="Daily microsecond drift task",
+            instruction_source="Original instructions",
+            target_working_directory="/tmp",
+            recurrence_rule="RRULE:FREQ=DAILY;BYHOUR=8;BYMINUTE=0",
+            recurrence_timezone="Asia/Hong_Kong",
+            executor=ExecutorName.DEBUG_PRINTER,
+        )
+        _ = await repo.upsert_occurrence_override(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            original_occurrence_at=original_at,
+            planned_at=moved_at,
+            instruction_source="Override instructions",
+        )
+
+    # Temporal workflow_start_time may carry microseconds; ensure the original
+    # recurring occurrence is still identified and skipped (CANCELED) so the
+    # independent one-time schedule can execute at the override time.
+    planned_with_microseconds = original_at.replace(microsecond=123456)
+    materialized = await repo.materialize_run(
+        session,
+        payload_task_id=bundle.task.task_id,
+        payload_schedule_id=bundle.schedule.schedule_id,
+        payload_run_id=None,
+        planned_start_at=planned_with_microseconds,
+        occurrence_key=occurrence_key_for_datetime(planned_with_microseconds),
+        workflow_id="wf-override-drift",
+        run_workspace_root="/tmp/vesperaflow-runs",
+    )
+    assert materialized.run_status is RunStatus.CANCELED
 
 
 @pytest.mark.asyncio

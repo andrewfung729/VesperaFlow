@@ -1,6 +1,6 @@
 """Temporal Schedule client for one-time task execution."""
 
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from temporalio.client import (
@@ -206,6 +206,65 @@ class TemporalScheduler:
             task_queue=self._settings.task_queue,
         )
         return handle.id
+
+    async def create_occurrence_override_schedule(
+        self,
+        *,
+        task: Task,
+        run: Run,
+        override_id: str,
+        planned_at: datetime,
+    ) -> str:
+        if task.target_working_directory is None:
+            raise ValueError("task requires target_working_directory")
+        client = self._require_client()
+        schedule_ref = temporal_schedule_id(f"ovr-{override_id}")
+        planned_at = planned_at.astimezone(UTC)
+        workflow_input = TaskRunInput(
+            run_id=run.run_id,
+            task_id=task.task_id,
+            schedule_id=run.schedule_id,
+            planned_start_at=planned_at,
+            occurrence_key=None,
+            schedule_type=None,
+            execution_snapshot=ExecutionSnapshot(
+                run_id=run.run_id,
+                task_id=task.task_id,
+                schedule_id=run.schedule_id,
+                executor=task.executor,
+                executor_profile_id=task.executor_profile_id,
+                instruction_source=task.instruction_source,
+                planned_start_at=planned_at,
+                working_directory=str(
+                    Path(self._settings.run_workspace_root) / run.run_id
+                ),
+                target_working_directory=task.target_working_directory,
+            ),
+        )
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                "TaskRunWorkflow",
+                args=[workflow_input],
+                id=workflow_id_for_run(run.run_id),
+                task_queue=self._settings.task_queue,
+            ),
+            spec=ScheduleSpec(
+                calendars=[
+                    ScheduleCalendarSpec(
+                        second=[ScheduleRange(planned_at.second)],
+                        minute=[ScheduleRange(planned_at.minute)],
+                        hour=[ScheduleRange(planned_at.hour)],
+                        day_of_month=[ScheduleRange(planned_at.day)],
+                        month=[ScheduleRange(planned_at.month)],
+                        year=[ScheduleRange(planned_at.year)],
+                    )
+                ],
+                end_at=planned_at + timedelta(minutes=1),
+                time_zone_name="UTC",
+            ),
+        )
+        _ = await client.create_schedule(schedule_ref, schedule)
+        return schedule_ref
 
     async def delete_schedule(self, schedule_id: str) -> None:
         client = self._require_client()

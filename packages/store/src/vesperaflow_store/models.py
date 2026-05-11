@@ -287,6 +287,12 @@ class OccurrenceOverride(Base):
     override_status: Mapped[OccurrenceOverrideStatus] = enum_column(
         OccurrenceOverrideStatus
     )
+    rescheduled_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("runs.run_id"), nullable=True
+    )
+    external_schedule_ref: Mapped[str | None] = mapped_column(
+        String(240), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -296,3 +302,4 @@ class OccurrenceOverride(Base):
 
     task: Mapped[Task] = relationship(back_populates="occurrence_overrides")
     schedule: Mapped[Schedule] = relationship(back_populates="occurrence_overrides")
+    rescheduled_run: Mapped["Run | None"] = relationship()

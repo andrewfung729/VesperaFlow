@@ -85,11 +85,24 @@ class FakeScheduler:
         _ = task, schedule
         return f"vesperaflow.run.{run.run_id}"
 
+    async def create_occurrence_override_schedule(
+        self,
+        *,
+        task: Task,
+        run: Run,
+        override_id: str,
+        planned_at: datetime,
+    ) -> str:
+        _ = task, run, planned_at
+        self.created.append(f"ovr-{override_id}")
+        return f"vesperaflow.schedule.ovr-{override_id}"
+
 
 @dataclass(frozen=True, slots=True)
 class ApiTestContext:
     client: AsyncClient
     session_factory: async_sessionmaker
+    scheduler: FakeScheduler
 
 
 @pytest.fixture(autouse=True)
@@ -108,16 +121,19 @@ async def api_context(tmp_path: Path) -> AsyncIterator[ApiTestContext]:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     session_factory = create_session_factory(engine)
+    scheduler = FakeScheduler()
     set_app_state(
         ApiSettings(database_url="postgresql+asyncpg://test@localhost/test"),
         session_factory,
-        FakeScheduler(),
+        scheduler,
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport, base_url="http://test"
     ) as active_client:
-        yield ApiTestContext(client=active_client, session_factory=session_factory)
+        yield ApiTestContext(
+            client=active_client, session_factory=session_factory, scheduler=scheduler
+        )
     await engine.dispose()
 
 
@@ -706,6 +722,138 @@ async def test_occurrence_update_and_cancel_endpoints(
     )
     assert canceled.status_code == 200
     assert canceled.json()["data"]["override_status"] == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_occurrence_time_override_creates_independent_schedule(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post(
+        "/api/v1/tasks", json=_recurring_payload("Override daily")
+    )
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
+
+    updated = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/update",
+        json={
+            "version": schedule["version"],
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+            "planned_at": "2030-01-01T02:00:00+00:00",
+            "instruction_source": "Override instructions",
+        },
+    )
+    assert updated.status_code == 200
+    override: dict[str, Any] = updated.json()["data"]
+    assert override["override_status"] == "active"
+
+    # Verify the independent schedule was created in the database.
+    async with api_context.session_factory() as session:
+        override_model = await repo.get_occurrence_override(
+            session, override["occurrence_override_id"]
+        )
+    assert override_model.external_schedule_ref is not None
+    assert override_model.external_schedule_ref.startswith("vesperaflow.schedule.ovr-")
+
+
+@pytest.mark.asyncio
+async def test_occurrence_cancel_deletes_independent_schedule(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post(
+        "/api/v1/tasks", json=_recurring_payload("Override daily")
+    )
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
+
+    updated = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/update",
+        json={
+            "version": schedule["version"],
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+            "planned_at": "2030-01-01T02:00:00+00:00",
+        },
+    )
+    assert updated.status_code == 200
+    override_id: str = updated.json()["data"]["occurrence_override_id"]
+
+    async with api_context.session_factory() as session:
+        override_model = await repo.get_occurrence_override(session, override_id)
+    assert override_model.external_schedule_ref is not None
+
+    # OccurrenceOverrideResponse does not expose version; the endpoint
+    # validates against the schedule version, which was incremented once
+    # by the preceding update.
+    canceled = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/cancel",
+        json={
+            "version": 2,
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+        },
+    )
+    assert canceled.status_code == 200
+
+    async with api_context.session_factory() as session:
+        override_model = await repo.get_occurrence_override(session, override_id)
+    assert override_model.external_schedule_ref is None
+
+
+@pytest.mark.asyncio
+async def test_occurrence_time_override_update_changes_schedule(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post(
+        "/api/v1/tasks", json=_recurring_payload("Override daily")
+    )
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
+
+    first = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/update",
+        json={
+            "version": schedule["version"],
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+            "planned_at": "2030-01-01T02:00:00+00:00",
+        },
+    )
+    assert first.status_code == 200
+    first_override_id: str = first.json()["data"]["occurrence_override_id"]
+
+    async with api_context.session_factory() as session:
+        first_override = await repo.get_occurrence_override(session, first_override_id)
+    first_schedule_ref = first_override.external_schedule_ref
+    assert first_schedule_ref is not None
+
+    # Schedule version was incremented to 2 by the first update.
+    second = await client.post(
+        f"/api/v1/tasks/{task['task_id']}/occurrences/update",
+        json={
+            "version": 2,
+            "original_occurrence_at": "2030-01-01T00:00:00+00:00",
+            "scope": "this_occurrence_only",
+            "planned_at": "2030-01-01T03:00:00+00:00",
+        },
+    )
+    assert second.status_code == 200
+
+    async with api_context.session_factory() as session:
+        second_override = await repo.get_occurrence_override(session, first_override_id)
+    second_schedule_ref = second_override.external_schedule_ref
+    assert second_schedule_ref is not None
+    # The ref string is deterministic (based on override_id), but the FakeScheduler
+    # should have recorded both a delete and a create for the same override.
+    assert f"ovr-{first_override_id}" in api_context.scheduler.deleted
+    assert second_schedule_ref == first_schedule_ref
 
 
 @pytest.mark.asyncio

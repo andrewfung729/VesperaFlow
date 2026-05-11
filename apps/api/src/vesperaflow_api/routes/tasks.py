@@ -23,7 +23,7 @@ from vesperaflow_core.client_contracts import (
 )
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError
-from vesperaflow_store.models import ExecutorProfile, OccurrenceOverride
+from vesperaflow_store.models import ExecutorProfile, OccurrenceOverride, Run
 
 from ..dependencies import get_scheduler, get_session
 from ..schemas.tasks import (
@@ -483,7 +483,9 @@ async def update_occurrence(
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
     version = observed_version(payload.version, if_match)
+    run: Run | None = None
     async with session.begin():
+        task = await repo.get_task(session, task_id)
         result = await repo.update_recurring_occurrence_scope(
             session,
             task_id=task_id,
@@ -495,23 +497,48 @@ async def update_occurrence(
             recurrence_rule=payload.recurrence_rule,
             recurrence_timezone=payload.recurrence_timezone,
         )
-        if isinstance(result, OccurrenceOverride):
-            data = OccurrenceOverrideResponse.from_model(result).model_dump()
-        else:
-            schedule_ref = await scheduler.replace_recurring_schedule(
-                task=result.task,
-                schedule=result.schedule,
+        if isinstance(result, OccurrenceOverride) and payload.planned_at is not None:
+            if result.rescheduled_run_id is None:
+                raise ValueError("time override requires rescheduled_run_id")
+            run = await repo.get_run(session, result.rescheduled_run_id)
+    if isinstance(result, OccurrenceOverride):
+        if payload.planned_at is not None:
+            if result.external_schedule_ref is not None:
+                await scheduler.delete_schedule(
+                    f"ovr-{result.occurrence_override_id}"
+                )
+            assert run is not None
+            schedule_ref = await scheduler.create_occurrence_override_schedule(
+                task=task,
+                run=run,
+                override_id=result.occurrence_override_id,
+                planned_at=payload.planned_at,
             )
+            async with session.begin():
+                result.external_schedule_ref = schedule_ref
+        elif result.external_schedule_ref is not None:
+            await scheduler.delete_schedule(
+                f"ovr-{result.occurrence_override_id}"
+            )
+            async with session.begin():
+                result.external_schedule_ref = None
+        data = OccurrenceOverrideResponse.from_model(result).model_dump()
+    else:
+        schedule_ref = await scheduler.replace_recurring_schedule(
+            task=result.task,
+            schedule=result.schedule,
+        )
+        async with session.begin():
             _ = await repo.set_schedule_external_ref(
                 session,
                 schedule_id=result.schedule.schedule_id,
                 external_schedule_ref=schedule_ref,
             )
-            data = bundle_response(
-                result.task,
-                result.schedule,
-                result.run,
-            ).model_dump()
+        data = bundle_response(
+            result.task,
+            result.schedule,
+            result.run,
+        ).model_dump()
     return DataEnvelope(data=data)
 
 
@@ -519,6 +546,7 @@ async def update_occurrence(
 async def cancel_occurrence(
     task_id: str,
     payload: OccurrenceCancelRequest,
+    scheduler: Annotated[TemporalScheduler, Depends(get_scheduler)],
     session: Annotated[AsyncSession, Depends(get_session)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> DataEnvelope:
@@ -534,6 +562,12 @@ async def cancel_occurrence(
             version=version,
             original_occurrence_at=payload.original_occurrence_at,
         )
+    if override.external_schedule_ref is not None:
+        await scheduler.delete_schedule(
+            f"ovr-{override.occurrence_override_id}"
+        )
+        async with session.begin():
+            override.external_schedule_ref = None
     return DataEnvelope(
         data=OccurrenceOverrideResponse.from_model(override).model_dump()
     )

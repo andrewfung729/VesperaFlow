@@ -1,6 +1,6 @@
 # Database Schema Snapshot
 
-- Generated: 2026-05-10
+- Generated: 2026-05-11
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `packages/store/src/vesperaflow_store/models.py`, `packages/store/alembic/versions/`
 - Limitations: generated from importable application metadata, not a live deployment.
@@ -37,11 +37,14 @@
 | `override_occurrence_at` | `DATETIME` | yes | `` |
 | `override_instruction_delta` | `TEXT` | yes | `` |
 | `override_status` | `VARCHAR(64)` | no | `` |
+| `rescheduled_run_id` | `VARCHAR(48)` | yes | `` |
+| `external_schedule_ref` | `VARCHAR(240)` | yes | `` |
 | `created_at` | `DATETIME` | no | `` |
 | `updated_at` | `DATETIME` | no | `` |
 
 - Primary key: `occurrence_override_id`
 - Unique constraint `uq_occurrence_overrides_schedule_original`: `schedule_id`, `original_occurrence_at`
+- Foreign key: `rescheduled_run_id` -> `runs.run_id`
 - Foreign key: `schedule_id` -> `schedules.schedule_id`
 - Foreign key: `task_id` -> `tasks.task_id`
 - Index `ix_occurrence_overrides_schedule_id`: `schedule_id`
