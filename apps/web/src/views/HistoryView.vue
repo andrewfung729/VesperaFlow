@@ -61,17 +61,9 @@ function resetPageAndRefresh() {
 }
 
 async function openHistoryItem(item: HistoryItem) {
-  if (item.execution_mode === 'recurring') {
-    await router.push({
-      name: 'recurring-run-reader',
-      params: { taskId: item.task_id, runId: item.run_id },
-    })
-    return
-  }
   await router.push({
-    name: 'task-detail',
-    params: { taskId: item.task_id },
-    query: { runId: item.run_id },
+    name: 'run-detail',
+    params: { taskId: item.task_id, runId: item.run_id },
   })
 }
 </script>
@@ -134,7 +126,7 @@ async function openHistoryItem(item: HistoryItem) {
               <th class="px-4 py-3">Status</th>
               <th class="px-4 py-3">Mode</th>
               <th class="px-4 py-3">Finished</th>
-              <th class="px-4 py-3">Outcome</th>
+              <th class="px-4 py-3">Result Preview</th>
             </tr>
           </thead>
           <tbody>

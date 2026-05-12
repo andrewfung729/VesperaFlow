@@ -153,7 +153,7 @@ class TemporalScheduler:
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
                 executor_profile_id=task.executor_profile_id,
-                instruction_source=task.instruction_source,
+                instruction_source=run.instruction_source_snapshot,
                 planned_start_at=planned_at,
                 working_directory=str(
                     Path(self._settings.run_workspace_root) / run.run_id
@@ -191,7 +191,7 @@ class TemporalScheduler:
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
                 executor_profile_id=task.executor_profile_id,
-                instruction_source=task.instruction_source,
+                instruction_source=run.instruction_source_snapshot,
                 planned_start_at=planned_at,
                 working_directory=str(
                     Path(self._settings.run_workspace_root) / run.run_id
@@ -233,7 +233,7 @@ class TemporalScheduler:
                 schedule_id=run.schedule_id,
                 executor=task.executor,
                 executor_profile_id=task.executor_profile_id,
-                instruction_source=task.instruction_source,
+                instruction_source=run.instruction_source_snapshot,
                 planned_start_at=planned_at,
                 working_directory=str(
                     Path(self._settings.run_workspace_root) / run.run_id
@@ -303,7 +303,7 @@ class TemporalScheduler:
                 schedule_id=schedule.schedule_id,
                 executor=task.executor,
                 executor_profile_id=task.executor_profile_id,
-                instruction_source=task.instruction_source,
+                instruction_source=run.instruction_source_snapshot,
                 planned_start_at=planned_at,
                 working_directory=str(
                     Path(self._settings.run_workspace_root) / run.run_id

@@ -13,7 +13,7 @@ function getInitialFontSize(): ReaderFontSize {
   } catch {
     // ignore
   }
-  return 'md'
+  return 'lg'
 }
 
 const fontSize = ref<ReaderFontSize>(getInitialFontSize())

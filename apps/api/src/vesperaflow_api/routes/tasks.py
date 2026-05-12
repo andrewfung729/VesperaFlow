@@ -642,6 +642,20 @@ async def list_runs(
     )
 
 
+@router.get("/tasks/{task_id}/runs/{run_id}")
+async def get_run_detail(
+    task_id: str,
+    run_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DataEnvelope:
+    context = await repo.get_run_reader_context(
+        session,
+        task_id=task_id,
+        run_id=run_id,
+    )
+    return DataEnvelope(data=RunReaderDetailResponse.from_context(context).model_dump())
+
+
 @router.get("/tasks/{task_id}/runs/{run_id}/reader")
 async def get_run_reader_detail(
     task_id: str,

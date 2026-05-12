@@ -211,6 +211,7 @@ class Run(Base):
     )
     actual_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    instruction_source_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     result_summary: Mapped[str | None] = mapped_column(Text)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     external_execution_ref: Mapped[str | None] = mapped_column(String(240))

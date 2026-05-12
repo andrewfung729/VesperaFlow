@@ -143,7 +143,8 @@ async def client(api_context: ApiTestContext) -> AsyncIterator[AsyncClient]:
 
 
 @pytest.mark.asyncio
-async def test_create_task_success(client: AsyncClient) -> None:
+async def test_create_task_success(api_context: ApiTestContext) -> None:
+    client = api_context.client
     response = await client.post("/api/v1/tasks", json=_create_payload())
 
     assert response.status_code == 201
@@ -155,6 +156,9 @@ async def test_create_task_success(client: AsyncClient) -> None:
     assert schedule["external_schedule_ref"].startswith("vesperaflow.schedule.")
     run: dict[str, Any] = body["run"]
     assert run["run_status"] == "planned"
+    async with api_context.session_factory() as session:
+        stored_run = await repo.get_run(session, run["run_id"])
+    assert stored_run.instruction_source_snapshot == "Find relevant updates."
 
 
 @pytest.mark.asyncio
@@ -172,7 +176,8 @@ async def test_run_now_one_time_task(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_now_recurring_task(client: AsyncClient) -> None:
+async def test_run_now_recurring_task(api_context: ApiTestContext) -> None:
+    client = api_context.client
     created = await client.post("/api/v1/tasks", json=_recurring_payload())
     assert created.status_code == 201
     data: dict[str, Any] = created.json()["data"]
@@ -184,6 +189,9 @@ async def test_run_now_recurring_task(client: AsyncClient) -> None:
     run: dict[str, Any] = response.json()["data"]
     assert run["run_status"] == "planned"
     assert run["occurrence_key"] is not None
+    async with api_context.session_factory() as session:
+        stored_run = await repo.get_run(session, run["run_id"])
+    assert stored_run.instruction_source_snapshot == "Find relevant updates."
 
 
 @pytest.mark.asyncio
@@ -1073,6 +1081,10 @@ async def test_get_run_endpoint_returns_outcome_preview(
     assert response.json()["data"]["outcome_source"] == "result_summary"
     assert response.json()["data"]["outcome_preview"].endswith("...")
     assert len(response.json()["data"]["outcome_preview"]) == 80
+    assert response.json()["data"]["result_summary"] == long_summary
+    assert response.json()["data"]["instruction_source_snapshot"] == (
+        "Find relevant updates."
+    )
 
 
 @pytest.mark.asyncio
@@ -1124,14 +1136,104 @@ async def test_run_reader_endpoint_returns_selected_and_adjacent_ids(
             middle_run_id = middle_run.run_id
             newest_run_id = newest_run.run_id
 
+    detail_response = await client.get(f"/api/v1/tasks/{task_id}/runs/{middle_run_id}")
     response = await client.get(f"/api/v1/tasks/{task_id}/runs/{middle_run_id}/reader")
 
+    assert detail_response.status_code == 200
+    assert detail_response.json()["data"]["run"]["instruction_source_snapshot"] == (
+        "Find relevant updates."
+    )
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["task"]["task_id"] == task_id
     assert body["run"]["run_id"] == middle_run_id
+    assert body["run"]["instruction_source_snapshot"] == "Find relevant updates."
     assert body["previous_run_id"] == newest_run_id
     assert body["next_run_id"] == oldest_run_id
+
+
+@pytest.mark.asyncio
+async def test_recurring_materialization_uses_occurrence_instruction_snapshot(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_recurring_payload("Override"))
+    created_data: dict[str, Any] = created.json()["data"]
+    task_id = created_data["task"]["task_id"]
+    schedule_id = created_data["schedule"]["schedule_id"]
+    occurrence_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            _ = await repo.upsert_occurrence_override(
+                session,
+                task_id=task_id,
+                version=created_data["schedule"]["version"],
+                original_occurrence_at=occurrence_at,
+                instruction_source="Override instructions",
+            )
+            materialized = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=occurrence_at,
+                occurrence_key=occurrence_key_for_datetime(occurrence_at),
+                workflow_id="vesperaflow-recurring-workflow",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            stored_run = await repo.get_run(session, materialized.run_id)
+
+    assert materialized.execution_snapshot.instruction_source == "Override instructions"
+    assert stored_run.instruction_source_snapshot == "Override instructions"
+
+
+@pytest.mark.asyncio
+async def test_run_instruction_snapshot_does_not_drift_after_task_edit(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_recurring_payload("Snapshots"))
+    created_data: dict[str, Any] = created.json()["data"]
+    task_id = created_data["task"]["task_id"]
+    schedule_id = created_data["schedule"]["schedule_id"]
+    first_at = datetime(2030, 1, 1, 0, 0, tzinfo=UTC)
+    second_at = datetime(2030, 1, 2, 0, 0, tzinfo=UTC)
+
+    async with api_context.session_factory() as session:
+        async with session.begin():
+            first = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=first_at,
+                occurrence_key=occurrence_key_for_datetime(first_at),
+                workflow_id="vesperaflow-recurring-workflow-1",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            task = await repo.get_task(session, task_id)
+            _ = await repo.update_task(
+                session,
+                task_id=task_id,
+                version=task.version,
+                instruction_source="Updated instructions",
+            )
+            second = await repo.materialize_run(
+                session,
+                payload_task_id=task_id,
+                payload_schedule_id=schedule_id,
+                payload_run_id=None,
+                planned_start_at=second_at,
+                occurrence_key=occurrence_key_for_datetime(second_at),
+                workflow_id="vesperaflow-recurring-workflow-2",
+                run_workspace_root="/tmp/vesperaflow-runs",
+            )
+            first_run = await repo.get_run(session, first.run_id)
+            second_run = await repo.get_run(session, second.run_id)
+
+    assert first_run.instruction_source_snapshot == "Find relevant updates."
+    assert second_run.instruction_source_snapshot == "Updated instructions"
 
 
 @pytest.mark.asyncio

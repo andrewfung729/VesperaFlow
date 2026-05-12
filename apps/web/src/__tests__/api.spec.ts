@@ -8,6 +8,7 @@ import {
   getCalendar,
   getHistory,
   getRun,
+  getRunDetail,
   getRunEvents,
   getRunReaderDetail,
   getRecurringTodo,
@@ -285,7 +286,7 @@ describe('api', () => {
   it('loads run detail and reader detail endpoints', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input)
-      if (url.includes('/tasks/task-1/runs/run-1/reader')) {
+      if (url.includes('/tasks/task-1/runs/run-1')) {
         return new Response(
           JSON.stringify({
             data: {
@@ -314,7 +315,11 @@ describe('api', () => {
                 finished_at: '2026-04-25T11:00:00+08:00',
                 result_summary: null,
                 failure_reason: 'Executor failed',
+                instruction_source_snapshot: 'Snapshot instructions',
                 occurrence_key: null,
+                external_execution_ref: 'workflow-1',
+                created_at: '2026-04-25T10:00:00+08:00',
+                updated_at: '2026-04-25T11:00:00+08:00',
               },
               previous_run_id: 'run-2',
               next_run_id: null,
@@ -335,7 +340,11 @@ describe('api', () => {
             finished_at: '2026-04-25T11:00:00+08:00',
             result_summary: null,
             failure_reason: 'Executor failed',
+            instruction_source_snapshot: 'Snapshot instructions',
+            external_execution_ref: 'workflow-1',
             occurrence_key: null,
+            created_at: '2026-04-25T10:00:00+08:00',
+            updated_at: '2026-04-25T11:00:00+08:00',
           },
         }),
         { status: 200 },
@@ -344,9 +353,11 @@ describe('api', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const run = await getRun('run-1')
+    const detail = await getRunDetail('task-1', 'run-1')
     const reader = await getRunReaderDetail('task-1', 'run-1')
 
     expect(run.failure_reason).toBe('Executor failed')
+    expect(detail.run.instruction_source_snapshot).toBe('Snapshot instructions')
     expect(reader.run.run_id).toBe('run-1')
     expect(reader.previous_run_id).toBe('run-2')
     expect(fetchMock).toHaveBeenCalledWith(
@@ -354,7 +365,7 @@ describe('api', () => {
       expect.any(Object),
     )
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/tasks/task-1/runs/run-1/reader'),
+      expect.stringContaining('/tasks/task-1/runs/run-1'),
       expect.any(Object),
     )
   })

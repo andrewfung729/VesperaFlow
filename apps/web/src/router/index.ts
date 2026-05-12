@@ -7,7 +7,8 @@ import KanbanBoardView from '@/views/KanbanBoardView.vue'
 import ArchivedView from '@/views/ArchivedView.vue'
 import RecurringRunArchiveView from '@/views/RecurringRunArchiveView.vue'
 import RecurringTodoView from '@/views/RecurringTodoView.vue'
-import RunOutcomeReaderView from '@/views/RunOutcomeReaderView.vue'
+import ReaderView from '@/views/ReaderView.vue'
+import RunView from '@/views/RunView.vue'
 import TaskComposerView from '@/views/TaskComposerView.vue'
 import TaskDetailView from '@/views/TaskDetailView.vue'
 import TemplatesView from '@/views/TemplatesView.vue'
@@ -65,8 +66,14 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/tasks/:taskId/runs/:runId',
-    name: 'recurring-run-reader',
-    component: RunOutcomeReaderView,
+    name: 'run-detail',
+    component: RunView,
+    props: true,
+  },
+  {
+    path: '/tasks/:taskId/runs/:runId/read',
+    name: 'run-reader',
+    component: ReaderView,
     props: true,
   },
   {

@@ -48,8 +48,15 @@ export interface Run {
   planned_start_at: string
   actual_start_at: string | null
   finished_at: string | null
-  result_summary: string | null
-  failure_reason: string | null
+  result_summary?: string | null
+  failure_reason?: string | null
+  instruction_source_snapshot?: string
+  external_execution_ref?: string | null
+  created_at?: string
+  updated_at?: string
+  outcome_preview?: string | null
+  outcome_truncated?: boolean
+  outcome_source?: 'result_summary' | 'failure_reason' | null
   occurrence_key: string | null
 }
 
@@ -120,19 +127,24 @@ export interface TaskDetail {
   latest_run: Run | null
 }
 
-export interface RunReaderRun extends Run {
+export interface RunDetailRun extends Run {
   created_at: string
   updated_at: string
   external_execution_ref: string | null
+  instruction_source_snapshot: string
+  result_summary: string | null
+  failure_reason: string | null
 }
 
-export interface RunReaderDetail {
+export interface RunDetail {
   task: Task
   schedule: Schedule | null
-  run: RunReaderRun
+  run: RunDetailRun
   previous_run_id: string | null
   next_run_id: string | null
 }
+
+export type RunReaderDetail = RunDetail
 
 export interface KanbanCard {
   card_id: string
@@ -406,8 +418,8 @@ export async function getTaskRuns(
   return requestList<RunPreview>(`/tasks/${taskId}/runs${suffix}`)
 }
 
-export async function getRun(runId: string): Promise<Run> {
-  return request<Run>(`/runs/${runId}`)
+export async function getRun(runId: string): Promise<RunDetailRun> {
+  return request<RunDetailRun>(`/runs/${runId}`)
 }
 
 export async function getRunEvents(
@@ -422,6 +434,10 @@ export async function getRunEvents(
   }
   const suffix = search.size > 0 ? `?${search}` : ''
   return requestList<RunEvent>(`/runs/${runId}/events${suffix}`)
+}
+
+export async function getRunDetail(taskId: string, runId: string): Promise<RunDetail> {
+  return request<RunDetail>(`/tasks/${taskId}/runs/${runId}`)
 }
 
 export async function getRunReaderDetail(taskId: string, runId: string): Promise<RunReaderDetail> {

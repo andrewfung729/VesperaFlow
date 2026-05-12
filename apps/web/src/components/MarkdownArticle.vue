@@ -1,51 +1,35 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import { renderMarkdown } from '@/lib/markdown'
 
-const props = withDefaults(
-  defineProps<{
-    content: string | null | undefined
-    expandable?: boolean
-    previewLines?: number
-  }>(),
-  {
-    expandable: true,
-    previewLines: 5,
-  },
-)
-
-const isExpanded = ref(false)
+const props = defineProps<{
+  content: string | null | undefined
+}>()
 
 const hasContent = computed(() => !!props.content && props.content.trim().length > 0)
-
 const safeHtml = computed(() => renderMarkdown(props.content))
 </script>
 
 <template>
-  <div v-if="hasContent" class="markdown-reader">
-    <div
-      class="markdown-body"
-      :class="{ 'is-clamped': expandable && !isExpanded }"
-      :style="expandable && !isExpanded ? { '--clamp-lines': previewLines } : {}"
-      v-html="safeHtml"
-    />
-    <button
-      v-if="expandable"
-      type="button"
-      class="mt-1.5 cursor-pointer border-0 bg-transparent p-0 text-xs font-semibold text-teal-700 transition hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300"
-      @click="isExpanded = !isExpanded"
-    >
-      {{ isExpanded ? 'Show less' : 'Show more' }}
-    </button>
+  <div v-if="hasContent" class="markdown-article" data-testid="markdown-article">
+    <div class="markdown-body" v-html="safeHtml" />
   </div>
   <span v-else class="text-slate-400 italic dark:text-slate-500">No content</span>
 </template>
 
 <style scoped>
+.markdown-article {
+  --reader-prose-width: 75ch;
+  --reader-breakout-width: 64rem;
+  --reader-line-height: 1.75;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
 .markdown-body {
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 1em;
+  line-height: var(--reader-line-height);
   color: #334155;
 }
 
@@ -53,11 +37,9 @@ const safeHtml = computed(() => renderMarkdown(props.content))
   color: #cbd5e1;
 }
 
-.markdown-body.is-clamped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--clamp-lines, 5);
-  overflow: hidden;
+.markdown-body > * {
+  max-width: var(--reader-prose-width);
+  margin-inline: auto;
 }
 
 .markdown-body :deep(h1),
@@ -82,18 +64,20 @@ const safeHtml = computed(() => renderMarkdown(props.content))
 }
 
 .markdown-body :deep(h1) {
-  font-size: 1.25rem;
+  font-size: 1.75em;
 }
 .markdown-body :deep(h2) {
-  font-size: 1.125rem;
+  font-size: 1.5em;
 }
 .markdown-body :deep(h3) {
-  font-size: 1rem;
+  font-size: 1.25em;
 }
-.markdown-body :deep(h4),
+.markdown-body :deep(h4) {
+  font-size: 1.125em;
+}
 .markdown-body :deep(h5),
 .markdown-body :deep(h6) {
-  font-size: 0.9375rem;
+  font-size: 1em;
 }
 
 .markdown-body :deep(p) {
@@ -114,9 +98,10 @@ const safeHtml = computed(() => renderMarkdown(props.content))
   background: #f1f5f9;
   padding: 0.125em 0.375em;
   border-radius: 0.25rem;
-  font-size: 0.8125em;
+  font-size: 0.85em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: #be123c;
+  overflow-wrap: anywhere;
 }
 
 .dark .markdown-body :deep(code) {
@@ -131,6 +116,7 @@ const safeHtml = computed(() => renderMarkdown(props.content))
   border-radius: 0.375rem;
   overflow-x: auto;
   margin: 0.75em 0;
+  max-width: var(--reader-breakout-width);
 }
 
 .dark .markdown-body :deep(pre) {
@@ -142,7 +128,8 @@ const safeHtml = computed(() => renderMarkdown(props.content))
   background: transparent;
   padding: 0;
   color: inherit;
-  font-size: 0.8125em;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
 }
 
 .dark .markdown-body :deep(pre code) {
@@ -166,6 +153,7 @@ const safeHtml = computed(() => renderMarkdown(props.content))
   color: #0f766e;
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow-wrap: anywhere;
 }
 
 .dark .markdown-body :deep(a) {
@@ -184,7 +172,10 @@ const safeHtml = computed(() => renderMarkdown(props.content))
   border-collapse: collapse;
   width: 100%;
   margin: 0.75em 0;
-  font-size: 0.8125rem;
+  font-size: 0.95em;
+  max-width: var(--reader-breakout-width);
+  display: block;
+  overflow-x: auto;
 }
 
 .markdown-body :deep(th),

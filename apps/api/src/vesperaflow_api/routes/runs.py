@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vesperaflow_store import repositories as repo
 
 from ..dependencies import get_session
-from ..schemas.tasks import DataEnvelope, ListEnvelope, RunEventResponse, RunResponse
+from ..schemas.tasks import (
+    DataEnvelope,
+    ListEnvelope,
+    RunDetailResponse,
+    RunEventResponse,
+)
 
 router = APIRouter()
 
@@ -18,7 +23,7 @@ async def get_run(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DataEnvelope:
     run = await repo.get_run(session, run_id)
-    return DataEnvelope(data=RunResponse.from_model(run).model_dump())
+    return DataEnvelope(data=RunDetailResponse.from_model(run).model_dump())
 
 
 @router.get("/runs/{run_id}/events")

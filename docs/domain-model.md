@@ -144,6 +144,7 @@ Fields:
 - `planned_start_at`
 - `actual_start_at` nullable
 - `finished_at` nullable
+- `instruction_source_snapshot`
 - `result_summary` nullable
 - `failure_reason` nullable
 - `external_execution_ref` nullable
@@ -157,6 +158,10 @@ Notes:
 - A recurring task may generate many runs over time.
 - Recurring schedule-fired runs are idempotent by `(schedule_id, occurrence_key)`.
 - Runs are append-only historical records except for status updates during execution.
+- `instruction_source_snapshot` stores the effective user instruction for the run.
+  One-time runs snapshot the task instruction at run creation, recurring
+  materialization snapshots the occurrence override instruction when present,
+  and recurring run-now snapshots the current task instruction.
 
 ### 3.4.1 Run Event
 
@@ -357,6 +362,7 @@ This is the main aggregate boundary for product logic.
 Owns:
 
 - execution attempt state
+- instruction snapshot used by the executor
 - outcome metadata
 - external execution reference
 

@@ -408,6 +408,7 @@ async def create_one_time_task(
         planned_start_at=planned_at_utc,
         actual_start_at=None,
         finished_at=None,
+        instruction_source_snapshot=instruction_source,
         result_summary=None,
         failure_reason=None,
         external_execution_ref=None,
@@ -1117,9 +1118,13 @@ async def upsert_occurrence_override(
         override.updated_at = now
 
     if override_at_utc is not None:
+        effective_instruction = (
+            override.override_instruction_delta or task.instruction_source
+        )
         if override.rescheduled_run_id is not None:
             rescheduled_run = await get_run(session, override.rescheduled_run_id)
             rescheduled_run.planned_start_at = override_at_utc
+            rescheduled_run.instruction_source_snapshot = effective_instruction
             rescheduled_run.updated_at = now
         else:
             rescheduled_run = Run(
@@ -1130,6 +1135,7 @@ async def upsert_occurrence_override(
                 planned_start_at=override_at_utc,
                 actual_start_at=None,
                 finished_at=None,
+                instruction_source_snapshot=effective_instruction,
                 result_summary=None,
                 failure_reason=None,
                 external_execution_ref=None,
@@ -1468,6 +1474,7 @@ async def run_recurring_now(
             planned_start_at=now,
             actual_start_at=None,
             finished_at=None,
+            instruction_source_snapshot=task.instruction_source,
             result_summary=None,
             failure_reason=None,
             external_execution_ref=None,
@@ -1700,6 +1707,9 @@ async def materialize_run(
             planned_start_at=planned_start_at_utc,
             actual_start_at=None,
             finished_at=now,
+            instruction_source_snapshot=(
+                override.override_instruction_delta or task.instruction_source
+            ),
             result_summary=None,
             failure_reason="recurring occurrence was rescheduled to a different time",
             external_execution_ref=workflow_id,
@@ -1769,6 +1779,7 @@ async def materialize_run(
         planned_start_at=effective_planned_start_at,
         actual_start_at=None,
         finished_at=now if run_status is RunStatus.CANCELED else None,
+        instruction_source_snapshot=effective_instruction,
         result_summary=None,
         failure_reason=None
         if run_status is RunStatus.PLANNED
@@ -2582,7 +2593,7 @@ def _materialized_run_response(
             schedule_id=run.schedule_id,
             executor=task.executor,
             executor_profile_id=task.executor_profile_id,
-            instruction_source=instruction_source or task.instruction_source,
+            instruction_source=instruction_source or run.instruction_source_snapshot,
             planned_start_at=run.planned_start_at,
             working_directory=str(Path(run_workspace_root) / run.run_id),
             target_working_directory=task.target_working_directory,

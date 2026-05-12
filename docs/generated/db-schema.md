@@ -1,6 +1,6 @@
 # Database Schema Snapshot
 
-- Generated: 2026-05-11
+- Generated: 2026-05-12
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `packages/store/src/vesperaflow_store/models.py`, `packages/store/alembic/versions/`
 - Limitations: generated from importable application metadata, not a live deployment.
@@ -83,6 +83,7 @@
 | `planned_start_at` | `DATETIME` | no | `` |
 | `actual_start_at` | `DATETIME` | yes | `` |
 | `finished_at` | `DATETIME` | yes | `` |
+| `instruction_source_snapshot` | `TEXT` | no | `` |
 | `result_summary` | `TEXT` | yes | `` |
 | `failure_reason` | `TEXT` | yes | `` |
 | `external_execution_ref` | `VARCHAR(240)` | yes | `` |

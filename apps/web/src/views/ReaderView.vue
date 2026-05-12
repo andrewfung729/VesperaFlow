@@ -2,14 +2,15 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getRunEvents, getRunReaderDetail, type RunEvent, type RunReaderDetail } from '@/api'
+import { getRunDetail, type RunDetail } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
-import MarkdownReader from '@/components/MarkdownReader.vue'
+import MarkdownArticle from '@/components/MarkdownArticle.vue'
 import PageStatePanel from '@/components/PageStatePanel.vue'
-import RunTimeline from '@/components/RunTimeline.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import UiButton from '@/components/UiButton.vue'
 import { useReaderPreference, type ReaderFontSize } from '@/composables/useReaderPreference'
+import { useReaderShortcuts } from '@/composables/useReaderShortcuts'
+import { useScrollDirection } from '@/composables/useScrollDirection'
 import { formatDateTime } from '@/lib/dateTime'
 import { readableError } from '@/lib/errors'
 import { occurrenceLabel, runDuration, runOutcome } from '@/lib/runDisplay'
@@ -21,23 +22,26 @@ const props = defineProps<{
 
 const router = useRouter()
 
-const readerDetail = ref<RunReaderDetail | null>(null)
-const runEvents = ref<RunEvent[]>([])
+const readerDetail = ref<RunDetail | null>(null)
 const isLoading = ref(false)
-const isLoadingEvents = ref(false)
 const errorMessage = ref<string | null>(null)
 const copyStatus = ref<'idle' | 'copied' | 'failed'>('idle')
+const showMetadataDetails = ref(false)
 
 const { fontSize } = useReaderPreference()
+const { direction, isAtTop } = useScrollDirection()
 
 const selectedRun = computed(() => readerDetail.value?.run ?? null)
 const previousRunId = computed(() => readerDetail.value?.previous_run_id ?? null)
 const nextRunId = computed(() => readerDetail.value?.next_run_id ?? null)
 
+const toolbarHidden = computed(() => direction.value === 'down' && !isAtTop.value)
+
 watch(
   () => [props.taskId, props.runId],
   () => {
     copyStatus.value = 'idle'
+    showMetadataDetails.value = false
     void loadReader()
   },
   { immediate: true },
@@ -48,36 +52,23 @@ async function loadReader() {
   isLoading.value = true
   errorMessage.value = null
   try {
-    readerDetail.value = await getRunReaderDetail(props.taskId, props.runId)
-    void loadRunEvents(props.runId)
+    readerDetail.value = await getRunDetail(props.taskId, props.runId)
   } catch (error) {
     readerDetail.value = null
-    runEvents.value = []
     errorMessage.value = readableError(error)
   } finally {
     isLoading.value = false
   }
 }
 
-async function loadRunEvents(runId: string) {
-  isLoadingEvents.value = true
-  try {
-    runEvents.value = (await getRunEvents(runId)).data
-  } catch {
-    runEvents.value = []
-  } finally {
-    isLoadingEvents.value = false
-  }
-}
-
-async function openArchive() {
-  await router.push({ name: 'recurring-run-archive', params: { taskId: props.taskId } })
+async function openRunDetail() {
+  await router.push({ name: 'run-detail', params: { taskId: props.taskId, runId: props.runId } })
 }
 
 async function openRun(runId: string | null | undefined) {
   if (!runId) return
   await router.push({
-    name: 'recurring-run-reader',
+    name: 'run-reader',
     params: { taskId: props.taskId, runId },
   })
 }
@@ -103,23 +94,46 @@ function cycleFontSize(direction: 'down' | 'up') {
     if (next) fontSize.value = next
   }
 }
+
+useReaderShortcuts({
+  onPrev: () => openRun(previousRunId.value),
+  onNext: () => openRun(nextRunId.value),
+  onFontInc: () => cycleFontSize('up'),
+  onFontDec: () => cycleFontSize('down'),
+  onBack: () => openRunDetail(),
+  onCopy: () => copyOutcome(),
+})
 </script>
 
 <template>
   <div>
     <ErrorAlert :message="errorMessage" />
 
-    <section class="max-w-none">
+    <section>
       <div
-        class="sticky top-0 z-10 -mx-5 mb-6 border-b border-slate-200 bg-slate-50/95 px-5 py-3 backdrop-blur md:-mx-8 md:px-8 dark:border-slate-700 dark:bg-slate-900/95"
+        data-testid="reader-toolbar"
+        class="sticky top-0 z-10 -mx-5 border-b border-slate-200/60 bg-slate-50/80 px-5 py-3 backdrop-blur transition-transform duration-200 md:-mx-8 md:px-8 dark:border-slate-700/60 dark:bg-slate-900/80"
+        :data-hidden="toolbarHidden"
       >
         <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap gap-2">
-            <UiButton size="sm" @click="openArchive"> Back to Archive </UiButton>
-            <UiButton size="sm" :disabled="!previousRunId" @click="openRun(previousRunId)">
+            <UiButton size="sm" title="Back to Run (Esc)" @click="openRunDetail">
+              Back to Run
+            </UiButton>
+            <UiButton
+              size="sm"
+              title="Previous Run (←)"
+              :disabled="!previousRunId"
+              @click="openRun(previousRunId)"
+            >
               Previous Run
             </UiButton>
-            <UiButton size="sm" :disabled="!nextRunId" @click="openRun(nextRunId)">
+            <UiButton
+              size="sm"
+              title="Next Run (→)"
+              :disabled="!nextRunId"
+              @click="openRun(nextRunId)"
+            >
               Next Run
             </UiButton>
           </div>
@@ -131,6 +145,7 @@ function cycleFontSize(direction: 'down' | 'up') {
               <button
                 class="min-h-9 cursor-pointer px-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:text-slate-200 dark:hover:bg-slate-700"
                 type="button"
+                title="Decrease font size (-)"
                 aria-label="Decrease font size"
                 :disabled="fontSize === 'sm'"
                 @click="cycleFontSize('down')"
@@ -143,6 +158,7 @@ function cycleFontSize(direction: 'down' | 'up') {
               <button
                 class="min-h-9 cursor-pointer px-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 dark:text-slate-200 dark:hover:bg-slate-700"
                 type="button"
+                title="Increase font size (+)"
                 aria-label="Increase font size"
                 :disabled="fontSize === 'xl'"
                 @click="cycleFontSize('up')"
@@ -150,7 +166,12 @@ function cycleFontSize(direction: 'down' | 'up') {
                 A+
               </button>
             </div>
-            <UiButton size="sm" :disabled="!selectedRun" @click="copyOutcome">
+            <UiButton
+              size="sm"
+              title="Copy Outcome (c)"
+              :disabled="!selectedRun"
+              @click="copyOutcome"
+            >
               {{
                 copyStatus === 'copied'
                   ? 'Copied'
@@ -164,21 +185,37 @@ function cycleFontSize(direction: 'down' | 'up') {
       </div>
 
       <article v-if="readerDetail && selectedRun" class="mx-auto max-w-5xl">
-        <header
-          class="mb-8 rounded-md border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"
-        >
-          <p
-            class="mb-2 text-xs font-bold tracking-wide text-teal-700 uppercase dark:text-teal-400"
-          >
-            Outcome Reader
-          </p>
-          <h2 class="m-0 text-3xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
+        <header class="border-b border-slate-200 pb-6 pt-8 dark:border-slate-700">
+          <h1 class="m-0 text-3xl font-bold tracking-normal text-slate-950 dark:text-slate-50">
             {{ readerDetail.task.title }}
-          </h2>
+          </h1>
           <p class="m-0 mt-2 text-base font-semibold text-slate-700 dark:text-slate-300">
             {{ occurrenceLabel(selectedRun) }}
           </p>
-          <dl class="m-0 mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+
+          <div
+            class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-400"
+          >
+            <span data-testid="metadata-summary">
+              {{ formatDateTime(selectedRun.actual_start_at ?? selectedRun.planned_start_at) }} ·
+              {{ runDuration(selectedRun) }} ·
+              <RunStatusBadge :status="selectedRun.run_status" />
+            </span>
+            <button
+              type="button"
+              data-testid="metadata-details-toggle"
+              class="cursor-pointer border-0 bg-transparent p-0 text-sm font-semibold text-teal-700 transition hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300"
+              @click="showMetadataDetails = !showMetadataDetails"
+            >
+              {{ showMetadataDetails ? 'Hide Details' : 'Details' }}
+            </button>
+          </div>
+
+          <dl
+            v-if="showMetadataDetails"
+            data-testid="metadata-details"
+            class="m-0 mt-4 grid gap-3 border-t border-slate-200 pt-4 text-sm sm:grid-cols-2 lg:grid-cols-5 dark:border-slate-700"
+          >
             <div>
               <dt class="font-bold text-slate-500 dark:text-slate-400">Planned</dt>
               <dd class="m-0 text-slate-800 dark:text-slate-200">
@@ -210,30 +247,27 @@ function cycleFontSize(direction: 'down' | 'up') {
           </dl>
         </header>
 
-        <div
-          class="mx-auto w-full max-w-[88ch] rounded-md border border-slate-200 bg-white p-6 sm:p-8 dark:border-slate-700 dark:bg-slate-900"
-          :class="`reader-font-${fontSize}`"
-          data-testid="reader-body"
-        >
-          <MarkdownReader
-            :content="runOutcome(selectedRun)"
-            :expandable="false"
-            class="run-reader-content wrap-anywhere"
-          />
+        <div class="pb-12 pt-8" :class="`reader-font-${fontSize}`" data-testid="reader-body">
+          <section>
+            <h2 class="m-0 mb-4 text-base font-bold text-slate-950 dark:text-slate-50">
+              User Instruction
+            </h2>
+            <MarkdownArticle :content="selectedRun.instruction_source_snapshot" />
+          </section>
+          <section class="border-t border-slate-200 pt-8 dark:border-slate-700">
+            <h2 class="m-0 mb-4 text-base font-bold text-slate-950 dark:text-slate-50">Result</h2>
+            <MarkdownArticle :content="runOutcome(selectedRun)" />
+          </section>
         </div>
 
-        <footer class="mx-auto mt-6 flex w-full max-w-[88ch] flex-wrap justify-between gap-3">
+        <footer
+          class="flex flex-wrap justify-between gap-3 border-t border-slate-200 pt-6 dark:border-slate-700"
+        >
           <UiButton :disabled="!previousRunId" @click="openRun(previousRunId)">
             Previous Run
           </UiButton>
           <UiButton :disabled="!nextRunId" @click="openRun(nextRunId)"> Next Run </UiButton>
         </footer>
-
-        <RunTimeline
-          class="mx-auto mt-8 w-full max-w-[88ch]"
-          :events="runEvents"
-          :is-loading="isLoadingEvents"
-        />
       </article>
 
       <PageStatePanel
@@ -252,76 +286,24 @@ function cycleFontSize(direction: 'down' | 'up') {
 </template>
 
 <style scoped>
-.run-reader-content :deep(.markdown-body) {
-  line-height: 1.75;
+[data-hidden='true'] {
+  transform: translateY(-100%);
 }
 
-.reader-font-sm .run-reader-content :deep(.markdown-body) {
+.reader-font-sm {
   font-size: 1rem;
+  --reader-line-height: 1.7;
 }
-.reader-font-md .run-reader-content :deep(.markdown-body) {
+.reader-font-md {
   font-size: 1.125rem;
+  --reader-line-height: 1.75;
 }
-.reader-font-lg .run-reader-content :deep(.markdown-body) {
+.reader-font-lg {
   font-size: 1.25rem;
+  --reader-line-height: 1.85;
 }
-.reader-font-xl .run-reader-content :deep(.markdown-body) {
+.reader-font-xl {
   font-size: 1.375rem;
-}
-
-.reader-font-sm .run-reader-content :deep(.markdown-body h1) {
-  font-size: 1.625rem;
-}
-.reader-font-sm .run-reader-content :deep(.markdown-body h2) {
-  font-size: 1.375rem;
-}
-.reader-font-sm .run-reader-content :deep(.markdown-body h3) {
-  font-size: 1.125rem;
-}
-
-.reader-font-md .run-reader-content :deep(.markdown-body h1) {
-  font-size: 1.875rem;
-}
-.reader-font-md .run-reader-content :deep(.markdown-body h2) {
-  font-size: 1.5rem;
-}
-.reader-font-md .run-reader-content :deep(.markdown-body h3) {
-  font-size: 1.25rem;
-}
-
-.reader-font-lg .run-reader-content :deep(.markdown-body h1) {
-  font-size: 2rem;
-}
-.reader-font-lg .run-reader-content :deep(.markdown-body h2) {
-  font-size: 1.625rem;
-}
-.reader-font-lg .run-reader-content :deep(.markdown-body h3) {
-  font-size: 1.375rem;
-}
-
-.reader-font-xl .run-reader-content :deep(.markdown-body h1) {
-  font-size: 2.25rem;
-}
-.reader-font-xl .run-reader-content :deep(.markdown-body h2) {
-  font-size: 1.875rem;
-}
-.reader-font-xl .run-reader-content :deep(.markdown-body h3) {
-  font-size: 1.5rem;
-}
-
-.run-reader-content :deep(.markdown-body p),
-.run-reader-content :deep(.markdown-body ul),
-.run-reader-content :deep(.markdown-body ol),
-.run-reader-content :deep(.markdown-body pre),
-.run-reader-content :deep(.markdown-body table),
-.run-reader-content :deep(.markdown-body blockquote) {
-  margin-top: 1em;
-  margin-bottom: 1em;
-}
-
-.run-reader-content :deep(.markdown-body table) {
-  display: block;
-  overflow-x: auto;
-  max-width: 100%;
+  --reader-line-height: 1.9;
 }
 </style>

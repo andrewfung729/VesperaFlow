@@ -5,8 +5,6 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   archiveTask,
   cancelTask,
-  getRun,
-  getRunEvents,
   getTaskDetail,
   listExecutorProfiles,
   rescheduleTask,
@@ -16,13 +14,10 @@ import {
   type ExecutorProfile,
   type ExecutorName,
   type Run,
-  type RunEvent,
   type TaskDetail,
 } from '@/api'
 import ErrorAlert from '@/components/ErrorAlert.vue'
-import MarkdownReader from '@/components/MarkdownReader.vue'
 import RecurrenceEditor from '@/components/RecurrenceEditor.vue'
-import RunTimeline from '@/components/RunTimeline.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import SelectField from '@/components/SelectField.vue'
 import TextArea from '@/components/TextArea.vue'
@@ -41,7 +36,7 @@ import {
   type RecurrenceCadence,
   type WeekdayCode,
 } from '@/lib/recurrence'
-import { runOutcome, runOutcomeSummary } from '@/lib/runDisplay'
+import { runOutcomeSummary } from '@/lib/runDisplay'
 
 const props = defineProps<{
   taskId: string
@@ -51,10 +46,8 @@ const route = useRoute()
 const router = useRouter()
 const selectedDetail = ref<TaskDetail | null>(null)
 const selectedRun = ref<Run | null>(null)
-const runEvents = ref<RunEvent[]>([])
 const executorProfiles = ref<ExecutorProfile[]>([])
 const isLoadingDetail = ref(false)
-const isLoadingRunEvents = ref(false)
 const errorMessage = ref<string | null>(null)
 const rescheduleAt = ref('')
 const isEditingRecurrence = ref(false)
@@ -69,10 +62,6 @@ const editInstructions = ref('')
 const editExecutor = ref<ExecutorName>('debug_printer')
 const editExecutorProfileId = ref('')
 const editTargetWorkingDirectory = ref('')
-const selectedRunId = computed(() => {
-  const value = route.query.runId
-  return typeof value === 'string' ? value : null
-})
 const selectedOccurrenceAt = computed(() => {
   const value = route.query.occurrenceAt
   return typeof value === 'string' ? value : null
@@ -95,7 +84,7 @@ const {
 })
 
 watch(
-  () => [props.taskId, selectedRunId.value],
+  () => props.taskId,
   () => {
     void loadTaskDetail()
   },
@@ -112,12 +101,9 @@ async function loadTaskDetail() {
       executorProfiles.value = (await listExecutorProfiles({ limit: 100 })).data
     }
     if (selectedDetail.value.task.execution_mode === 'one_time') {
-      const runId = selectedRunId.value ?? selectedDetail.value.latest_run?.run_id
-      selectedRun.value = runId ? await getRun(runId) : selectedDetail.value.latest_run
-      if (selectedRun.value) void loadRunEvents(selectedRun.value.run_id)
+      selectedRun.value = selectedDetail.value.latest_run
     } else {
       selectedRun.value = null
-      runEvents.value = []
     }
     rescheduleAt.value = selectedDetail.value.schedule?.planned_at
       ? toDateTimeLocal(selectedDetail.value.schedule.planned_at)
@@ -129,22 +115,10 @@ async function loadTaskDetail() {
   } catch (error) {
     selectedDetail.value = null
     selectedRun.value = null
-    runEvents.value = []
     rescheduleAt.value = ''
     errorMessage.value = readableError(error)
   } finally {
     isLoadingDetail.value = false
-  }
-}
-
-async function loadRunEvents(runId: string) {
-  isLoadingRunEvents.value = true
-  try {
-    runEvents.value = (await getRunEvents(runId)).data
-  } catch {
-    runEvents.value = []
-  } finally {
-    isLoadingRunEvents.value = false
   }
 }
 
@@ -316,6 +290,14 @@ async function openRunArchive() {
   await router.push({ name: 'recurring-run-archive', params: { taskId: props.taskId } })
 }
 
+async function openSelectedRun() {
+  if (!selectedRun.value) return
+  await router.push({
+    name: 'run-detail',
+    params: { taskId: props.taskId, runId: selectedRun.value.run_id },
+  })
+}
+
 function selectedEditExecutor(): ExecutorName | undefined {
   if (!editExecutorProfileId.value) return editExecutor.value
   return (
@@ -426,10 +408,16 @@ function taskExecutorLabel(): string {
               class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5"
             >
               <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <h4 class="m-0 text-base font-bold text-slate-950 dark:text-slate-50">
-                  {{ selectedRun.run_id }}
-                </h4>
-                <RunStatusBadge :status="selectedRun.run_status" />
+                <div>
+                  <h4 class="m-0 text-base font-bold text-slate-950 dark:text-slate-50">
+                    {{ selectedRun.run_id }}
+                  </h4>
+                  <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">Result Preview</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <RunStatusBadge :status="selectedRun.run_status" />
+                  <UiButton size="sm" @click="openSelectedRun"> Open Run </UiButton>
+                </div>
               </div>
               <dl class="m-0 mb-4 grid gap-3 text-sm sm:grid-cols-3">
                 <div>
@@ -451,18 +439,11 @@ function taskExecutorLabel(): string {
                   </dd>
                 </div>
               </dl>
-              <div class="max-w-3xl border-t border-slate-200 dark:border-slate-700 pt-4">
-                <MarkdownReader
-                  :content="runOutcome(selectedRun)"
-                  :expandable="false"
-                  class="wrap-anywhere"
-                />
-              </div>
-              <RunTimeline
-                class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700"
-                :events="runEvents"
-                :is-loading="isLoadingRunEvents"
-              />
+              <p
+                class="m-0 max-w-3xl border-t border-slate-200 pt-4 text-sm text-slate-600 line-clamp-4 wrap-anywhere dark:border-slate-700 dark:text-slate-400"
+              >
+                {{ runOutcomeSummary(selectedRun, 'No summary') }}
+              </p>
             </article>
             <div
               v-else

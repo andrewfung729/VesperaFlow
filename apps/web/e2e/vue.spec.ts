@@ -70,13 +70,16 @@ test('covers the MVP navigation path', async ({ page }) => {
   await page.getByRole('button', { name: 'View Runs' }).click()
   await expect(page.getByRole('heading', { name: 'Run Archive' })).toBeVisible()
   await expect(page.getByText('Daily recurring completed')).toBeVisible()
-  await page.getByRole('button', { name: 'Read Outcome' }).click()
+  await page.getByRole('button', { name: 'Open Run' }).click()
   await expect(page.getByRole('heading', { name: 'Active Recurring' })).toBeVisible()
-  await expect(page.getByText('Outcome Reader')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible()
+  await page.getByRole('button', { name: 'Open Reader' }).click()
+  await expect(page.getByRole('heading', { name: 'User Instruction' })).toBeVisible()
   await expect(
-    page.locator('.run-reader-content').getByText('Daily recurring completed'),
+    page.locator('[data-testid="reader-body"]').getByText('Daily recurring completed'),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Back to Archive' }).click()
+  await page.getByRole('button', { name: 'Back to Run' }).click()
+  await page.getByRole('button', { name: 'Run Archive' }).click()
   await expect(page.getByRole('heading', { name: 'Run Archive' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Calendar' }).click()
@@ -115,14 +118,14 @@ test('toggles dark mode and applies dark class to app root', async ({ page }) =>
 
 test('increases reader font size and changes markdown body class', async ({ page }) => {
   await stubApi(page)
-  await page.goto('/tasks/task-recurring-1/runs/run-recurring-1')
+  await page.goto('/tasks/task-recurring-1/runs/run-recurring-1/read')
 
   const markdownContainer = page.locator('[data-testid="reader-body"]')
   await expect(markdownContainer).toBeVisible()
-  await expect(markdownContainer).toHaveClass(/reader-font-md/)
+  await expect(markdownContainer).toHaveClass(/reader-font-lg/)
 
   await page.getByRole('button', { name: 'Increase font size' }).click()
-  await expect(markdownContainer).toHaveClass(/reader-font-lg/)
+  await expect(markdownContainer).toHaveClass(/reader-font-xl/)
 })
 
 async function stubApi(page: Page) {
@@ -217,7 +220,7 @@ async function stubApi(page: Page) {
       })
       return
     }
-    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-1/reader')) {
+    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-1')) {
       await route.fulfill({
         json: {
           data: {
@@ -419,8 +422,12 @@ function recurringRunResponse() {
     planned_start_at: '2026-04-27T08:00:00+08:00',
     actual_start_at: '2026-04-27T08:01:00+08:00',
     finished_at: '2026-04-27T08:30:00+08:00',
+    instruction_source_snapshot: 'Run this later.',
     result_summary: 'Daily recurring completed',
     failure_reason: null,
+    external_execution_ref: 'workflow-recurring-1',
     occurrence_key: '20260427T000000Z',
+    created_at: '2026-04-27T08:00:00+08:00',
+    updated_at: '2026-04-27T08:30:00+08:00',
   }
 }

@@ -68,7 +68,7 @@ async function openTaskDetail() {
 
 async function openRun(run: RunPreview) {
   await router.push({
-    name: 'recurring-run-reader',
+    name: 'run-detail',
     params: { taskId: props.taskId, runId: run.run_id },
   })
 }
@@ -172,7 +172,7 @@ async function openRun(run: RunPreview) {
             >
               {{ runOutcome(run) }}
             </p>
-            <UiButton class="mt-3" size="sm" @click="openRun(run)"> Read Outcome </UiButton>
+            <UiButton class="mt-3" size="sm" @click="openRun(run)"> Open Run </UiButton>
           </article>
         </div>
 

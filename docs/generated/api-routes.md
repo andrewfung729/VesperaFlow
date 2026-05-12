@@ -1,6 +1,6 @@
 # API Route Snapshot
 
-- Generated: 2026-05-11
+- Generated: 2026-05-12
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `apps/api/src/vesperaflow_api/app.py`, `apps/api/src/vesperaflow_api/routes/`, `apps/api/src/vesperaflow_api/schemas/`
 - Limitations: generated from importable application metadata, not a live deployment.
@@ -25,6 +25,7 @@
 | `POST` | `/api/v1/tasks/{task_id}/occurrences/update` | `update_occurrence` | `OccurrenceUpdateRequest` | `DataEnvelope` |
 | `POST` | `/api/v1/tasks/{task_id}/run-now` | `run_task_now` | `` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/runs` | `list_runs` | `` | `ListEnvelope` |
+| `GET` | `/api/v1/tasks/{task_id}/runs/{run_id}` | `get_run_detail` | `` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/runs/{run_id}/reader` | `get_run_reader_detail` | `` | `DataEnvelope` |
 | `GET` | `/api/v1/tasks/{task_id}/schedule` | `get_schedule` | `` | `DataEnvelope` |
 | `PATCH` | `/api/v1/tasks/{task_id}/schedule` | `update_schedule` | `ScheduleUpdateRequest` | `DataEnvelope` |

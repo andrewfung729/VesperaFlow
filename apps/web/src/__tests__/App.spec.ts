@@ -528,7 +528,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Detailed Task')
   })
 
-  it('navigates to task detail from a history item with run context', async () => {
+  it('opens one-time history items in run detail', async () => {
     stubFetch()
     const { router, wrapper } = await mountAppAt('/history')
 
@@ -540,13 +540,14 @@ describe('App', () => {
     await historyItemButton.trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.name).toBe('task-detail')
+    expect(router.currentRoute.value.name).toBe('run-detail')
     expect(router.currentRoute.value.params.taskId).toBe('task-1')
-    expect(router.currentRoute.value.query.runId).toBe('run-1')
-    expect(wrapper.text()).toContain('Selected Run')
+    expect(router.currentRoute.value.params.runId).toBe('run-1')
+    expect(wrapper.text()).toContain('Run')
+    expect(wrapper.text()).toContain('Executor invocation failed.')
   })
 
-  it('opens recurring history items in the focused outcome reader', async () => {
+  it('opens recurring history items in run detail', async () => {
     stubFetch({
       historyItems: [
         {
@@ -573,10 +574,10 @@ describe('App', () => {
     await historyItemButton.trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.name).toBe('recurring-run-reader')
+    expect(router.currentRoute.value.name).toBe('run-detail')
     expect(router.currentRoute.value.params.taskId).toBe('task-recurring-1')
     expect(router.currentRoute.value.params.runId).toBe('run-recurring-1')
-    expect(wrapper.text()).toContain('Outcome Reader')
+    expect(wrapper.text()).toContain('Open Reader')
   })
 
   it('links the empty recurring todo state to recurring composer mode', async () => {
@@ -639,14 +640,15 @@ describe('App', () => {
     expect(wrapper.text()).not.toContain('Read Outcome')
   })
 
-  it('renders one-time run timeline on task detail', async () => {
+  it('keeps one-time task detail focused on latest run preview', async () => {
     stubFetch()
     const { wrapper } = await mountAppAt('/tasks/task-1')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Timeline')
-    expect(wrapper.text()).toContain('Executor invocation failed.')
-    expect(wrapper.text()).toContain('executor_error')
+    expect(wrapper.text()).toContain('Result Preview')
+    expect(wrapper.text()).toContain('Open Run')
+    expect(wrapper.text()).not.toContain('Timeline')
+    expect(wrapper.text()).not.toContain('executor_error')
   })
 
   it('filters recurring run archive runs by status', async () => {
@@ -669,22 +671,31 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Recurring executor failed')
   })
 
-  it('opens and navigates the recurring outcome reader', async () => {
+  it('opens run detail from archive and then opens the reader', async () => {
     stubFetch()
     const { router, wrapper } = await mountAppAt('/tasks/task-recurring-1/runs')
 
-    const readOutcomeButton = wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Read Outcome')
-    if (!readOutcomeButton) throw new Error('Expected Read Outcome button')
+    const openRunButton = wrapper.findAll('button').find((button) => button.text() === 'Open Run')
+    if (!openRunButton) throw new Error('Expected Open Run button')
 
-    await readOutcomeButton.trigger('click')
+    await openRunButton.trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.name).toBe('recurring-run-reader')
+    expect(router.currentRoute.value.name).toBe('run-detail')
     expect(router.currentRoute.value.params.runId).toBe('run-recurring-1')
-    expect(wrapper.text()).toContain('Outcome Reader')
+    expect(wrapper.text()).toContain('Timeline')
+    expect(wrapper.text()).toContain('Executor invocation completed successfully.')
+
+    const openReaderButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Open Reader')
+    if (!openReaderButton) throw new Error('Expected Open Reader button')
+    await openReaderButton.trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('run-reader')
     expect(wrapper.text()).toContain('Daily recurring completed')
+    expect(wrapper.text()).not.toContain('Timeline')
 
     const nextButton = wrapper.findAll('button').find((button) => button.text() === 'Next Run')
     if (!nextButton) throw new Error('Expected Next Run button')
@@ -1106,14 +1117,22 @@ function stubFetch(options: StubFetchOptions = {}) {
       })
     }
 
+    if (url.includes('/tasks/task-1/runs/run-1')) {
+      return jsonResponse(oneTimeRunDetailResponse('task-1', 'run-1'))
+    }
+
+    if (url.includes('/tasks/task-completed/runs/run-completed')) {
+      return jsonResponse(oneTimeRunDetailResponse('task-completed', 'run-completed'))
+    }
+
     if (
-      url.includes('/tasks/task-recurring-1/runs/run-recurring-1/reader') ||
-      url.includes('/tasks/task-recurring-created/runs/run-recurring-1/reader')
+      url.includes('/tasks/task-recurring-1/runs/run-recurring-1') ||
+      url.includes('/tasks/task-recurring-created/runs/run-recurring-1')
     ) {
       return jsonResponse(runReaderDetailResponse('task-recurring-1', 'run-recurring-1'))
     }
 
-    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-2/reader')) {
+    if (url.includes('/tasks/task-recurring-1/runs/run-recurring-2')) {
       return jsonResponse(runReaderDetailResponse('task-recurring-1', 'run-recurring-2'))
     }
 
@@ -1319,9 +1338,13 @@ function recurringRunResponses(taskId: string) {
       planned_start_at: '2026-04-26T08:00:00+08:00',
       actual_start_at: '2026-04-26T08:01:00+08:00',
       finished_at: '2026-04-26T08:30:00+08:00',
+      instruction_source_snapshot: 'Run this on a recurring schedule.',
       result_summary: 'Daily recurring completed',
       failure_reason: null,
+      external_execution_ref: 'workflow-recurring-1',
       occurrence_key: '20260426T000000Z',
+      created_at: '2026-04-26T08:00:00+08:00',
+      updated_at: '2026-04-26T08:30:00+08:00',
     },
     {
       run_id: 'run-recurring-2',
@@ -1331,9 +1354,13 @@ function recurringRunResponses(taskId: string) {
       planned_start_at: '2026-04-25T08:00:00+08:00',
       actual_start_at: '2026-04-25T08:01:00+08:00',
       finished_at: '2026-04-25T08:30:00+08:00',
+      instruction_source_snapshot: 'Run this on a recurring schedule.',
       result_summary: null,
       failure_reason: 'Recurring executor failed',
+      external_execution_ref: 'workflow-recurring-2',
       occurrence_key: '20260425T000000Z',
+      created_at: '2026-04-25T08:00:00+08:00',
+      updated_at: '2026-04-25T08:30:00+08:00',
     },
   ]
 }
@@ -1385,6 +1412,43 @@ function runReaderDetailResponse(taskId: string, runId: string) {
   }
 }
 
+function oneTimeRunDetailResponse(taskId: string, runId: string) {
+  const isCompleted = taskId === 'task-completed'
+  const run = (isCompleted ? completedRunResponses(taskId) : oneTimeRunResponses(taskId)).find(
+    (item) => item.run_id === runId,
+  )
+  if (!run) throw new Error(`Missing run ${runId}`)
+  return {
+    task: {
+      task_id: taskId,
+      title: isCompleted ? 'Completed Task' : 'Detailed Task',
+      instruction_source: isCompleted ? 'Already done.' : 'Run this later.',
+      target_working_directory: '/tmp',
+      execution_mode: 'one_time',
+      task_status: isCompleted ? 'completed' : 'scheduled',
+      template_id: null,
+      executor: 'debug_printer',
+      executor_profile_id: 'debug_printer',
+      version: 1,
+      created_at: '2026-04-25T09:00:00+08:00',
+      updated_at: '2026-04-25T11:00:00+08:00',
+      archived_at: null,
+    },
+    schedule: {
+      schedule_id: run.schedule_id,
+      task_id: taskId,
+      schedule_type: 'single_run',
+      schedule_status: isCompleted ? 'completed' : 'pending',
+      planned_at: run.planned_start_at,
+      next_run_at: isCompleted ? null : run.planned_start_at,
+      version: 1,
+    },
+    run,
+    previous_run_id: null,
+    next_run_id: null,
+  }
+}
+
 function oneTimeRunResponses(taskId: string) {
   return [
     {
@@ -1395,9 +1459,13 @@ function oneTimeRunResponses(taskId: string) {
       planned_start_at: '2026-04-25T10:00:00+08:00',
       actual_start_at: '2026-04-25T10:01:00+08:00',
       finished_at: '2026-04-25T11:00:00+08:00',
+      instruction_source_snapshot: 'Run this later.',
       result_summary: null,
       failure_reason: 'Executor failed',
+      external_execution_ref: 'workflow-1',
       occurrence_key: null,
+      created_at: '2026-04-25T10:00:00+08:00',
+      updated_at: '2026-04-25T11:00:00+08:00',
     },
   ]
 }
@@ -1412,9 +1480,13 @@ function completedRunResponses(taskId: string) {
       planned_start_at: '2026-04-25T10:00:00+08:00',
       actual_start_at: '2026-04-25T10:01:00+08:00',
       finished_at: '2026-04-25T11:00:00+08:00',
+      instruction_source_snapshot: 'Already done.',
       result_summary: 'Done',
       failure_reason: null,
+      external_execution_ref: 'workflow-completed',
       occurrence_key: null,
+      created_at: '2026-04-25T10:00:00+08:00',
+      updated_at: '2026-04-25T11:00:00+08:00',
     },
   ]
 }

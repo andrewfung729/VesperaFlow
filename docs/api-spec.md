@@ -255,6 +255,7 @@ Templates may define `default_target_working_directory`. When present, creating 
   "planned_start_at": "2026-04-24T23:30:00+08:00",
   "actual_start_at": "2026-04-24T23:31:00+08:00",
   "finished_at": null,
+  "instruction_source_snapshot": "Summarize the top announcements...",
   "result_summary": null,
   "failure_reason": null,
   "external_execution_ref": "wf_abc",
@@ -885,7 +886,37 @@ Response:
 
 - `200 OK` with `Run Object`
 
-### 10.2.1 List Run Events
+Notes:
+
+- includes full result/failure content and `instruction_source_snapshot`
+- legacy rows backfill the snapshot from the current task instruction during migration
+
+### 10.2.1 Get Task Run Detail
+
+`GET /api/v1/tasks/{task_id}/runs/{run_id}`
+
+Response:
+
+- `200 OK` with task, schedule, full run object, and adjacent run ids
+
+```json
+{
+  "data": {
+    "task": {},
+    "schedule": {},
+    "run": {},
+    "previous_run_id": "run_122",
+    "next_run_id": "run_121"
+  }
+}
+```
+
+Notes:
+
+- used by the Run detail workbench and Reader page
+- `run.instruction_source_snapshot` is the instruction used for that run
+
+### 10.2.2 List Run Events
 
 `GET /api/v1/runs/{run_id}/events`
 
@@ -922,6 +953,11 @@ Response:
   }
 }
 ```
+
+Notes:
+
+- retained as a reader-compatible detail response
+- returns the same run snapshot fields as `GET /api/v1/tasks/{task_id}/runs/{run_id}`
 
 Behavior:
 

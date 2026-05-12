@@ -109,6 +109,35 @@ class RunResponse(BaseModel):
         return cls.model_validate(data)
 
 
+class RunDetailResponse(BaseModel):
+    run_id: str
+    task_id: str
+    schedule_id: str | None
+    run_status: RunStatus
+    planned_start_at: datetime
+    actual_start_at: datetime | None
+    finished_at: datetime | None
+    external_execution_ref: str | None
+    occurrence_key: str | None
+    created_at: datetime
+    updated_at: datetime
+    instruction_source_snapshot: str
+    result_summary: str | None
+    failure_reason: str | None
+    outcome_preview: str | None
+    outcome_truncated: bool = False
+    outcome_source: str | None
+
+    @classmethod
+    def from_model(cls, run: Run) -> "RunDetailResponse":
+        data = _model_dict(run)
+        preview, truncated, source = run_outcome_preview_values(run)
+        data["outcome_preview"] = preview
+        data["outcome_truncated"] = truncated
+        data["outcome_source"] = source
+        return cls.model_validate(data)
+
+
 class RunEventResponse(BaseModel):
     run_event_id: str
     run_id: str
@@ -217,6 +246,7 @@ class RunReaderRunResponse(BaseModel):
     occurrence_key: str | None
     created_at: datetime
     updated_at: datetime
+    instruction_source_snapshot: str
     result_summary: str | None
     failure_reason: str | None
 
