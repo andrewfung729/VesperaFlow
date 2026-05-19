@@ -1,0 +1,24 @@
+# Build artifacts and dependency caches that must be rebuilt inside the image.
+node_modules
+dist
+dist-ssr
+
+# Test and tooling artifacts that have no place in a production bundle.
+test-results
+playwright-report
+__screenshots__
+coverage
+.eslintcache
+*.tsbuildinfo
+
+# Local-only files.
+.DS_Store
+*.local
+.env
+.env.*
+
+# VCS / editor metadata (the build context is apps/web, but be defensive).
+.git
+.gitignore
+.vscode
+.idea

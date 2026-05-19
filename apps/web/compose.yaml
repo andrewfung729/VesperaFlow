@@ -1,0 +1,37 @@
+# Production-style web container for VesperaFlow.
+#
+# Separate from `infra/compose.dev.yaml` (Postgres + Temporal middleware) so
+# the web image lifecycle is independent of the dev infra. Run both in
+# parallel for a full local stack:
+#
+#   # 1. Middleware (Postgres + Temporal)
+#   docker compose --env-file infra/.env -f infra/compose.dev.yaml up
+#
+#   # 2. API + Worker on the host (NOT containerised, by design)
+#   uv run --directory apps/api uvicorn vesperaflow_api.app:create_app \
+#     --factory --host 0.0.0.0 --port 18000
+#   uv run --directory apps/worker python -m vesperaflow_worker
+#
+#   # 3. Web (this file)
+#   docker compose -f apps/web/compose.yaml up --build
+#   #   → http://localhost:18081
+#
+# The container's nginx reverse-proxies /api/ to ${API_UPSTREAM}, defaulting
+# to host.docker.internal:18000 so the SPA reaches the host-side API. See
+# apps/web/Dockerfile and apps/web/nginx.conf.template for build/runtime
+# wiring.
+
+services:
+  web:
+    build:
+      context: .
+    image: vesperaflow-web:latest
+    container_name: vesperaflow-web
+    environment:
+      - API_UPSTREAM=${API_UPSTREAM:-http://host.docker.internal:18000}
+    ports:
+      - "${WEB_PORT:-18081}:80"
+    extra_hosts:
+      # macOS Docker Desktop provides this automatically; required on Linux.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
