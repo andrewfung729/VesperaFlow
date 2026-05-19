@@ -6,7 +6,7 @@ import subprocess
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 
 import pytest
 from vesperaflow_core import ExecutionSnapshot, ExecutorName, RunStatus
@@ -15,6 +15,9 @@ from vesperaflow_worker.executors import (
 )
 from vesperaflow_worker.executors import (
     claude_code as claude_code_module,
+)
+from vesperaflow_worker.executors import (
+    codex_cli as codex_cli_module,
 )
 from vesperaflow_worker.executors.base import ExecutorRuntimeConfig
 from vesperaflow_worker.executors.claude_code import (
@@ -65,6 +68,10 @@ def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
     )
 
     assert loaded == {"root_loaded": False, "workflow_loaded": False}
+
+
+def _fake_codex_binary(_cmd: str) -> str:
+    return "/usr/bin/codex"
 
 
 def test_worker_package_and_workflows_do_not_import_kimi_code_module() -> None:
@@ -612,7 +619,7 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
         returncode=0,
     )
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
     executor = CodexExecutor()
     codex_snapshot = snapshot.model_copy(
         update={
@@ -634,6 +641,7 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
     )
     assert (run_dir / "codex-stderr.txt").read_text() == ""
     args = cast(tuple[str, ...], proc.calls[0]["args"])
+    kwargs = cast(dict[str, object], proc.calls[0]["kwargs"])
     assert args[0].endswith("codex")
     assert args[1:] == (
         "exec",
@@ -647,6 +655,7 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
         "-",
     )
     assert "--model" not in args
+    assert kwargs["limit"] == 1024 * 1024
     assert proc.stdin_data is not None
     assert proc.stdin_data.decode("utf-8") == "Do work\n"
 
@@ -665,7 +674,7 @@ async def test_codex_executor_passes_runtime_profile_model(
         returncode=0,
     )
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
     executor = CodexExecutor()
     runtime_config = ExecutorRuntimeConfig(default_model="gpt-5.2")
 
@@ -695,6 +704,89 @@ async def test_codex_executor_passes_runtime_profile_model(
         "--dangerously-bypass-approvals-and-sandbox",
         "-",
     )
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_captures_long_jsonl_line(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    long_message = "x" * 70_000
+    proc = _fake_subprocess(
+        stdout_lines=[
+            json.dumps({"msg": "agent_message", "message": long_message}).encode()
+            + b"\n",
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
+
+    outcome = await CodexExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.result_summary == long_message
+    assert json.loads((run_dir / "codex-events.jsonl").read_text()) == {
+        "msg": "agent_message",
+        "message": long_message,
+    }
+
+
+@pytest.mark.asyncio
+async def test_codex_executor_truncates_oversized_jsonl_line_and_continues(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    monkeypatch.setattr(codex_cli_module, "_MAX_CAPTURED_LINE_BYTES", 64)
+    proc = _fake_subprocess(
+        stdout_lines=[
+            b'{"type":"large","payload":"' + (b"x" * 80) + b'"}\n',
+            b'{"msg":"agent_message","message":"Recovered"}\n',
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
+
+    outcome = await CodexExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.CODEX,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.result_summary == "Recovered"
+    artifact_lines = (run_dir / "codex-events.jsonl").read_text().splitlines()
+    assert json.loads(artifact_lines[0]) == {
+        "type": "executor.stream_line_truncated",
+        "stream": "stdout",
+        "captured_bytes": 64,
+        "truncated_bytes": 45,
+    }
+    assert json.loads(artifact_lines[1]) == {
+        "msg": "agent_message",
+        "message": "Recovered",
+    }
 
 
 @pytest.mark.asyncio
@@ -750,7 +842,7 @@ async def test_codex_executor_maps_nonzero_auth_exit_to_failure(
         returncode=1,
     )
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
     target_dir = tmp_path / "target"
     target_dir.mkdir()
     executor = CodexExecutor()
@@ -786,7 +878,7 @@ async def test_codex_executor_maps_turn_failed_jsonl_to_failure(
         returncode=0,
     )
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
     target_dir = tmp_path / "target"
     target_dir.mkdir()
     executor = CodexExecutor()
@@ -818,7 +910,7 @@ async def test_codex_executor_cancels_on_cancelled_error(
         returncode=-signal.SIGINT,
     )
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/codex")
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
     target_dir = tmp_path / "target"
     target_dir.mkdir()
     executor = CodexExecutor()
@@ -1227,17 +1319,34 @@ class FakeStreamWriter:
 
 class FakeStreamReader:
     def __init__(self, lines: list[bytes]) -> None:
-        self._lines = iter(lines)
+        self._data: bytes = b"".join(lines)
+        self._offset: int = 0
 
     async def readline(self) -> bytes:
-        try:
-            return next(self._lines)
-        except StopIteration:
+        if self._offset >= len(self._data):
             return b""
+        newline_index = self._data.find(b"\n", self._offset)
+        end = len(self._data) if newline_index == -1 else newline_index + 1
+        line = self._data[self._offset : end]
+        self._offset = end
+        return line
+
+    async def read(self, n: int = -1) -> bytes:
+        if self._offset >= len(self._data):
+            return b""
+        end = len(self._data) if n < 0 else min(len(self._data), self._offset + n)
+        chunk = self._data[self._offset : end]
+        self._offset = end
+        return chunk
 
 
 class FakeCancellingStreamReader(FakeStreamReader):
+    @override
     async def readline(self) -> bytes:
+        raise asyncio.CancelledError
+
+    @override
+    async def read(self, n: int = -1) -> bytes:
         raise asyncio.CancelledError
 
 

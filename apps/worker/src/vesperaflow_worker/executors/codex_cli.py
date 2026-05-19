@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_SUBPROCESS_TIMEOUT = 900.0
 _SIGINT_GRACE = 5.0
+_SUBPROCESS_STREAM_LIMIT = 1024 * 1024
+_STREAM_READ_CHUNK_SIZE = 64 * 1024
+_MAX_CAPTURED_LINE_BYTES = 4 * 1024 * 1024
 
 
 @dataclass(slots=True)
@@ -67,6 +70,7 @@ class CodexExecutor(ExecutorAdapter):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=_subprocess_env(runtime_config),
+                limit=_SUBPROCESS_STREAM_LIMIT,
                 start_new_session=True,
             )
 
@@ -221,11 +225,7 @@ async def _read_stdout(
 ) -> None:
     if proc.stdout is None:
         return
-    while True:
-        line = await proc.stdout.readline()
-        if not line:
-            break
-        stdout_lines.append(line.decode("utf-8", errors="replace").rstrip("\n"))
+    await _read_stream_lines(proc.stdout, stdout_lines, stream_name="stdout")
 
 
 async def _read_stderr(
@@ -234,11 +234,108 @@ async def _read_stderr(
 ) -> None:
     if proc.stderr is None:
         return
+    await _read_stream_lines(proc.stderr, stderr_lines, stream_name="stderr")
+
+
+async def _read_stream_lines(
+    stream: asyncio.StreamReader,
+    lines: list[str],
+    *,
+    stream_name: str,
+) -> None:
+    pending = bytearray()
+    truncated_bytes = 0
+
     while True:
-        line = await proc.stderr.readline()
-        if not line:
+        chunk = await stream.read(_STREAM_READ_CHUNK_SIZE)
+        if not chunk:
             break
-        stderr_lines.append(line.decode("utf-8", errors="replace").rstrip("\n"))
+
+        start = 0
+        while start < len(chunk):
+            newline_index = chunk.find(b"\n", start)
+            end = newline_index if newline_index != -1 else len(chunk)
+            segment = chunk[start:end]
+            truncated_bytes = _append_line_segment(
+                pending,
+                segment,
+                truncated_bytes=truncated_bytes,
+            )
+
+            if newline_index == -1:
+                break
+
+            _append_completed_line(
+                lines,
+                pending,
+                stream_name=stream_name,
+                truncated_bytes=truncated_bytes,
+            )
+            pending.clear()
+            truncated_bytes = 0
+            start = newline_index + 1
+
+    if pending or truncated_bytes:
+        _append_completed_line(
+            lines,
+            pending,
+            stream_name=stream_name,
+            truncated_bytes=truncated_bytes,
+        )
+
+
+def _append_line_segment(
+    pending: bytearray,
+    segment: bytes,
+    *,
+    truncated_bytes: int,
+) -> int:
+    remaining = _MAX_CAPTURED_LINE_BYTES - len(pending)
+    if remaining <= 0:
+        return truncated_bytes + len(segment)
+    pending.extend(segment[:remaining])
+    return truncated_bytes + max(0, len(segment) - remaining)
+
+
+def _append_completed_line(
+    lines: list[str],
+    pending: bytearray,
+    *,
+    stream_name: str,
+    truncated_bytes: int,
+) -> None:
+    if truncated_bytes:
+        lines.append(
+            _truncated_stream_line(
+                stream_name=stream_name,
+                captured_bytes=len(pending),
+                truncated_bytes=truncated_bytes,
+            )
+        )
+        return
+    lines.append(pending.decode("utf-8", errors="replace"))
+
+
+def _truncated_stream_line(
+    *,
+    stream_name: str,
+    captured_bytes: int,
+    truncated_bytes: int,
+) -> str:
+    if stream_name == "stdout":
+        return json.dumps(
+            {
+                "type": "executor.stream_line_truncated",
+                "stream": stream_name,
+                "captured_bytes": captured_bytes,
+                "truncated_bytes": truncated_bytes,
+            },
+            separators=(",", ":"),
+        )
+    return (
+        f"[VesperaFlow truncated {stream_name} line after "
+        f"{captured_bytes} bytes; discarded {truncated_bytes} bytes]"
+    )
 
 
 def _write_codex_artifacts(
