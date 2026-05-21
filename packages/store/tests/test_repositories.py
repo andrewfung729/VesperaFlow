@@ -52,7 +52,7 @@ async def test_create_one_time_task_creates_task_schedule_and_planned_run(
 
 
 @pytest.mark.asyncio
-async def test_create_one_time_task_persists_debug_printer_executor(
+async def test_create_one_time_task_persists_pi_executor(
     session: AsyncSession,
 ) -> None:
     async with session.begin():
@@ -62,31 +62,31 @@ async def test_create_one_time_task_persists_debug_printer_executor(
             instruction_source="Find updates",
             target_working_directory="/tmp",
             planned_at=datetime.now(UTC) + timedelta(hours=1),
-            executor=ExecutorName.DEBUG_PRINTER,
+            executor=ExecutorName.PI,
         )
 
     task = await repo.get_task(session, bundle.task.task_id)
-    assert task.executor is ExecutorName.DEBUG_PRINTER
+    assert task.executor is ExecutorName.PI
 
 
 @pytest.mark.asyncio
-async def test_executor_profile_crud_masks_runtime_choices(
+async def test_executor_profile_crud_persists_pi_runtime_choices(
     session: AsyncSession,
 ) -> None:
     async with session.begin():
         profile = await repo.create_executor_profile(
             session,
-            name="Codex GPT",
-            executor=ExecutorName.CODEX,
+            name="Pi default",
+            executor=ExecutorName.PI,
             is_default=True,
-            default_model="gpt-5.2",
+            default_model="sonnet",
             env={"FOO": "bar"},
             secret_env={"TOKEN": "secret"},
         )
 
     stored = await repo.get_executor_profile(session, profile.profile_id)
-    assert stored.executor is ExecutorName.CODEX
-    assert stored.default_model == "gpt-5.2"
+    assert stored.executor is ExecutorName.PI
+    assert stored.default_model == "sonnet"
     assert stored.env == {"FOO": "bar"}
     assert stored.secret_env == {"TOKEN": "secret"}
 
@@ -96,6 +96,7 @@ async def test_default_executor_profile_resolves_for_task(
     session: AsyncSession,
 ) -> None:
     async with session.begin():
+        await repo.ensure_default_executor_profiles(session)
         await repo.ensure_default_executor_profiles(session)
         profile = await repo.resolve_executor_profile(
             session,
@@ -107,6 +108,12 @@ async def test_default_executor_profile_resolves_for_task(
             executor_profile_id=None,
             executor=ExecutorName.OPENCODE,
         )
+        pi_profile = await repo.resolve_executor_profile(
+            session,
+            executor_profile_id=None,
+            executor=ExecutorName.PI,
+        )
+        profiles_page = await repo.list_executor_profiles(session)
         bundle = await repo.create_one_time_task(
             session,
             title="Research",
@@ -122,6 +129,9 @@ async def test_default_executor_profile_resolves_for_task(
     assert task.executor_profile_id == profile.profile_id
     assert opencode_profile.name == "OpenCode"
     assert opencode_profile.default_model is None
+    assert pi_profile.name == "Pi"
+    assert pi_profile.default_model is None
+    assert [item.executor for item in profiles_page.items].count(ExecutorName.PI) == 1
 
 
 @pytest.mark.asyncio
@@ -1248,7 +1258,7 @@ async def test_template_instantiation_copies_fields_without_tracking_edits(
             default_target_working_directory="/tmp",
             default_execution_mode=ExecutionMode.ONE_TIME,
             default_schedule_type=ScheduleType.SINGLE_RUN,
-            default_executor=ExecutorName.DEBUG_PRINTER,
+            default_executor=ExecutorName.PI,
         )
         bundle = await repo.instantiate_one_time_task_from_template(
             session,
@@ -1270,7 +1280,7 @@ async def test_template_instantiation_copies_fields_without_tracking_edits(
     assert detail.task.title == "Original title"
     assert detail.task.instruction_source == "Original instructions"
     assert detail.task.target_working_directory == "/tmp"
-    assert detail.task.executor is ExecutorName.DEBUG_PRINTER
+    assert detail.task.executor is ExecutorName.PI
 
 
 @pytest.mark.asyncio

@@ -172,3 +172,47 @@ Expected successful execution artifacts under the run artifact directory:
 
 Expected classified failures include `executor_workspace_unavailable`,
 `executor_not_available`, `executor_not_authenticated`, and `executor_error`.
+
+## Pi Live Smoke
+
+Pi live smoke is opt-in because it uses the developer machine's local `pi`
+installation, authentication state, selected workspace, and Pi's local trust
+model. VesperaFlow does not store or print executor credentials.
+
+Prerequisites:
+
+- `pi` is installed and available on `PATH`.
+- Pi is authenticated through its own login/config files or executor profile
+  environment values.
+- The target working directory is an existing absolute path.
+
+Start the API and Worker, then create a one-time task in the web UI using a
+`pi` executor profile:
+
+```bash
+uv run vesperaflow-api
+uv run vesperaflow-worker
+```
+
+Set the Pi profile's default model in the Executors view when a specific model
+is required. When unset, Pi uses its own configured model default. Use a
+harmless instruction such as asking Pi to inspect the repository and write a
+short summary into the run output only. Verify the executor preflight passes for
+the selected target directory, then verify task detail reaches a terminal
+completed or classified failed state.
+
+Expected successful execution artifacts under the run artifact directory:
+
+- `pi-events.jsonl` contains filtered non-streaming JSON audit events from
+  stdout.
+- `pi-stderr.txt` contains stderr diagnostics.
+- `pi-result.txt` contains the extracted final assistant text.
+- `pi-sessions/` contains Pi session files.
+
+Set `VESPERAFLOW_PI_CAPTURE_RAW_EVENTS=1` for a debug run when the full Pi JSONL
+stream is needed. The Worker writes capped raw output to `pi-raw-events.jsonl`;
+`VESPERAFLOW_PI_RAW_EVENTS_MAX_BYTES` overrides the default cap.
+
+Expected classified failures include `executor_workspace_unavailable`,
+`executor_not_available`, `executor_not_authenticated`,
+`executor_misconfigured`, and `executor_error`.

@@ -19,6 +19,9 @@ from vesperaflow_worker.executors import (
 from vesperaflow_worker.executors import (
     codex_cli as codex_cli_module,
 )
+from vesperaflow_worker.executors import (
+    pi as pi_module,
+)
 from vesperaflow_worker.executors.base import ExecutorRuntimeConfig
 from vesperaflow_worker.executors.claude_code import (
     DEFAULT_CLAUDE_ENV,
@@ -29,6 +32,7 @@ from vesperaflow_worker.executors.debug import DebugPrinterExecutor
 from vesperaflow_worker.executors.factory import build_executor
 from vesperaflow_worker.executors.kimi_code import KimiCodeExecutor
 from vesperaflow_worker.executors.opencode_cli import OpenCodeExecutor
+from vesperaflow_worker.executors.pi import PiExecutor
 from vesperaflow_worker.executors.router import ExecutorRouter
 
 
@@ -72,6 +76,10 @@ def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
 
 def _fake_codex_binary(_cmd: str) -> str:
     return "/usr/bin/codex"
+
+
+def _fake_pi_binary(_cmd: str) -> str:
+    return "/usr/bin/pi"
 
 
 def test_worker_package_and_workflows_do_not_import_kimi_code_module() -> None:
@@ -191,6 +199,45 @@ def test_worker_package_and_workflows_do_not_import_opencode_cli_module() -> Non
     assert loaded == {"root_loaded": False, "workflow_loaded": False}
 
 
+def test_worker_package_and_workflows_do_not_import_pi_module() -> None:
+    env = os.environ.copy()
+    pythonpath = os.pathsep.join(
+        [
+            str(Path.cwd() / "packages/core/src"),
+            str(Path.cwd() / "apps/worker/src"),
+            env.get("PYTHONPATH", ""),
+        ]
+    )
+    env["PYTHONPATH"] = pythonpath
+    check = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import importlib, json, sys; "
+                "import vesperaflow_worker; "
+                "mod = 'vesperaflow_worker.executors.pi'; "
+                "root_loaded = mod in sys.modules; "
+                "importlib.import_module('vesperaflow_worker.workflows'); "
+                "print(json.dumps({"
+                "'root_loaded': root_loaded, "
+                "'workflow_loaded': mod in sys.modules"
+                "}))"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    loaded: dict[str, bool] = json.loads(
+        check.stdout.strip().splitlines()[-1],
+    )
+
+    assert loaded == {"root_loaded": False, "workflow_loaded": False}
+
+
 @pytest.mark.asyncio
 async def test_debug_printer_executor_logs_snapshot(
     snapshot: ExecutionSnapshot,
@@ -235,6 +282,7 @@ def test_executor_factory_builds_router_with_all_adapters() -> None:
     assert isinstance(executor.debug_printer, DebugPrinterExecutor)
     assert isinstance(executor.kimi_code, KimiCodeExecutor)
     assert isinstance(executor.opencode, OpenCodeExecutor)
+    assert isinstance(executor.pi, PiExecutor)
 
 
 def test_executor_factory_uses_claude_runtime_defaults() -> None:
@@ -255,6 +303,7 @@ async def test_executor_router_rejects_unknown_executor(
         debug_printer=DebugPrinterExecutor(),
         kimi_code=DebugPrinterExecutor(),
         opencode=DebugPrinterExecutor(),
+        pi=DebugPrinterExecutor(),
     )
     invalid_snapshot = snapshot.model_copy(update={"executor": "unknown"})
 
@@ -930,6 +979,21 @@ async def test_codex_executor_cancels_on_cancelled_error(
 
 
 @pytest.mark.asyncio
+async def test_executor_router_dispatches_pi(
+    snapshot: ExecutionSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    pi_snapshot = snapshot.model_copy(update={"executor": ExecutorName.PI})
+    executor = build_executor()
+
+    outcome = await executor.execute(pi_snapshot)
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
 async def test_opencode_executor_runs_subprocess_and_writes_artifacts(
     snapshot: ExecutionSnapshot,
     tmp_path: Path,
@@ -1170,6 +1234,464 @@ async def test_opencode_executor_cancels_on_cancelled_error(
     assert outcome.terminal_code == "canceled"
 
 
+@pytest.mark.asyncio
+async def test_pi_executor_runs_subprocess_and_writes_artifacts(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    stdout_events: list[object] = [
+        {"type": "session", "version": 3},
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {"type": "text_delta", "delta": "Done "},
+        },
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {"type": "text_delta", "delta": "from Pi"},
+        },
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Done from Pi"}],
+                "stopReason": "stop",
+            },
+        },
+    ]
+    proc = _fake_subprocess(
+        stdout_lines=[_json_line_bytes(event) for event in stdout_events],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", _fake_pi_binary)
+    executor = PiExecutor()
+    pi_snapshot = snapshot.model_copy(
+        update={
+            "executor": ExecutorName.PI,
+            "working_directory": str(run_dir),
+            "target_working_directory": str(target_dir),
+        }
+    )
+
+    outcome = await executor.execute(pi_snapshot)
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.terminal_code == "pi_completed"
+    assert outcome.result_summary == "Done from Pi"
+    assert outcome.result_artifact_ref == str(run_dir / "pi-result.txt")
+    assert (run_dir / "pi-result.txt").read_text() == "Done from Pi"
+    assert (run_dir / "pi-events.jsonl").read_text() == (
+        _json_lines_excluding_event_types(stdout_events, {"message_update"})
+    )
+    assert not (run_dir / "pi-raw-events.jsonl").exists()
+    assert (run_dir / "pi-stderr.txt").read_text() == ""
+    assert (run_dir / "pi-sessions").is_dir()
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    kwargs = cast(dict[str, object], proc.calls[0]["kwargs"])
+    assert args[0].endswith("pi")
+    assert args[1:] == (
+        "--mode",
+        "json",
+        "--session-dir",
+        str(run_dir / "pi-sessions"),
+    )
+    assert "--model" not in args
+    assert kwargs["cwd"] == str(target_dir.resolve())
+    assert kwargs["limit"] == 1024 * 1024
+    assert proc.stdin_data is not None
+    assert proc.stdin_data.decode("utf-8") == "Do work\n"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_passes_runtime_model_and_env_without_artifact_leaks(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    proc = _fake_subprocess(
+        stdout_lines=[
+            _json_line_bytes(
+                {
+                    "type": "agent_end",
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "Done"}],
+                            "stopReason": "stop",
+                        }
+                    ],
+                }
+            )
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/pi")
+    runtime_config = ExecutorRuntimeConfig(
+        default_model="sonnet:high",
+        env={"VISIBLE_FLAG": "1", "SECRET_TOKEN": "secret-token"},
+    )
+    caplog.set_level("DEBUG")
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        ),
+        runtime_config,
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    args = cast(tuple[str, ...], proc.calls[0]["args"])
+    kwargs = cast(dict[str, object], proc.calls[0]["kwargs"])
+    env = cast(dict[str, str], kwargs["env"])
+    assert args[1:] == (
+        "--mode",
+        "json",
+        "--session-dir",
+        str(run_dir / "pi-sessions"),
+        "--model",
+        "sonnet:high",
+    )
+    assert env["VISIBLE_FLAG"] == "1"
+    assert env["SECRET_TOKEN"] == "secret-token"
+    artifact_text = "\n".join(
+        [
+            (run_dir / "pi-events.jsonl").read_text(),
+            (run_dir / "pi-stderr.txt").read_text(),
+            (run_dir / "pi-result.txt").read_text(),
+            caplog.text,
+        ]
+    )
+    assert "secret-token" not in artifact_text
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_rejects_invalid_workspace(
+    snapshot: ExecutionSnapshot,
+) -> None:
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "target_working_directory": "/tmp/does-not-exist-vespera",
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_workspace_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_rejects_missing_binary(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_available"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_maps_nonzero_auth_exit_to_failure(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        stderr_lines=[b"pi: login required\n"],
+        returncode=1,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/pi")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_not_authenticated"
+    assert (tmp_path / "run" / "pi-stderr.txt").read_text() == "pi: login required\n"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_maps_assistant_model_error_to_misconfigured(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[
+            _json_line_bytes(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "stopReason": "error",
+                        "errorMessage": "model unavailable",
+                    },
+                }
+            )
+        ],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/pi")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_misconfigured"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_uses_final_assistant_status_after_recovered_error(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    stdout_events: list[object] = [
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [],
+                "stopReason": "error",
+                "errorMessage": "WebSocket error",
+            },
+        },
+        {
+            "type": "turn_end",
+            "message": {
+                "role": "assistant",
+                "content": [],
+                "stopReason": "error",
+                "errorMessage": "WebSocket error",
+            },
+        },
+        {"type": "agent_end"},
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Recovered from Pi"}],
+                "stopReason": "stop",
+            },
+        },
+        {
+            "type": "turn_end",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Recovered from Pi"}],
+                "stopReason": "stop",
+            },
+        },
+        {"type": "agent_end"},
+    ]
+    proc = _fake_subprocess(
+        stdout_lines=[_json_line_bytes(event) for event in stdout_events],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", _fake_pi_binary)
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert outcome.terminal_code == "pi_completed"
+    assert outcome.result_summary == "Recovered from Pi"
+    assert outcome.result_artifact_ref == str(run_dir / "pi-result.txt")
+    assert (run_dir / "pi-result.txt").read_text() == "Recovered from Pi"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_can_opt_into_capped_raw_event_artifact(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    stdout_events: list[object] = [
+        {"type": "session", "version": 3},
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {
+                "type": "text_delta",
+                "delta": "streamed text",
+            },
+        },
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Done"}],
+                "stopReason": "stop",
+            },
+        },
+    ]
+    proc = _fake_subprocess(
+        stdout_lines=[_json_line_bytes(event) for event in stdout_events],
+        returncode=0,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", _fake_pi_binary)
+
+    first_raw_line = _json_line(stdout_events[0]).rstrip("\n")
+    max_raw_bytes = len(f"{first_raw_line}\n".encode())
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(run_dir),
+                "target_working_directory": str(target_dir),
+            }
+        ),
+        ExecutorRuntimeConfig(
+            env={
+                "VESPERAFLOW_PI_CAPTURE_RAW_EVENTS": "1",
+                "VESPERAFLOW_PI_RAW_EVENTS_MAX_BYTES": str(max_raw_bytes),
+            }
+        ),
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    assert (run_dir / "pi-events.jsonl").read_text() == (
+        _json_lines_excluding_event_types(stdout_events, {"message_update"})
+    )
+    raw_event_lines = (run_dir / "pi-raw-events.jsonl").read_text().splitlines()
+    assert raw_event_lines[0] == first_raw_line
+    assert json.loads(raw_event_lines[1]) == {
+        "type": "executor.raw_events_truncated",
+        "max_bytes": max_raw_bytes,
+        "discarded_lines": 2,
+    }
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_times_out_and_writes_artifacts(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[b'{"type":"message_update","assistantMessageEvent":{"delta":"partial"}}\n'],
+        stderr_lines=[b"still running\n"],
+        returncode=None,
+        wait_never=True,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/pi")
+    monkeypatch.setattr(pi_module, "_DEFAULT_SUBPROCESS_TIMEOUT", 0.01)
+    monkeypatch.setattr(pi_module, "_kill_proc", lambda _proc: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.terminal_code == "executor_error"
+    assert outcome.result_artifact_ref == str(tmp_path / "run" / "pi-result.txt")
+    assert (tmp_path / "run" / "pi-result.txt").read_text() == "partial"
+    assert (tmp_path / "run" / "pi-stderr.txt").read_text() == "still running\n"
+
+
+@pytest.mark.asyncio
+async def test_pi_executor_cancels_on_cancelled_error(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[],
+        cancel_on_stdout=True,
+        returncode=-signal.SIGINT,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/pi")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await PiExecutor().execute(
+        snapshot.model_copy(
+            update={
+                "executor": ExecutorName.PI,
+                "working_directory": str(tmp_path / "run"),
+                "target_working_directory": str(target_dir),
+            }
+        )
+    )
+
+    assert outcome.terminal_status is RunStatus.CANCELED
+    assert outcome.terminal_code == "canceled"
+    assert (tmp_path / "run" / "pi-events.jsonl").exists()
+
+
 @pytest.fixture
 def snapshot() -> ExecutionSnapshot:
     from datetime import UTC, datetime
@@ -1299,6 +1821,26 @@ def _fake_sdk(
     return sdk
 
 
+def _json_line(value: object) -> str:
+    return json.dumps(value, separators=(",", ":")) + "\n"
+
+
+def _json_lines_excluding_event_types(
+    values: list[object],
+    excluded_types: set[str],
+) -> str:
+    lines: list[str] = []
+    for value in values:
+        if isinstance(value, dict) and value.get("type") in excluded_types:
+            continue
+        lines.append(_json_line(value))
+    return "".join(lines)
+
+
+def _json_line_bytes(value: object) -> bytes:
+    return _json_line(value).encode("utf-8")
+
+
 class FakeStreamWriter:
     def __init__(self) -> None:
         self._data: list[bytes] = []
@@ -1356,13 +1898,15 @@ class FakeSubprocess:
         *,
         stdout_lines: list[bytes],
         stderr_lines: list[bytes] | None = None,
-        returncode: int = 0,
+        returncode: int | None = 0,
         cancel_on_stdout: bool = False,
+        wait_never: bool = False,
     ) -> None:
         self.stdout_lines = stdout_lines
         self.stderr_lines = stderr_lines or []
         self._returncode = returncode
         self.cancel_on_stdout = cancel_on_stdout
+        self.wait_never = wait_never
         self.calls: list[dict[str, object]] = []
         self.stdin: FakeStreamWriter | None = None
         self.stdout: FakeStreamReader | None = None
@@ -1374,7 +1918,9 @@ class FakeSubprocess:
         return self._returncode
 
     async def wait(self) -> int:
-        return self._returncode
+        if self.wait_never:
+            _ = await asyncio.Event().wait()
+        return self._returncode if self._returncode is not None else 0
 
     @property
     def stdin_data(self) -> bytes | None:
@@ -1414,12 +1960,14 @@ def _fake_subprocess(
     *,
     stdout_lines: list[bytes],
     stderr_lines: list[bytes] | None = None,
-    returncode: int = 0,
+    returncode: int | None = 0,
     cancel_on_stdout: bool = False,
+    wait_never: bool = False,
 ) -> FakeSubprocess:
     return FakeSubprocess(
         stdout_lines=stdout_lines,
         stderr_lines=stderr_lines,
         returncode=returncode,
         cancel_on_stdout=cancel_on_stdout,
+        wait_never=wait_never,
     )

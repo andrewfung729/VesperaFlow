@@ -9,7 +9,7 @@ export type TaskStatus =
 
 export type ExecutionMode = 'one_time' | 'recurring'
 export type RunStatus = 'planned' | 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
-export type ExecutorName = 'claude_code' | 'codex' | 'debug_printer' | 'kimi_code' | 'opencode'
+export type ExecutorName = 'claude_code' | 'codex' | 'debug_printer' | 'kimi_code' | 'opencode' | 'pi'
 export type ExecutorPreflightStatus = 'available' | 'unavailable' | 'warning'
 
 export interface Task {

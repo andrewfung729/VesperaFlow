@@ -212,6 +212,7 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 - `codex` — Codex CLI non-interactive `codex exec` transport
 - `opencode` — OpenCode CLI non-interactive `opencode run` transport
 - `kimi_code` — Kimi CLI text transport
+- `pi` — Pi CLI non-interactive `pi --mode json` transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
 Clients must pass `executor_profile_id`, pass the legacy `executor` field, or reference a template that supplies a default executor/profile. If only `executor` is provided, the backend resolves that executor's default profile. There is no install-level executor fallback. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
@@ -360,8 +361,9 @@ executor output.
 - `unavailable`
 
 `code` is stable enough for clients to branch on. Preflight returns
-`executor_workspace_unavailable` or `executor_preflight_passed`. Authentication
-and runtime configuration failures are reported by the Worker when a task runs.
+`executor_workspace_unavailable`, `executor_profile_unavailable`, or
+`executor_preflight_passed`. Authentication, model, and runtime configuration
+failures are reported by the Worker when a task runs.
 
 ### 5.7 Executor Preflight Endpoint
 
@@ -369,7 +371,8 @@ and runtime configuration failures are reported by the Worker when a task runs.
 
 Query params:
 
-- `executor`: `claude_code`, `codex`, `opencode`, `kimi_code`, or `debug_printer`; defaults to `claude_code`
+- `executor`: `claude_code`, `codex`, `opencode`, `kimi_code`, `pi`, or `debug_printer`; defaults to `claude_code`
+- `executor_profile_id`: optional profile id; when present, the profile determines the executor kind
 - `target_working_directory`: absolute target workspace path to validate
 
 Response:
@@ -379,10 +382,10 @@ Response:
 Behavior:
 
 - `debug_printer` returns available without a target workspace
-- `claude_code`, `codex`, `opencode`, and `kimi_code` validate that the target workspace is an
-  existing absolute directory visible to the API process
-- live executor auth/configuration checks are intentionally not performed by
-  the API because executor invocation belongs to Worker Activities
+- `claude_code`, `codex`, `opencode`, `kimi_code`, and `pi` validate that the
+  target workspace is an existing absolute directory visible to the API process
+- live executor auth/configuration/model checks are intentionally not performed
+  by the API because executor invocation belongs to Worker Activities
 
 ## 6. Template Endpoints
 

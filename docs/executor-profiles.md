@@ -12,6 +12,7 @@ keeping Temporal payloads small and free of credentials.
 - `opencode`: OpenCode CLI adapter invoked as `opencode run --format json`
   from a Worker Activity.
 - `kimi_code`: Kimi Code CLI adapter invoked from a Worker Activity.
+- `pi`: Pi CLI adapter invoked as `pi --mode json` from a Worker Activity.
 
 ## Selection Rules
 
@@ -42,9 +43,9 @@ keeping Temporal payloads small and free of credentials.
   config. Secret values are write-only in API responses and must not be logged,
   stored in run events, or serialized into Temporal history.
 - `default_model` is executor-specific. It is passed to Codex as
-  `codex exec --model`, to Claude Code as `ANTHROPIC_MODEL`, and to OpenCode
-  as `opencode run --model`. Kimi Code and Debug Printer ignore it until they
-  support an explicit model override.
+  `codex exec --model`, to Claude Code as `ANTHROPIC_MODEL`, to OpenCode as
+  `opencode run --model`, and to Pi as `pi --model`. Kimi Code and Debug
+  Printer ignore it until they support an explicit model override.
 
 ## Preflight Rules
 
@@ -52,9 +53,10 @@ keeping Temporal payloads small and free of credentials.
   `executor`, and `target_working_directory`.
 - If `executor_profile_id` is present, the profile determines the executor kind.
 - Preflight verifies profile usability and target workspace access.
-- Claude Code preflight checks workspace access but not live SDK
-  authentication.
-- Live authentication/configuration failures are classified during Worker
+- Claude Code, Codex, OpenCode, Kimi Code, and Pi preflight check workspace
+  access but not live SDK/CLI authentication, provider configuration, or model
+  availability.
+- Live authentication/configuration/model failures are classified during Worker
   execution, not in the API preflight path.
 
 ## Artifacts And Output
@@ -65,6 +67,11 @@ keeping Temporal payloads small and free of credentials.
 - Adapters write bulky streams and transcripts to artifacts and return a short
   normalized `result_summary`, `result_artifact_ref`, `terminal_code`, and
   `failure_reason`.
+- Pi writes filtered non-streaming audit events to `pi-events.jsonl`, stderr to
+  `pi-stderr.txt`, final assistant text to `pi-result.txt`, and Pi session
+  files under `pi-sessions/` in the run artifact directory. Full raw Pi JSONL
+  event capture is opt-in with `VESPERAFLOW_PI_CAPTURE_RAW_EVENTS=1`, which
+  writes capped output to `pi-raw-events.jsonl`.
 - Run events may include executor name, profile id, profile name, model, and
   terminal code. They must not include full instructions, full executor output,
   or secret env values.

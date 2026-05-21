@@ -144,6 +144,37 @@ describe('api', () => {
     )
   })
 
+  it('requests Pi preflight with the target workspace', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              executor: 'pi',
+              status: 'available',
+              code: 'executor_preflight_passed',
+              message: 'Pi target workspace is available',
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await preflightExecutor({
+      executor: 'pi',
+      target_working_directory: '/tmp/project',
+    })
+
+    expect(result.status).toBe('available')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/executors/preflight?executor=pi&target_working_directory=%2Ftmp%2Fproject',
+      ),
+      expect.any(Object),
+    )
+  })
+
   it('sends history filters as query parameters', async () => {
     const fetchMock = vi.fn<typeof fetch>(
       async () =>

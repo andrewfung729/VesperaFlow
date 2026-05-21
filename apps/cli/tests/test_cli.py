@@ -359,9 +359,9 @@ def test_executor_preflight_sends_expected_query_params() -> None:
                 "executor",
                 "preflight",
                 "--executor-profile",
-                "xpr_default_codex",
+                "xpr_default_pi",
                 "--executor",
-                "codex",
+                "pi",
                 "--cwd",
                 ".",
             ],
@@ -371,11 +371,35 @@ def test_executor_preflight_sends_expected_query_params() -> None:
     assert exit_code == 0
     assert requests[0].method == "GET"
     assert requests[0].url.path == "/api/v1/executors/preflight"
-    assert requests[0].url.params["executor_profile_id"] == "xpr_default_codex"
-    assert requests[0].url.params["executor"] == "codex"
+    assert requests[0].url.params["executor_profile_id"] == "xpr_default_pi"
+    assert requests[0].url.params["executor"] == "pi"
     assert requests[0].url.params["target_working_directory"] == str(
         Path(".").resolve()
     )
+
+
+def test_profile_list_renders_pi_profile() -> None:
+    with _mock_transport(
+        _success(
+            [
+                {
+                    "profile_id": "xpr_default_pi",
+                    "name": "Pi",
+                    "executor": "pi",
+                    "is_enabled": True,
+                    "is_default": True,
+                    "default_model": "sonnet:high",
+                }
+            ]
+        )
+    ) as (transport, _):
+        exit_code, stdout, stderr = _run(["profile", "list"], transport=transport)
+
+    assert exit_code == 0
+    assert stderr == ""
+    assert "xpr_default_pi" in stdout
+    assert "pi" in stdout
+    assert "sonnet:high" in stdout
 
 
 def test_read_commands_call_expected_routes() -> None:

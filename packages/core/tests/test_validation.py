@@ -20,8 +20,9 @@ def test_future_datetime_requires_timezone() -> None:
         require_future_datetime(datetime(2026, 4, 25, 9, 0), field_name="planned_at")
 
 
-def test_executor_name_accepts_opencode() -> None:
+def test_executor_name_accepts_supported_local_agents() -> None:
     assert ExecutorName("opencode") is ExecutorName.OPENCODE
+    assert ExecutorName("pi") is ExecutorName.PI
 
 
 def test_one_time_schedule_consistency_rejects_recurring_mode() -> None:

@@ -14,6 +14,7 @@ class ExecutorRouter(ExecutorAdapter):
     codex: ExecutorAdapter
     kimi_code: ExecutorAdapter
     opencode: ExecutorAdapter
+    pi: ExecutorAdapter
     debug_printer: ExecutorAdapter
 
     @override
@@ -32,4 +33,6 @@ class ExecutorRouter(ExecutorAdapter):
             return await self.kimi_code.execute(snapshot, runtime_config)
         if snapshot.executor is ExecutorName.OPENCODE:
             return await self.opencode.execute(snapshot, runtime_config)
+        if snapshot.executor is ExecutorName.PI:
+            return await self.pi.execute(snapshot, runtime_config)
         raise ExecutorUnavailableError(f"unknown executor: {snapshot.executor}")

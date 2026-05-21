@@ -244,11 +244,11 @@ async def test_executor_profile_crud_masks_secret_env(client: AsyncClient) -> No
     response = await client.post(
         "/api/v1/executor-profiles",
         json={
-            "name": "Codex Profile",
-            "executor": "codex",
+            "name": "Pi Profile",
+            "executor": "pi",
             "is_enabled": True,
             "is_default": False,
-            "default_model": "gpt-5.2",
+            "default_model": "sonnet:high",
             "env": {"FOO": "bar"},
             "secret_env": {"TOKEN": "secret"},
         },
@@ -256,6 +256,8 @@ async def test_executor_profile_crud_masks_secret_env(client: AsyncClient) -> No
 
     assert response.status_code == 201
     data = response.json()["data"]
+    assert data["executor"] == "pi"
+    assert data["default_model"] == "sonnet:high"
     assert data["secret_env_keys"] == ["TOKEN"]
     assert "secret_env" not in data
 
@@ -318,6 +320,19 @@ async def test_create_task_accepts_opencode_executor(
 
     assert response.status_code == 201
     assert response.json()["data"]["task"]["executor"] == "opencode"
+
+
+@pytest.mark.asyncio
+async def test_create_task_accepts_pi_executor(
+    client: AsyncClient,
+) -> None:
+    payload = _create_payload()
+    payload["executor"] = "pi"
+
+    response = await client.post("/api/v1/tasks", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["data"]["task"]["executor"] == "pi"
 
 
 @pytest.mark.asyncio
@@ -433,6 +448,35 @@ async def test_opencode_preflight_accepts_existing_workspace(
     assert body["executor"] == "opencode"
     assert body["status"] == "available"
     assert body["code"] == "executor_preflight_passed"
+
+
+@pytest.mark.asyncio
+async def test_pi_preflight_uses_workspace_only_semantics(
+    client: AsyncClient,
+    tmp_path: Path,
+) -> None:
+    available = await client.get(
+        "/api/v1/executors/preflight",
+        params={"executor": "pi", "target_working_directory": str(tmp_path)},
+    )
+    unavailable = await client.get(
+        "/api/v1/executors/preflight",
+        params={
+            "executor": "pi",
+            "target_working_directory": "/tmp/does-not-exist-vespera",
+        },
+    )
+
+    assert available.status_code == 200
+    available_body = available.json()["data"]
+    assert available_body["executor"] == "pi"
+    assert available_body["status"] == "available"
+    assert available_body["code"] == "executor_preflight_passed"
+    assert unavailable.status_code == 200
+    unavailable_body = unavailable.json()["data"]
+    assert unavailable_body["executor"] == "pi"
+    assert unavailable_body["status"] == "unavailable"
+    assert unavailable_body["code"] == "executor_workspace_unavailable"
 
 
 @pytest.mark.asyncio
@@ -1364,16 +1408,16 @@ async def test_create_task_with_template_uses_template_default_executor(
 
 
 @pytest.mark.asyncio
-async def test_template_creation_accepts_codex_default_executor(
+async def test_template_creation_accepts_pi_default_executor(
     client: AsyncClient,
 ) -> None:
     payload = _template_payload()
-    payload["default_executor"] = "codex"
+    payload["default_executor"] = "pi"
 
     response = await client.post("/api/v1/templates", json=payload)
 
     assert response.status_code == 201
-    assert response.json()["data"]["default_executor"] == "codex"
+    assert response.json()["data"]["default_executor"] == "pi"
 
 
 @pytest.mark.asyncio

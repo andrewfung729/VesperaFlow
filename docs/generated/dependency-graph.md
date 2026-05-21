@@ -1,6 +1,6 @@
 # Package Dependency Snapshot
 
-- Generated: 2026-05-12
+- Generated: 2026-05-19
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `pyproject.toml`, `apps/*/pyproject.toml`, `packages/*/pyproject.toml`
 - Limitations: generated from importable application metadata, not a live deployment.

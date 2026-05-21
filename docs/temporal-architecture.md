@@ -210,6 +210,7 @@ Supported executor:
 - `codex` via Codex CLI `codex exec --json`
 - `opencode` via OpenCode CLI `opencode run --format json`
 - `kimi_code` via the `kimi` CLI text transport
+- `pi` via Pi CLI `pi --mode json --session-dir <run_artifact_dir>/pi-sessions`
 - `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
 
 Candidate Activities:
@@ -228,7 +229,7 @@ General rules:
 Executor integration rules:
 
 - SDK-based Executor Activities are async Activities that `await` the SDK's entrypoint; they run on the Worker's async event loop.
-- CLI-based Executor Activities spawn the official CLI binary in a run-scoped working directory and capture stdout/stderr into artifacts.
+- CLI-based Executor Activities spawn the official CLI binary in a run-scoped working directory and capture stdout/stderr into artifacts. Pi additionally stores filtered non-streaming JSON audit events in `pi-events.jsonl`, final text in `pi-result.txt`, and session files under `pi-sessions/`; full raw Pi JSONL capture is opt-in and capped in `pi-raw-events.jsonl`.
 - Activity cancellation is propagated into the executor through the SDK's native cancellation token, context cancellation, `asyncio.CancelledError`, or process signal handling as the executor documents.
 - Concrete executor modules may import their SDK dependencies at module top level, but only if those modules are unreachable from Workflow imports.
 - Executor profile resolution happens in `execute_agent_run`, not in Workflow code. Workflow payloads carry only the profile id; Activity code loads profile model/env values from PostgreSQL immediately before invoking the adapter.
@@ -243,6 +244,7 @@ Secrets handling rules for Executor Activities:
 - Codex authentication and provider configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the Worker may pass the executor profile `default_model` as the `codex exec --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
 - OpenCode authentication and provider configuration are handled by the `opencode` CLI itself, such as through `opencode auth`, provider environment variables, or CLI-supported project configuration; the Worker may pass the executor profile `default_model` as the `opencode run --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
 - Kimi Code authentication is handled by the `kimi` CLI itself, such as through its OAuth token cache, API key environment, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
+- Pi authentication and provider configuration are handled by Pi itself, such as through Pi login/config files or executor profile environment values; the Worker may pass the executor profile `default_model` as the `pi --model` value, and API preflight remains workspace-only without live auth or model checks
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
 - rotating an executor's provider credential is a user-side operation that does not require rewriting any existing Workflow history

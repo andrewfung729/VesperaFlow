@@ -39,6 +39,11 @@ vespera --json task create \
   --executor-profile xpr_default_codex \
   --at "2026-05-11T09:00:00+08:00"
 
+vespera --json executor preflight \
+  --executor pi \
+  --executor-profile xpr_default_pi \
+  --cwd /Users/you/project
+vespera profile list
 vespera --json task list --status scheduled
 vespera --json task run-now task_123
 vespera --json run events run_123

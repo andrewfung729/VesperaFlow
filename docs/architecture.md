@@ -353,6 +353,7 @@ MVP supports these executors:
 - `codex` — OpenAI Codex CLI, invoked via non-interactive `codex exec`
 - `opencode` — OpenCode CLI, invoked via non-interactive `opencode run`
 - `kimi_code` — Moonshot AI's Kimi Code, invoked via the `kimi` CLI text transport
+- `pi` — Pi coding agent, invoked via non-interactive `pi --mode json`
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
 Executor selection is profile-primary. New task and template flows choose an executor profile that owns the executor kind plus default model/env. MVP still stores the resolved executor on the task so every run can be traced to the executor kind intended when the task was created. The focused rules live in `docs/executor-profiles.md`.
@@ -814,6 +815,9 @@ These topics are tracked as ADRs rather than remaining implicit:
 - `docs/adr/003-task-schedule-run-separation.md` — why task, schedule, and run are separate domain objects
 - `docs/adr/004-security-posture.md` — MVP secrets handling and future authz extension
 - `docs/adr/005-derived-view-states.md` — why kanban state is derived from backend semantics rather than UI-only labels
+- `docs/adr/006-kimi-code-executor.md` — why Kimi Code uses the CLI text transport
+- `docs/adr/007-opencode-cli-executor.md` — why OpenCode uses the CLI JSON transport
+- `docs/adr/008-pi-coding-agent-executor.md` — why Pi uses CLI JSON mode
 
 ## 15. Resolved Architecture Questions
 
@@ -823,8 +827,8 @@ These items were previously open and are now architectural decisions for MVP:
 - A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
 - Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
-- MVP resolves the executor from the task/template executor profile or explicit request executor and stores the resolved value on `Task.executor`. There is no install-level executor fallback. Supported MVP values are `claude_code`, `codex`, `opencode`, `kimi_code`, and `debug_printer`.
-- The API preflight checks target working-directory access. Codex Worker execution uses `codex exec` in full-permission bypass mode, OpenCode Worker execution uses `opencode run --format json`, and both may pass the executor profile `default_model` through as `--model`; CLI authentication and provider configuration remain owned by the CLIs. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
+- MVP resolves the executor from the task/template executor profile or explicit request executor and stores the resolved value on `Task.executor`. There is no install-level executor fallback. Supported MVP values are `claude_code`, `codex`, `opencode`, `kimi_code`, `pi`, and `debug_printer`.
+- The API preflight checks target working-directory access. Codex Worker execution uses `codex exec` in full-permission bypass mode, OpenCode Worker execution uses `opencode run --format json`, and Pi Worker execution uses `pi --mode json --session-dir <run_artifact_dir>/pi-sessions`; these CLI adapters may pass the executor profile `default_model` through as `--model` when supported. CLI authentication and provider configuration remain owned by the CLIs. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration/model failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
 - The Claude Agent SDK compatibility policy is dependency-lock driven: the Worker pins the validated SDK version and imports it normally instead of reimplementing package-version or optional-import policy at runtime.

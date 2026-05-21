@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-05-02. Update this whenever a major area improves or
+_Last updated: 2026-05-21. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -21,14 +21,14 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/OpenCode/Claude/Kimi/debug executor contracts, executor preflight contracts, shared API request DTOs, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/OpenCode/Claude/Kimi/Pi/debug executor contracts, executor preflight contracts, shared API request DTOs, and template default validation. Keep Temporal-import safety explicit. |
 | `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, runs snapshot their effective instruction source, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
 | `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, run detail/reader snapshot, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
 | `apps/cli` | C | Agent-facing API-only CLI covers task creation, task/run reads, run-now, executor preflight, and profile listing with JSON output and mocked HTTP tests. Destructive/versioned commands are intentionally deferred. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, OpenCode CLI JSON event executor tests, and Kimi CLI text executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
+| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, OpenCode CLI JSON event executor tests, Kimi CLI text executor tests, and Pi CLI JSON executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
 | `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; `apps/web/README.md` now captures local conventions. UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
-| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, CLI executor ADRs, executor/profile rules, frontend guide, and local full-stack runbooks are now present. |
+| `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, CLI executor ADRs through ADR 008, executor/profile rules, frontend guide, and local full-stack runbooks are now present. |
 
 ## Known Gaps
 
@@ -42,7 +42,7 @@ Update this file when any of these change:
 - [x] Integration tests requiring the full Postgres/Temporal stack are opt-in and
       local-only; they will not become a required CI gate for MVP.
 - [ ] Web E2E coverage includes the MVP navigation path, but remains smoke-level.
-- [ ] Authenticated Claude Code, Codex, OpenCode, and Kimi Code live smokes are opt-in local
+- [ ] Authenticated Claude Code, Codex, OpenCode, Kimi Code, and Pi live smokes are opt-in local
       verification paths and are not automated CI gates.
 - [ ] Calendar, history, and recurring todo latest-run/context paths are
       implemented for materialized recurring runs, but live recurring stack
@@ -132,3 +132,9 @@ Update this file when any of these change:
 - 2026-05-12: Split run detail and reader web surfaces, routed all history
   items through run detail, and persisted run instruction snapshots across
   one-time, recurring materialized, and recurring run-now paths.
+- 2026-05-19: Added Pi CLI JSON mode as a first-class profile-driven executor,
+  including core/store/API/Worker/web/CLI coverage, artifacts/classification,
+  profile model/env passthrough, ADR 008, and synchronized executor docs.
+- 2026-05-21: Changed Pi default event artifacts from full streaming stdout
+  capture to filtered non-streaming audit events, with capped raw JSONL capture
+  available only through explicit opt-in.
