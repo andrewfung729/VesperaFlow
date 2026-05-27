@@ -19,7 +19,7 @@ OpenCode exposes two plausible automation surfaces:
 1. **Non-interactive CLI subprocess** — `opencode run` with JSON event output
 2. **ACP server subprocess** — `opencode acp` over stdin/stdout nd-JSON
 
-VesperaFlow already has a CLI adapter boundary for Codex and Kimi Code, plus
+VesperaFlow already has a CLI adapter boundary for Codex, plus
 profile-based model/env resolution inside the Worker Activity. Adding OpenCode
 should not add task/template model columns or move executor configuration into
 Temporal Workflow history.
@@ -58,7 +58,7 @@ Positive:
 - OpenCode becomes a first-class executor without changing Workflow payloads
 - Profile `default_model` works consistently with Codex and Claude Code
 - JSON event output is retained as an artifact without bloating Temporal history
-- Adapter tests can mock subprocess behavior like Codex and Kimi Code
+- Adapter tests can mock subprocess behavior like Codex
 
 Negative:
 

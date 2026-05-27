@@ -47,6 +47,20 @@ def enum_column[EnumT: enum.StrEnum](
     )
 
 
+def nullable_enum_column[EnumT: enum.StrEnum](
+    enum_type: type[EnumT], length: int = 64
+) -> Mapped[EnumT | None]:
+    return mapped_column(
+        Enum(
+            enum_type,
+            native_enum=False,
+            length=length,
+            values_callable=enum_values,
+        ),
+        nullable=True,
+    )
+
+
 class Task(Base):
     __tablename__: str = "tasks"
 
@@ -127,19 +141,10 @@ class Template(Base):
     default_target_working_directory: Mapped[str | None] = mapped_column(Text)
     default_execution_mode: Mapped[ExecutionMode] = enum_column(ExecutionMode)
     default_schedule_type: Mapped[ScheduleType] = enum_column(ScheduleType)
-    default_planned_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    default_planned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     default_recurrence_rule: Mapped[str | None] = mapped_column(Text)
     default_recurrence_timezone: Mapped[str | None] = mapped_column(String(128))
-    default_executor: Mapped[ExecutorName | None] = mapped_column(
-        Enum(
-            ExecutorName,
-            native_enum=False,
-            length=64,
-            values_callable=enum_values,
-        )
-    )
+    default_executor: Mapped[ExecutorName | None] = nullable_enum_column(ExecutorName)
     default_executor_profile_id: Mapped[str | None] = mapped_column(
         ForeignKey("executor_profiles.profile_id")
     )

@@ -211,7 +211,6 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 - `claude_code` — Claude Agent SDK
 - `codex` — Codex CLI non-interactive `codex exec` transport
 - `opencode` — OpenCode CLI non-interactive `opencode run` transport
-- `kimi_code` — Kimi CLI text transport
 - `pi` — Pi CLI non-interactive `pi --mode json` transport
 - `debug_printer` — local runtime simulator that logs the execution snapshot and completes successfully
 
@@ -371,7 +370,7 @@ failures are reported by the Worker when a task runs.
 
 Query params:
 
-- `executor`: `claude_code`, `codex`, `opencode`, `kimi_code`, `pi`, or `debug_printer`; defaults to `claude_code`
+- `executor`: `claude_code`, `codex`, `opencode`, `pi`, or `debug_printer`; defaults to `claude_code`
 - `executor_profile_id`: optional profile id; when present, the profile determines the executor kind
 - `target_working_directory`: absolute target workspace path to validate
 
@@ -382,7 +381,7 @@ Response:
 Behavior:
 
 - `debug_printer` returns available without a target workspace
-- `claude_code`, `codex`, `opencode`, `kimi_code`, and `pi` validate that the
+- `claude_code`, `codex`, `opencode`, and `pi` validate that the
   target workspace is an existing absolute directory visible to the API process
 - live executor auth/configuration/model checks are intentionally not performed
   by the API because executor invocation belongs to Worker Activities
@@ -592,7 +591,7 @@ Validation:
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
 - `schedule.schedule_type` must match `execution_mode`
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
-- `executor`, if provided, must be `claude_code`, `codex`, `kimi_code`, or `debug_printer`; if omitted the request or template must provide `executor_profile_id`
+- `executor`, if provided, must be `claude_code`, `codex`, `opencode`, `pi`, or `debug_printer`; if omitted the request or template must provide `executor_profile_id`
 - if the target working directory is invalid, the endpoint returns `422 validation_error`
 - recurring Temporal Schedule fires materialize a product run in the first Workflow Activity, keyed by `(schedule_id, occurrence_key)`
 - SDK import, authentication, and runtime configuration failures are reported by the Worker on run start

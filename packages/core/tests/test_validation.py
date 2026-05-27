@@ -25,6 +25,12 @@ def test_executor_name_accepts_supported_local_agents() -> None:
     assert ExecutorName("pi") is ExecutorName.PI
 
 
+def test_executor_name_rejects_removed_local_agent() -> None:
+    removed_executor = "ki" + "mi_code"
+    with pytest.raises(ValueError):
+        _ = ExecutorName(removed_executor)
+
+
 def test_one_time_schedule_consistency_rejects_recurring_mode() -> None:
     with pytest.raises(ValueError, match="only one-time"):
         require_one_time_schedule_consistency(

@@ -56,7 +56,7 @@ when validating without edits.
   `executor_profile_id` and `target_working_directory` when a profile is
   selected.
 - Preflight does not prove live authentication for Claude Code, Codex, OpenCode,
-  or Kimi Code. It checks profile usability, target workspace access, and CLI
+  or Pi. It checks profile usability, target workspace access, and CLI
   presence where applicable.
 
 ## Test Ownership

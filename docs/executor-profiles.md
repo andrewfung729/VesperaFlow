@@ -11,7 +11,6 @@ keeping Temporal payloads small and free of credentials.
 - `codex`: Codex CLI adapter invoked as `codex exec` from a Worker Activity.
 - `opencode`: OpenCode CLI adapter invoked as `opencode run --format json`
   from a Worker Activity.
-- `kimi_code`: Kimi Code CLI adapter invoked from a Worker Activity.
 - `pi`: Pi CLI adapter invoked as `pi --mode json` from a Worker Activity.
 
 ## Selection Rules
@@ -44,8 +43,7 @@ keeping Temporal payloads small and free of credentials.
   stored in run events, or serialized into Temporal history.
 - `default_model` is executor-specific. It is passed to Codex as
   `codex exec --model`, to Claude Code as `ANTHROPIC_MODEL`, to OpenCode as
-  `opencode run --model`, and to Pi as `pi --model`. Kimi Code and Debug
-  Printer ignore it until they support an explicit model override.
+  `opencode run --model`, and to Pi as `pi --model`. Debug Printer ignores it.
 
 ## Preflight Rules
 
@@ -53,7 +51,7 @@ keeping Temporal payloads small and free of credentials.
   `executor`, and `target_working_directory`.
 - If `executor_profile_id` is present, the profile determines the executor kind.
 - Preflight verifies profile usability and target workspace access.
-- Claude Code, Codex, OpenCode, Kimi Code, and Pi preflight check workspace
+- Claude Code, Codex, OpenCode, and Pi preflight check workspace
   access but not live SDK/CLI authentication, provider configuration, or model
   availability.
 - Live authentication/configuration/model failures are classified during Worker

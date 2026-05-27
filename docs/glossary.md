@@ -68,7 +68,7 @@ Supported executor for MVP:
 - `claude_code` — Anthropic's Claude Code, via the Claude Agent SDK
 - `codex` — OpenAI Codex CLI, via non-interactive `codex exec`
 - `opencode` — OpenCode CLI, via non-interactive `opencode run`
-- `kimi_code` — Moonshot AI's Kimi Code, via the `kimi` CLI text transport
+- `pi` — Pi coding agent, via non-interactive `pi --mode json`
 - `debug_printer` — local runtime simulator for end-to-end workflow testing
 
 ### Executor Adapter
@@ -77,7 +77,7 @@ The thin VesperaFlow component that invokes an `Executor` by calling into its SD
 
 ### Provider (upstream)
 
-The LLM service that an `Executor` talks to when it runs, such as Anthropic for Claude Code, OpenAI for Codex, or Moonshot AI for Kimi Code. VesperaFlow itself never calls an LLM provider API and never handles provider credentials; those concerns belong entirely to the executor runtime and the user who installed it.
+The LLM service that an `Executor` talks to when it runs, such as Anthropic for Claude Code or OpenAI for Codex. VesperaFlow itself never calls an LLM provider API and never handles provider credentials; those concerns belong entirely to the executor runtime and the user who installed it.
 
 ### Temporal Schedule
 

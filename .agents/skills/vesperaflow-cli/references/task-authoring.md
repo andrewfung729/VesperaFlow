@@ -111,6 +111,5 @@ Supported executor names may include:
 - `claude_code`
 - `codex`
 - `opencode`
-- `kimi_code`
 
 Do not request or print secret environment values.

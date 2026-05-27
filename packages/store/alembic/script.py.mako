@@ -1,3 +1,5 @@
+# pyright: reportUnusedCallResult=false
+
 """${message}
 
 Revision ID: ${up_revision}

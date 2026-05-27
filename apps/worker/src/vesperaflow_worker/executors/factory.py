@@ -4,7 +4,6 @@ from .base import ExecutorAdapter
 from .claude_code import ClaudeCodeExecutor
 from .codex_cli import CodexExecutor
 from .debug import DebugPrinterExecutor
-from .kimi_code import KimiCodeExecutor
 from .opencode_cli import OpenCodeExecutor
 from .pi import PiExecutor
 from .router import ExecutorRouter
@@ -15,7 +14,6 @@ def build_executor() -> ExecutorAdapter:
         claude_code=ClaudeCodeExecutor(),
         codex=CodexExecutor(),
         debug_printer=DebugPrinterExecutor(),
-        kimi_code=KimiCodeExecutor(),
         opencode=OpenCodeExecutor(),
         pi=PiExecutor(),
     )

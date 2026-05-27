@@ -131,7 +131,13 @@ async def test_default_executor_profile_resolves_for_task(
     assert opencode_profile.default_model is None
     assert pi_profile.name == "Pi"
     assert pi_profile.default_model is None
-    assert [item.executor for item in profiles_page.items].count(ExecutorName.PI) == 1
+    assert [item.executor for item in profiles_page.items] == [
+        ExecutorName.CLAUDE_CODE,
+        ExecutorName.CODEX,
+        ExecutorName.DEBUG_PRINTER,
+        ExecutorName.OPENCODE,
+        ExecutorName.PI,
+    ]
 
 
 @pytest.mark.asyncio

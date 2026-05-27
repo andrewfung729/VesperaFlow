@@ -354,23 +354,19 @@ async def test_executor_preflight_classifies_workspace_unavailable(
 
 
 @pytest.mark.asyncio
-async def test_kimi_code_preflight_accepts_existing_workspace(
+async def test_executor_preflight_rejects_removed_executor(
     client: AsyncClient,
     tmp_path: Path,
 ) -> None:
     response = await client.get(
         "/api/v1/executors/preflight",
         params={
-            "executor": "kimi_code",
+            "executor": "ki" + "mi_code",
             "target_working_directory": str(tmp_path),
         },
     )
 
-    assert response.status_code == 200
-    body = response.json()["data"]
-    assert body["executor"] == "kimi_code"
-    assert body["status"] == "available"
-    assert body["code"] == "executor_preflight_passed"
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

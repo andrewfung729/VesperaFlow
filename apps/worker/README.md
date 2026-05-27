@@ -58,12 +58,6 @@ Claude Code runs with `permission_mode="bypassPermissions"` and loads
 under the run artifact directory while storing only a short normalized summary
 on the run.
 
-Kimi Code runs via the `kimi` CLI in non-interactive text mode:
-`--print --final-message-only --work-dir <target> --yolo`. It requires the
-`kimi` binary to be on `PATH` and a valid `KIMI_API_KEY` or cached OAuth token
-to be available through the CLI's own configuration. It writes
-`kimi-output.txt` and `kimi-result.json` under the run artifact directory.
-
 Codex runs via the `codex` CLI in non-interactive exec mode with `--json`,
 `--output-last-message`, `--skip-git-repo-check`, `-C <target>`, optional
 profile `default_model` as `--model`, full-permission bypass, and stdin prompt

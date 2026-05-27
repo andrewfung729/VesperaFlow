@@ -1,12 +1,12 @@
 ---
-title: "ADR 008: Pi Coding Agent Executor Integration"
+title: "ADR 006: Pi Coding Agent Executor Integration"
 status: accepted
 date: "2026-05-19"
 aligned_architecture: "docs/architecture.md"
 aligned_adr: "docs/adr/002-execution-engine-choice.md"
 ---
 
-# ADR 008: Pi Coding Agent Executor Integration
+# ADR 006: Pi Coding Agent Executor Integration
 
 ## Status
 
@@ -67,7 +67,7 @@ Positive:
 - Structured Pi terminal/audit events are preserved without bloating Temporal
   history or default run artifacts with high-frequency streaming deltas
 - Executor profile `default_model` and env/secret values are resolved only at Activity runtime
-- Tests can mock subprocess execution like the Codex, OpenCode, and Kimi adapters
+- Tests can mock subprocess execution like the Codex and OpenCode adapters
 
 Negative:
 

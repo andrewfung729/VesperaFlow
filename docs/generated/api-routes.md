@@ -1,6 +1,6 @@
 # API Route Snapshot
 
-- Generated: 2026-05-19
+- Generated: 2026-05-25
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `apps/api/src/vesperaflow_api/app.py`, `apps/api/src/vesperaflow_api/routes/`, `apps/api/src/vesperaflow_api/schemas/`
 - Limitations: generated from importable application metadata, not a live deployment.

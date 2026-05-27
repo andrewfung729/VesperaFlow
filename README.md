@@ -17,7 +17,7 @@ The design follows that separation:
 - `Run` captures what actually happened
 - Temporal owns durable scheduling and execution timers
 - PostgreSQL owns product-visible task, schedule, run, and review state
-- executor adapters invoke local agent runtimes such as Claude Code or Kimi Code
+- executor adapters invoke local agent runtimes such as Claude Code, Codex, OpenCode, or Pi
 
 ## Workflow Advantage
 
@@ -116,8 +116,7 @@ external AI agent. Live executor runs are opt-in:
 
 - `claude_code` runs Claude Code from a Worker Activity with
   `permission_mode="bypassPermissions"`
-- `kimi_code` runs the `kimi` CLI with non-interactive auto-approval flags
-- both executors can read and modify files in the selected target working
+- live executors can read and modify files in the selected target working
   directory according to the executor's own behavior
 - executor output artifacts are written under `VESPERAFLOW_RUN_WORKSPACE_ROOT`
 
@@ -195,14 +194,6 @@ Use live executors only after the debug path works.
 
 Claude Code requires a configured local Claude Code runtime and an executor
 profile with any required provider environment values:
-
-```bash
-uv run vesperaflow-api
-uv run vesperaflow-worker
-```
-
-Kimi Code requires the `kimi` CLI on `PATH` and a valid Kimi authentication
-method such as its OAuth cache or supported environment variables:
 
 ```bash
 uv run vesperaflow-api

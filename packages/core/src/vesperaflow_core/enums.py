@@ -15,7 +15,6 @@ class ExecutorName(StrEnum):
     CLAUDE_CODE = "claude_code"
     CODEX = "codex"
     OPENCODE = "opencode"
-    KIMI_CODE = "kimi_code"
     PI = "pi"
     DEBUG_PRINTER = "debug_printer"
 

@@ -9,7 +9,6 @@ export const executorRegistry: Record<ExecutorName, ExecutorRegistryEntry> = {
   debug_printer: { label: 'Debug Printer', supportsModelSelection: false },
   claude_code: { label: 'Claude Code', supportsModelSelection: true },
   codex: { label: 'Codex', supportsModelSelection: true },
-  kimi_code: { label: 'Kimi Code', supportsModelSelection: false },
   opencode: { label: 'OpenCode', supportsModelSelection: true },
   pi: { label: 'Pi', supportsModelSelection: true },
 }
@@ -18,7 +17,6 @@ export const executorOptions: Array<{ label: string; value: ExecutorName }> = [
   { label: executorRegistry.debug_printer.label, value: 'debug_printer' },
   { label: executorRegistry.claude_code.label, value: 'claude_code' },
   { label: executorRegistry.codex.label, value: 'codex' },
-  { label: executorRegistry.kimi_code.label, value: 'kimi_code' },
   { label: executorRegistry.opencode.label, value: 'opencode' },
   { label: executorRegistry.pi.label, value: 'pi' },
 ]

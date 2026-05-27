@@ -34,8 +34,7 @@ this index to find the smallest document that answers the current question.
 - `adr/004-security-posture.md`: local secret handling and security posture.
 - `adr/005-derived-view-states.md`: UI view states derived from backend
   semantics instead of independent labels.
-- `adr/006-kimi-code-executor.md`: Kimi Code text CLI transport decision and
-  trade-offs.
+- `adr/006-pi-coding-agent-executor.md`: Pi CLI JSON mode executor integration.
 - `adr/007-opencode-cli-executor.md`: OpenCode CLI-over-ACP decision for v1.
 
 ## Agent Operating Context

@@ -1,6 +1,6 @@
 ## Context
 
-VesperaFlow executor selection is profile-primary. The API stores the resolved executor kind and optional `executor_profile_id` on each task, Temporal Workflow payloads carry only that snapshot, and `execute_agent_run` resolves profile model/env values inside a Worker Activity before routing to an executor adapter. Existing CLI executors (`codex`, `opencode`, `kimi_code`) spawn official binaries from Activity-only modules, capture bulky output under the run artifact directory, and return a small normalized `ExecutorOutcome`.
+VesperaFlow executor selection is profile-primary. The API stores the resolved executor kind and optional `executor_profile_id` on each task, Temporal Workflow payloads carry only that snapshot, and `execute_agent_run` resolves profile model/env values inside a Worker Activity before routing to an executor adapter. Existing CLI executors (`codex`, `opencode`) spawn official binaries from Activity-only modules, capture bulky output under the run artifact directory, and return a small normalized `ExecutorOutcome`.
 
 Pi is a local terminal coding harness. It supports single-shot print/JSON mode, RPC mode, and a TypeScript SDK. For a Python Temporal Worker, the CLI process boundary matches the current executor adapter architecture best and keeps Pi's Node/TypeScript dependency graph out of Workflow imports and Python package roots.
 

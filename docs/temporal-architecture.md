@@ -209,7 +209,6 @@ Supported executor:
 - `claude_code` via the Claude Agent SDK
 - `codex` via Codex CLI `codex exec --json`
 - `opencode` via OpenCode CLI `opencode run --format json`
-- `kimi_code` via the `kimi` CLI text transport
 - `pi` via Pi CLI `pi --mode json --session-dir <run_artifact_dir>/pi-sessions`
 - `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
 
@@ -243,7 +242,6 @@ Secrets handling rules for Executor Activities:
 - the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
 - Codex authentication and provider configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the Worker may pass the executor profile `default_model` as the `codex exec --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
 - OpenCode authentication and provider configuration are handled by the `opencode` CLI itself, such as through `opencode auth`, provider environment variables, or CLI-supported project configuration; the Worker may pass the executor profile `default_model` as the `opencode run --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
-- Kimi Code authentication is handled by the `kimi` CLI itself, such as through its OAuth token cache, API key environment, or CLI-supported configuration; the API preflight checks binary and workspace availability but does not perform live auth checks
 - Pi authentication and provider configuration are handled by Pi itself, such as through Pi login/config files or executor profile environment values; the Worker may pass the executor profile `default_model` as the `pi --model` value, and API preflight remains workspace-only without live auth or model checks
 - Workflow inputs, Activity inputs, and Activity return values must not contain credential material
 - structured logs emitted by Executor Activities must not include full instruction bodies or full executor output at default log levels; short summaries and terminal outcome codes are sufficient for product-level observability
