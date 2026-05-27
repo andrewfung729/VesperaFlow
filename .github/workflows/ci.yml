@@ -32,7 +32,7 @@ jobs:
       - run: uv run python scripts/generate_agent_facts.py
         env:
           VESPERAFLOW_DATABASE_URL: postgresql://localhost/dummy
-      - run: git diff --exit-code docs/generated
+      - run: git diff --exit-code --ignore-matching-lines='^- Generated:' docs/generated
 
   web:
     name: Web checks
