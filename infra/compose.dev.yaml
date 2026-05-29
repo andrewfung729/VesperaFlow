@@ -9,7 +9,7 @@ services:
     ports:
       - "15432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - ./pgdata:/var/lib/postgresql
       - ./postgres:/docker-entrypoint-initdb.d
     networks:
       - temporal_network
@@ -93,15 +93,12 @@ services:
         condition: service_healthy
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:15173
+      - TEMPORAL_CSRF_COOKIE_INSECURE=true
+      - TEMPORAL_CORS_ORIGINS=http://localhost:18080,http://192.168.71.10:18080
     networks:
       - temporal_network
     ports:
       - 18080:8080
-
-volumes:
-  postgres_data:
-    name: vespera_postgres_data
 
 networks:
   temporal_network:
