@@ -22,6 +22,8 @@ from vesperaflow_core.client_contracts import (
     TaskCreateRequest,
 )
 
+from vesperaflow_cli import __version__
+
 DEFAULT_API_URL = "http://127.0.0.1:18000/api/v1"
 API_URL_ENV = "VESPERAFLOW_API_URL"
 type JsonValue = (
@@ -195,6 +197,13 @@ def main(
 
 def _build_parser() -> RaisingArgumentParser:
     parser = RaisingArgumentParser(prog="vespera")
+    _ = parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show program's version number and exit.",
+    )
     _ = parser.add_argument(
         "--api-url",
         default=None,
