@@ -46,5 +46,6 @@ vespera --json executor preflight \
 vespera profile list
 vespera --json task list --status scheduled
 vespera --json task run-now task_123
+vespera --json task reschedule task_123 --at "2026-06-01T10:00:00+08:00"
 vespera --json run events run_123
 ```

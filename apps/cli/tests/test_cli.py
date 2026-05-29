@@ -408,6 +408,17 @@ def test_read_commands_call_expected_routes() -> None:
         (["--json", "task", "detail", "task_1"], "/api/v1/tasks/task_1/detail"),
         (["--json", "task", "run-now", "task_1"], "/api/v1/tasks/task_1/run-now"),
         (["--json", "task", "runs", "task_1"], "/api/v1/tasks/task_1/runs"),
+        (
+            [
+                "--json",
+                "task",
+                "reschedule",
+                "task_1",
+                "--at",
+                "2026-06-01T10:00:00+08:00",
+            ],
+            "/api/v1/tasks/task_1/schedule",
+        ),
         (["--json", "run", "get", "run_1"], "/api/v1/runs/run_1"),
         (["--json", "run", "events", "run_1"], "/api/v1/runs/run_1/events"),
     ]
@@ -417,3 +428,66 @@ def test_read_commands_call_expected_routes() -> None:
             exit_code, _, _ = _run(argv, transport=transport)
         assert exit_code == 0
         assert requests[0].url.path == path
+
+
+def test_task_reschedule_happy_path() -> None:
+    bundle = {
+        "task": {"task_id": "task_123", "title": "Test"},
+        "schedule": {"schedule_id": "sch_1", "planned_at": "2026-06-01T10:00:00+08:00"},
+    }
+    with _mock_transport(_success(bundle)) as (transport, requests):
+        exit_code, stdout, stderr = _run(
+            ["task", "reschedule", "task_123", "--at", "2026-06-01T10:00:00+08:00"],
+            transport=transport,
+        )
+    assert exit_code == 0
+    assert stderr == ""
+    assert requests[0].method == "PATCH"
+    assert requests[0].url.path == "/api/v1/tasks/task_123/schedule"
+    sent = json.loads(requests[0].content or b"{}")
+    assert sent.get("planned_at") == "2026-06-01T10:00:00+08:00"
+    assert "task: " in stdout
+    assert "schedule: " in stdout
+
+
+def test_task_reschedule_usage_and_api_errors() -> None:
+    # missing --at
+    with _mock_transport(_success({})) as (transport, _):
+        exit_code, _, stderr = _run(
+            ["task", "reschedule", "task_123"], transport=transport
+        )
+    assert exit_code != 0
+    assert "--at" in stderr or "required" in stderr
+
+    # api 422 error
+    err_resp = httpx.Response(
+        422,
+        json={"error": {"code": "invalid_state_transition", "message": "not one-time"}},
+    )
+    with _mock_transport(err_resp) as (transport, _):
+        exit_code, stdout, stderr = _run(
+            [
+                "--json",
+                "task",
+                "reschedule",
+                "task_123",
+                "--at",
+                "2026-06-01T10:00:00+08:00",
+            ],
+            transport=transport,
+        )
+    assert exit_code == 1
+    assert stderr == ""
+    parsed = json.loads(stdout)
+    assert parsed["error"]["code"] == "invalid_state_transition"
+
+    # 409 conflict
+    conflict = httpx.Response(
+        409, json={"error": {"code": "conflict", "message": "version mismatch"}}
+    )
+    with _mock_transport(conflict) as (transport, _):
+        exit_code, _, _ = _run(
+            ["task", "reschedule", "task_123", "--at", "2026-06-01T10:00:00+08:00"],
+            transport=transport,
+        )
+    assert exit_code == 1

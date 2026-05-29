@@ -14,11 +14,12 @@ acceptable fallback when the global tool is not installed.
 - `vespera --json task detail <task_id>`
 - `vespera --json task run-now <task_id>`
 - `vespera --json task runs <task_id> [--status <status>]`
+- `vespera --json task reschedule <task_id> --at <timestamp>`
 - `vespera --json run get <run_id>`
 - `vespera --json run events <run_id>`
 
 Do not use cancel, archive, delete, profile mutation, template mutation, or
-schedule update commands through CLI unless the CLI has added them.
+other schedule mutation commands through CLI unless the CLI has added them.
 
 ## Select Executor Profile
 
@@ -28,10 +29,10 @@ schedule update commands through CLI unless the CLI has added them.
 vespera --json profile list
 ```
 
-2. Choose an enabled profile matching the requested executor. Prefer the
+1. Choose an enabled profile matching the requested executor. Prefer the
    `profile_id` over legacy `--executor`.
 
-3. Preflight when creating an executable task:
+2. Preflight when creating an executable task:
 
 ```bash
 vespera --json executor preflight \
@@ -116,6 +117,20 @@ Then inspect the returned run or list runs:
 vespera --json task runs task_123
 ```
 
+## Reschedule One-Time Task
+
+Use for pending one-time tasks only. Recurring schedules are not supported.
+
+```bash
+vespera --json task reschedule task_123 --at "2026-06-01T10:00:00+08:00"
+```
+
+Rules:
+
+- Only one-time tasks with a future planned run can be rescheduled.
+- Use explicit timezone offset in the timestamp.
+- `--rrule` and `--timezone` are not accepted.
+
 ## Inspect Task And Runs
 
 Use list for broad state:
@@ -149,7 +164,7 @@ vespera --json run events run_123
 vespera --json run events run_123
 ```
 
-4. If the failure looks like workspace/profile availability, rerun preflight.
-5. If the CLI cannot connect and the user did not specify a custom API, mention
+1. If the failure looks like workspace/profile availability, rerun preflight.
+2. If the CLI cannot connect and the user did not specify a custom API, mention
    that the default local API may not be running; do not ask them to confirm the
    API URL first.

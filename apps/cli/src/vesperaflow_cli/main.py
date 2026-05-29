@@ -16,7 +16,11 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 from vesperaflow_core import ExecutionMode, ScheduleType
-from vesperaflow_core.client_contracts import ScheduleCreate, TaskCreateRequest
+from vesperaflow_core.client_contracts import (
+    ScheduleCreate,
+    ScheduleUpdateRequest,
+    TaskCreateRequest,
+)
 
 DEFAULT_API_URL = "http://127.0.0.1:18000/api/v1"
 API_URL_ENV = "VESPERAFLOW_API_URL"
@@ -111,6 +115,12 @@ class _TaskRunsArgs(BaseModel):
     status: str | None = None
     limit: int = 100
     offset: int = 0
+
+
+class _TaskRescheduleArgs(BaseModel):
+    model_config: ClassVar[ConfigDict] = _IGNORE_EXTRA
+    task_id: str
+    at: str
 
 
 class _RunIdArg(BaseModel):
@@ -246,6 +256,10 @@ def _add_task_commands(parser: argparse.ArgumentParser) -> None:
     _ = runs.add_argument("--limit", type=int, default=100)
     _ = runs.add_argument("--offset", type=int, default=0)
 
+    reschedule = commands.add_parser("reschedule")
+    _ = reschedule.add_argument("task_id")
+    _ = reschedule.add_argument("--at", required=True)
+
 
 def _add_run_commands(parser: argparse.ArgumentParser) -> None:
     commands = parser.add_subparsers(dest="action", required=True)
@@ -371,6 +385,22 @@ def _handle_task_runs(args: argparse.Namespace, context: CliContext) -> CommandR
     )
 
 
+def _handle_task_reschedule(
+    args: argparse.Namespace, context: CliContext
+) -> CommandResult:
+    parsed = _TaskRescheduleArgs.model_validate(vars(args))
+    _require_timezone(parsed.at)
+    request = ScheduleUpdateRequest.model_validate({"planned_at": parsed.at})
+    payload = request.model_dump(mode="json", exclude_none=True)
+    return _request(
+        context,
+        "PATCH",
+        f"tasks/{parsed.task_id}/schedule",
+        json_body=payload,
+        formatter=_format_task_bundle,
+    )
+
+
 def _handle_run_get(args: argparse.Namespace, context: CliContext) -> CommandResult:
     parsed = _RunIdArg.model_validate(vars(args))
     return _request(
@@ -436,6 +466,7 @@ _DISPATCH: Mapping[tuple[str, str], _Handler] = {
     ("task", "detail"): _handle_task_detail,
     ("task", "run-now"): _handle_task_run_now,
     ("task", "runs"): _handle_task_runs,
+    ("task", "reschedule"): _handle_task_reschedule,
     ("run", "get"): _handle_run_get,
     ("run", "events"): _handle_run_events,
     ("executor", "preflight"): _handle_executor_preflight,

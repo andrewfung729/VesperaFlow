@@ -4,8 +4,8 @@ description: >
   Use when Agent needs to operate VesperaFlow through the `vespera` CLI:
   create one-time or recurring scheduled AI tasks, ask clarifying questions
   before task generation, choose executor profiles, run executor preflight,
-  run existing tasks now, inspect tasks/runs/events, or diagnose CLI/API
-  errors. This skill is for agent-friendly task authoring through the local
+  run existing tasks now, reschedule one-time tasks, inspect tasks/runs/events,
+  or diagnose CLI/API errors. This skill is for agent-friendly task authoring through the local
   VesperaFlow HTTP API and should be used whenever a user asks an agent to
   schedule, queue, generate, run, or review VesperaFlow tasks from the command
   line.
@@ -61,7 +61,8 @@ executor time, or touch production systems.
 
 - Do not invent unsupported CLI commands. Current supported surfaces are
   `task create`, `task list`, `task detail`, `task run-now`, `task runs`,
-  `run get`, `run events`, `executor preflight`, and `profile list`.
+  `task reschedule`, `run get`, `run events`, `executor preflight`, and
+  `profile list`.
 - Do not expose or request executor secret values. Profile responses expose
   secret keys only.
 - Do not add cron, polling, sleep loops, or any scheduler outside Temporal.
