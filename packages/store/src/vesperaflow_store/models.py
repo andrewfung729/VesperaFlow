@@ -113,6 +113,7 @@ class ExecutorProfile(Base):
     is_enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
     is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
     default_model: Mapped[str | None] = mapped_column(String(160))
+    reasoning_level: Mapped[str | None] = mapped_column(String(160))
     env: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
     secret_env: Mapped[dict[str, str]] = mapped_column(
         JSON, nullable=False, default=dict
@@ -125,6 +126,28 @@ class ExecutorProfile(Base):
         DateTime(timezone=True), nullable=False
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProfileValidationHandoff(Base):
+    __tablename__: str = "profile_validation_handoffs"
+    __table_args__: tuple[Index, ...] = (
+        Index("ix_profile_validation_handoffs_expires_at", "expires_at"),
+    )
+
+    handoff_id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    executor: Mapped[ExecutorName] = enum_column(ExecutorName)
+    default_model: Mapped[str | None] = mapped_column(String(160))
+    reasoning_level: Mapped[str | None] = mapped_column(String(160))
+    env: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
+    secret_env: Mapped[dict[str, str]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class Template(Base):

@@ -17,7 +17,11 @@ from vesperaflow_core import (
 )
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
-from vesperaflow_store.errors import ConflictError, InvalidStateTransitionError
+from vesperaflow_store.errors import (
+    ConflictError,
+    InvalidStateTransitionError,
+    NotFoundError,
+)
 
 
 @pytest_asyncio.fixture
@@ -80,6 +84,7 @@ async def test_executor_profile_crud_persists_pi_runtime_choices(
             executor=ExecutorName.PI,
             is_default=True,
             default_model="sonnet",
+            reasoning_level="high",
             env={"FOO": "bar"},
             secret_env={"TOKEN": "secret"},
         )
@@ -87,8 +92,40 @@ async def test_executor_profile_crud_persists_pi_runtime_choices(
     stored = await repo.get_executor_profile(session, profile.profile_id)
     assert stored.executor is ExecutorName.PI
     assert stored.default_model == "sonnet"
+    assert stored.reasoning_level == "high"
     assert stored.env == {"FOO": "bar"}
     assert stored.secret_env == {"TOKEN": "secret"}
+
+    async with session.begin():
+        updated = await repo.update_executor_profile(
+            session,
+            profile_id=profile.profile_id,
+            version=stored.version,
+            reasoning_level=None,
+            set_reasoning_level=True,
+        )
+
+    assert updated.reasoning_level is None
+
+
+@pytest.mark.asyncio
+async def test_profile_validation_handoff_expires_and_cleans_up(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        handoff = await repo.create_profile_validation_handoff(
+            session,
+            executor=ExecutorName.CODEX,
+            default_model="gpt-5.2",
+            reasoning_level="xhigh",
+            env={"VISIBLE": "1"},
+            secret_env={"TOKEN": "secret"},
+            ttl=timedelta(seconds=-1),
+        )
+        await repo.cleanup_expired_profile_validation_handoffs(session)
+
+    with pytest.raises(NotFoundError):
+        await repo.get_profile_validation_handoff(session, handoff.handoff_id)
 
 
 @pytest.mark.asyncio
@@ -129,8 +166,10 @@ async def test_default_executor_profile_resolves_for_task(
     assert task.executor_profile_id == profile.profile_id
     assert opencode_profile.name == "OpenCode"
     assert opencode_profile.default_model is None
+    assert opencode_profile.reasoning_level is None
     assert pi_profile.name == "Pi"
     assert pi_profile.default_model is None
+    assert pi_profile.reasoning_level is None
     assert [item.executor for item in profiles_page.items] == [
         ExecutorName.CLAUDE_CODE,
         ExecutorName.CODEX,

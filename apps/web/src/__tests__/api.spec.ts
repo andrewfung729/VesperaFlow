@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   archiveTemplate,
   cancelOccurrence,
+  createExecutorProfile,
   createTask,
   createTemplate,
   getCalendar,
@@ -17,6 +18,7 @@ import {
   pauseRecurringTask,
   preflightExecutor,
   resumeRecurringTask,
+  updateExecutorProfile,
   updateOccurrence,
   updateRecurringSchedule,
   updateTask,
@@ -173,6 +175,53 @@ describe('api', () => {
       ),
       expect.any(Object),
     )
+  })
+
+  it('sends executor profile reasoning level payloads', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              profile_id: 'xpr_pi',
+              name: 'Pi',
+              executor: 'pi',
+              is_enabled: true,
+              is_default: false,
+              default_model: 'sonnet',
+              reasoning_level: 'high',
+              env: {},
+              secret_env_keys: [],
+              version: 1,
+              created_at: '2026-04-25T09:00:00+08:00',
+              updated_at: '2026-04-25T09:00:00+08:00',
+              archived_at: null,
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createExecutorProfile({
+      name: 'Pi',
+      executor: 'pi',
+      is_enabled: true,
+      is_default: false,
+      default_model: 'sonnet',
+      reasoning_level: 'high',
+      env: {},
+      secret_env: {},
+    })
+    await updateExecutorProfile('xpr_pi', {
+      version: 1,
+      reasoning_level: null,
+    })
+
+    const createBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    const updateBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))
+    expect(createBody.reasoning_level).toBe('high')
+    expect(updateBody.reasoning_level).toBeNull()
   })
 
   it('sends history filters as query parameters', async () => {

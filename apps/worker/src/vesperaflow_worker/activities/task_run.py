@@ -2,13 +2,22 @@
 
 import asyncio
 import logging
+import tempfile
 from contextlib import suppress
 from datetime import datetime
+from pathlib import Path
 from typing import TypedDict
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from temporalio import activity
-from vesperaflow_core import ExecutorOutcome, MaterializedRun, RunStatus, TaskRunInput
+from vesperaflow_core import (
+    ExecutorOutcome,
+    MaterializedRun,
+    ProfileValidationInput,
+    ProfileValidationResult,
+    RunStatus,
+    TaskRunInput,
+)
 from vesperaflow_store import create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
 from vesperaflow_store.errors import InvalidStateTransitionError, NotFoundError
@@ -108,6 +117,50 @@ class TaskRunActivities:
                 extra=_activity_log_context(payload=payload),
             )
             raise
+
+    @activity.defn(name="validate_executor_profile")
+    async def validate_executor_profile(
+        self,
+        payload: ProfileValidationInput,
+    ) -> ProfileValidationResult:
+        if isinstance(payload, dict):
+            payload = ProfileValidationInput.model_validate(payload)
+        logger.info(
+            "activity.validate_executor_profile.starting",
+            extra=_profile_validation_log_context(payload),
+        )
+        runtime_config: ExecutorRuntimeConfig | None = None
+        try:
+            runtime_config = await self._validation_runtime_config(payload)
+            with tempfile.TemporaryDirectory(
+                prefix="vesperaflow-profile-validation-"
+            ) as workspace:
+                result = await self._executor.validate_profile(
+                    payload.executor,
+                    runtime_config,
+                    Path(workspace),
+                )
+            logger.info(
+                "activity.validate_executor_profile.completed",
+                extra={
+                    **_profile_validation_log_context(payload),
+                    "validation_ok": result.ok,
+                    "validation_code": result.code,
+                },
+            )
+            return result
+        except Exception as exc:
+            logger.exception(
+                "activity.validate_executor_profile.failed",
+                extra=_profile_validation_log_context(payload),
+            )
+            return ProfileValidationResult(
+                ok=False,
+                code="profile_validation_error",
+                message=f"Executor profile validation failed: {exc}",
+            )
+        finally:
+            await self._delete_validation_handoff(payload.handoff_id)
 
     @activity.defn(name="mark_run_queued")
     async def mark_run_queued(self, run_id: str, external_execution_ref: str) -> None:
@@ -424,7 +477,44 @@ class TaskRunActivities:
                 executor_profile_id=profile.profile_id,
                 executor_profile_name=profile.name,
                 default_model=profile.default_model,
+                reasoning_level=profile.reasoning_level,
                 env=env,
+            )
+
+    async def _validation_runtime_config(
+        self,
+        payload: ProfileValidationInput,
+    ) -> ExecutorRuntimeConfig:
+        async with self._session_factory() as session:
+            handoff = await repo.get_profile_validation_handoff(
+                session,
+                payload.handoff_id,
+            )
+            if handoff.executor != payload.executor:
+                raise ValueError("validation handoff executor mismatch")
+            if handoff.default_model != payload.default_model:
+                raise ValueError("validation handoff default model mismatch")
+            if handoff.reasoning_level != payload.reasoning_level:
+                raise ValueError("validation handoff reasoning level mismatch")
+            env = dict(handoff.env or {})
+            env.update(handoff.secret_env or {})
+            return ExecutorRuntimeConfig(
+                executor_profile_id=None,
+                executor_profile_name="Profile validation",
+                default_model=handoff.default_model,
+                reasoning_level=handoff.reasoning_level,
+                env=env,
+            )
+
+    async def _delete_validation_handoff(self, handoff_id: str) -> None:
+        try:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    await repo.delete_profile_validation_handoff(session, handoff_id)
+        except Exception:
+            logger.exception(
+                "activity.validate_executor_profile.handoff_cleanup_failed",
+                extra={"handoff_id": handoff_id},
             )
 
     async def close(self) -> None:
@@ -444,6 +534,18 @@ async def _heartbeat_loop(interval_seconds: float = 60.0) -> None:
             activity.heartbeat()
         except asyncio.CancelledError:
             break
+
+
+def _profile_validation_log_context(
+    payload: ProfileValidationInput,
+) -> dict[str, object]:
+    return {
+        **_activity_info_dict(),
+        "handoff_id": payload.handoff_id,
+        "executor": payload.executor.value,
+        "default_model": payload.default_model,
+        "reasoning_level": payload.reasoning_level,
+    }
 
 
 def _activity_log_context(
@@ -502,10 +604,13 @@ def _executor_event_details(
     details: dict[str, object] = {
         "executor": payload.execution_snapshot.executor.value,
         "executor_profile_id": payload.execution_snapshot.executor_profile_id,
+        "executor_model": runtime_config.default_model if runtime_config else None,
+        "executor_reasoning_level": (
+            runtime_config.reasoning_level if runtime_config else None
+        ),
     }
     if runtime_config is not None:
         details["executor_profile_name"] = runtime_config.executor_profile_name
-        details["executor_model"] = runtime_config.default_model
     return details
 
 

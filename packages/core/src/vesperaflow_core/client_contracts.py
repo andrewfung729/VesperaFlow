@@ -116,15 +116,19 @@ class ExecutorProfileCreateRequest(BaseModel):
     is_enabled: bool = True
     is_default: bool = False
     default_model: str | None = Field(default=None, max_length=160)
+    reasoning_level: str | None = Field(default=None, max_length=160)
     env: dict[str, str] = Field(default_factory=dict)
     secret_env: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("default_model", mode="before")
     @classmethod
     def _normalize_default_model(cls, value: object) -> object:
-        if isinstance(value, str) and value.strip() == "":
-            return None
-        return value
+        return _blank_string_to_none(value)
+
+    @field_validator("reasoning_level", mode="before")
+    @classmethod
+    def _normalize_reasoning_level(cls, value: object) -> object:
+        return _strip_blank_string_to_none(value)
 
     @model_validator(mode="after")
     def _validate_maps(self) -> ExecutorProfileCreateRequest:
@@ -139,15 +143,19 @@ class ExecutorProfileUpdateRequest(BaseModel):
     is_enabled: bool | None = None
     is_default: bool | None = None
     default_model: str | None = Field(default=None, max_length=160)
+    reasoning_level: str | None = Field(default=None, max_length=160)
     env: dict[str, str] | None = None
     secret_env: dict[str, str | None] | None = None
 
     @field_validator("default_model", mode="before")
     @classmethod
     def _normalize_default_model(cls, value: object) -> object:
-        if isinstance(value, str) and value.strip() == "":
-            return None
-        return value
+        return _blank_string_to_none(value)
+
+    @field_validator("reasoning_level", mode="before")
+    @classmethod
+    def _normalize_reasoning_level(cls, value: object) -> object:
+        return _strip_blank_string_to_none(value)
 
     @model_validator(mode="after")
     def _validate_maps(self) -> ExecutorProfileUpdateRequest:
@@ -156,6 +164,19 @@ class ExecutorProfileUpdateRequest(BaseModel):
         if self.secret_env is not None:
             _validate_env_patch(self.secret_env)
         return self
+
+
+def _blank_string_to_none(value: object) -> object:
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return value
+
+
+def _strip_blank_string_to_none(value: object) -> object:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return value
 
 
 def _validate_env(value: dict[str, str]) -> None:

@@ -388,7 +388,8 @@ def test_profile_list_renders_pi_profile() -> None:
                     "executor": "pi",
                     "is_enabled": True,
                     "is_default": True,
-                    "default_model": "sonnet:high",
+                    "default_model": "sonnet",
+                    "reasoning_level": "high",
                 }
             ]
         )
@@ -399,7 +400,125 @@ def test_profile_list_renders_pi_profile() -> None:
     assert stderr == ""
     assert "xpr_default_pi" in stdout
     assert "pi" in stdout
-    assert "sonnet:high" in stdout
+    assert "sonnet" in stdout
+    assert "high" in stdout
+
+
+def test_profile_create_sends_reasoning_level() -> None:
+    with _mock_transport(
+        _created(
+            {
+                "profile_id": "xpr_pi",
+                "name": "Pi Custom",
+                "executor": "pi",
+                "is_enabled": True,
+                "is_default": False,
+                "default_model": "sonnet",
+                "reasoning_level": "high",
+            }
+        )
+    ) as (transport, requests):
+        exit_code, stdout, stderr = _run(
+            [
+                "profile",
+                "create",
+                "--name",
+                "Pi Custom",
+                "--executor",
+                "pi",
+                "--default-model",
+                "sonnet",
+                "--reasoning-level",
+                "high",
+                "--env",
+                "VISIBLE=1",
+                "--secret-env",
+                "TOKEN=secret",
+            ],
+            transport=transport,
+        )
+
+    assert exit_code == 0
+    assert stderr == ""
+    payload = json.loads(requests[0].content)
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/api/v1/executor-profiles"
+    assert payload["reasoning_level"] == "high"
+    assert payload["env"] == {"VISIBLE": "1"}
+    assert payload["secret_env"] == {"TOKEN": "secret"}
+    assert "profile: " in stdout
+
+
+def test_profile_update_sends_reasoning_level_and_secret_patch() -> None:
+    with _mock_transport(
+        _success(
+            {
+                "profile_id": "xpr_pi",
+                "name": "Pi Custom",
+                "executor": "pi",
+                "is_enabled": True,
+                "is_default": False,
+                "default_model": "sonnet",
+                "reasoning_level": None,
+            }
+        )
+    ) as (transport, requests):
+        exit_code, _, stderr = _run(
+            [
+                "--json",
+                "profile",
+                "update",
+                "xpr_pi",
+                "--version",
+                "3",
+                "--clear-reasoning-level",
+                "--unset-secret-env",
+                "TOKEN",
+            ],
+            transport=transport,
+        )
+
+    assert exit_code == 0
+    assert stderr == ""
+    payload = json.loads(requests[0].content)
+    assert requests[0].method == "PATCH"
+    assert requests[0].url.path == "/api/v1/executor-profiles/xpr_pi"
+    assert payload == {
+        "version": 3,
+        "reasoning_level": None,
+        "secret_env": {"TOKEN": None},
+    }
+
+
+def test_profile_validation_error_is_clear_in_text_output() -> None:
+    response = httpx.Response(
+        422,
+        json={
+            "error": {
+                "code": "validation_error",
+                "message": "executor profile validation failed: timed out",
+                "details": {},
+            }
+        },
+    )
+    with _mock_transport(response) as (transport, _):
+        exit_code, stdout, stderr = _run(
+            [
+                "profile",
+                "create",
+                "--name",
+                "Bad",
+                "--executor",
+                "codex",
+                "--reasoning-level",
+                "xhigh",
+            ],
+            transport=transport,
+        )
+
+    assert exit_code == 1
+    assert stdout == ""
+    assert "executor profile validation failed: timed out" in stderr
 
 
 def test_read_commands_call_expected_routes() -> None:

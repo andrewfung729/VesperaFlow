@@ -113,6 +113,7 @@ export interface ExecutorProfile {
   is_enabled: boolean
   is_default: boolean
   default_model: string | null
+  reasoning_level: string | null
   env: Record<string, string>
   secret_env_keys: string[]
   version: number
@@ -331,6 +332,7 @@ export async function createExecutorProfile(payload: {
   is_enabled: boolean
   is_default: boolean
   default_model: string | null
+  reasoning_level: string | null
   env: Record<string, string>
   secret_env: Record<string, string>
 }): Promise<ExecutorProfile> {
@@ -348,6 +350,7 @@ export async function updateExecutorProfile(
     is_enabled?: boolean
     is_default?: boolean
     default_model?: string | null
+    reasoning_level?: string | null
     env?: Record<string, string>
     secret_env?: Record<string, string | null>
   },

@@ -16,7 +16,10 @@ from vesperaflow_worker.activities import TaskRunActivities
 from vesperaflow_worker.executors.factory import build_executor
 from vesperaflow_worker.runtime_logging import configure_worker_logging
 from vesperaflow_worker.settings import get_settings
-from vesperaflow_worker.workflows import TaskRunWorkflow
+from vesperaflow_worker.workflows import (
+    ExecutorProfileValidationWorkflow,
+    TaskRunWorkflow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +84,9 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.task_queue,
-        workflows=[TaskRunWorkflow],
+        workflows=[ExecutorProfileValidationWorkflow, TaskRunWorkflow],
         activities=[
+            activities.validate_executor_profile,
             activities.materialize_run,
             activities.mark_run_queued,
             activities.mark_run_running,

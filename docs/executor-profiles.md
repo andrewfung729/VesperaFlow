@@ -1,8 +1,8 @@
 # Executor Profiles
 
 Executor profiles are the selection and default surface for task execution.
-They bind an executor kind to optional model and environment defaults while
-keeping Temporal payloads small and free of credentials.
+They bind an executor kind to optional model, reasoning, and environment
+defaults while keeping Temporal payloads small and free of credentials.
 
 ## Supported Executors
 
@@ -44,6 +44,32 @@ keeping Temporal payloads small and free of credentials.
 - `default_model` is executor-specific. It is passed to Codex as
   `codex exec --model`, to Claude Code as `ANTHROPIC_MODEL`, to OpenCode as
   `opencode run --model`, and to Pi as `pi --model`. Debug Printer ignores it.
+- `reasoning_level` is nullable free-form executor-specific text. Blank input
+  normalizes to `null`; `null` means the executor uses its own default. There is
+  no VesperaFlow product enum for reasoning values.
+- Non-null `reasoning_level` maps to executor controls at runtime: Pi
+  `--thinking <value>`, Claude Code `ClaudeAgentOptions(effort=<value>)`, Codex
+  `-c model_reasoning_effort="<value>"`, and OpenCode `--variant <value>`.
+  Debug Printer keeps deterministic execution and treats the value as metadata.
+
+## Save-Time Validation
+
+- Creating an enabled profile with explicit `default_model` or `reasoning_level`
+  runs a live validation probe before the profile is persisted.
+- Updating an enabled profile validates before mutation when `default_model`,
+  `reasoning_level`, `env`, or `secret_env` changes and the effective model or
+  reasoning value is explicit. Enabling a previously disabled explicit profile
+  also validates before mutation.
+- Validation fails closed. Unsupported model/reasoning, missing executor,
+  authentication/configuration failures, or timeout reject the save and leave the
+  active profile unchanged.
+- The API writes effective plain env and secret env values to a short-lived
+  transient handoff row and starts a short Temporal validation Workflow with only
+  the handoff id, executor, model, and reasoning metadata.
+- The validation Activity loads the handoff, runs the adapter probe in a
+  VesperaFlow-owned temporary workspace, and deletes the handoff. API cleanup is
+  also attempted if validation fails or times out before the Activity consumes
+  the handoff.
 
 ## Preflight Rules
 
@@ -70,9 +96,10 @@ keeping Temporal payloads small and free of credentials.
   files under `pi-sessions/` in the run artifact directory. Full raw Pi JSONL
   event capture is opt-in with `VESPERAFLOW_PI_CAPTURE_RAW_EVENTS=1`, which
   writes capped output to `pi-raw-events.jsonl`.
-- Run events may include executor name, profile id, profile name, model, and
-  terminal code. They must not include full instructions, full executor output,
-  or secret env values.
+- Run events include executor name, profile id, nullable profile name,
+  `executor_model`, `executor_reasoning_level`, and terminal metadata. They must
+  not include full instructions, full executor output, env values, or secret env
+  values.
 
 ## Source Map
 
@@ -80,11 +107,12 @@ keeping Temporal payloads small and free of credentials.
 - API preflight route: `apps/api/src/vesperaflow_api/routes/executors.py`
 - Task/template resolution: `apps/api/src/vesperaflow_api/routes/tasks.py` and
   `apps/api/src/vesperaflow_api/routes/templates.py`
-- Repository defaults and validation:
+- Repository defaults, transient handoff storage, and validation cleanup:
   `packages/store/src/vesperaflow_store/repositories.py`
 - Temporal payload contract:
   `packages/core/src/vesperaflow_core/contracts.py`
-- Worker runtime resolution:
+- Validation Workflow: `apps/worker/src/vesperaflow_worker/workflows/profile_validation.py`
+- Worker runtime resolution and validation Activity:
   `apps/worker/src/vesperaflow_worker/activities/task_run.py`
 - Worker routing: `apps/worker/src/vesperaflow_worker/executors/router.py`
 - Web labels/defaults: `apps/web/src/lib/executors.ts`

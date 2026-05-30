@@ -17,6 +17,8 @@ import httpx
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 from vesperaflow_core import ExecutionMode, ScheduleType
 from vesperaflow_core.client_contracts import (
+    ExecutorProfileCreateRequest,
+    ExecutorProfileUpdateRequest,
     ScheduleCreate,
     ScheduleUpdateRequest,
     TaskCreateRequest,
@@ -142,6 +144,34 @@ class _ExecutorPreflightArgs(BaseModel):
     executor_profile: str | None = None
     executor: str | None = None
     cwd: str | None = None
+
+
+class _ProfileCreateArgs(BaseModel):
+    model_config: ClassVar[ConfigDict] = _IGNORE_EXTRA
+    name: str
+    executor: str
+    disabled: bool = False
+    is_default: bool = False
+    default_model: str | None = None
+    reasoning_level: str | None = None
+    env: list[str] | None = None
+    secret_env: list[str] | None = None
+
+
+class _ProfileUpdateArgs(BaseModel):
+    model_config: ClassVar[ConfigDict] = _IGNORE_EXTRA
+    profile_id: str
+    version: int
+    name: str | None = None
+    enabled: bool | None = None
+    is_default: bool | None = None
+    default_model: str | None = None
+    clear_default_model: bool = False
+    reasoning_level: str | None = None
+    clear_reasoning_level: bool = False
+    env: list[str] | None = None
+    secret_env: list[str] | None = None
+    unset_secret_env: list[str] | None = None
 
 
 # `TypeAdapter` validates an arbitrary `Any` (from `httpx.Response.json()`)
@@ -294,6 +324,40 @@ def _add_executor_commands(parser: argparse.ArgumentParser) -> None:
 def _add_profile_commands(parser: argparse.ArgumentParser) -> None:
     commands = parser.add_subparsers(dest="action", required=True)
     _ = commands.add_parser("list")
+
+    create = commands.add_parser("create")
+    _ = create.add_argument("--name", required=True)
+    _ = create.add_argument("--executor", required=True)
+    _ = create.add_argument("--disabled", action="store_true")
+    _ = create.add_argument("--default", action="store_true", dest="is_default")
+    _ = create.add_argument("--default-model")
+    _ = create.add_argument("--reasoning-level")
+    _ = create.add_argument("--env", action="append")
+    _ = create.add_argument("--secret-env", action="append")
+
+    update = commands.add_parser("update")
+    _ = update.add_argument("profile_id")
+    _ = update.add_argument("--version", type=int, required=True)
+    _ = update.add_argument("--name")
+    enabled_group = update.add_mutually_exclusive_group()
+    _ = enabled_group.add_argument("--enabled", action="store_true", dest="enabled")
+    _ = enabled_group.add_argument("--disabled", action="store_false", dest="enabled")
+    update.set_defaults(enabled=None)
+    default_group = update.add_mutually_exclusive_group()
+    _ = default_group.add_argument("--default", action="store_true", dest="is_default")
+    _ = default_group.add_argument(
+        "--not-default", action="store_false", dest="is_default"
+    )
+    update.set_defaults(is_default=None)
+    model_group = update.add_mutually_exclusive_group()
+    _ = model_group.add_argument("--default-model")
+    _ = model_group.add_argument("--clear-default-model", action="store_true")
+    reasoning_group = update.add_mutually_exclusive_group()
+    _ = reasoning_group.add_argument("--reasoning-level")
+    _ = reasoning_group.add_argument("--clear-reasoning-level", action="store_true")
+    _ = update.add_argument("--env", action="append")
+    _ = update.add_argument("--secret-env", action="append")
+    _ = update.add_argument("--unset-secret-env", action="append")
 
 
 def _handle_task_create(args: argparse.Namespace, context: CliContext) -> CommandResult:
@@ -463,6 +527,71 @@ def _handle_profile_list(_: argparse.Namespace, context: CliContext) -> CommandR
     )
 
 
+def _handle_profile_create(
+    args: argparse.Namespace,
+    context: CliContext,
+) -> CommandResult:
+    parsed = _ProfileCreateArgs.model_validate(vars(args))
+    request = ExecutorProfileCreateRequest.model_validate(
+        {
+            "name": parsed.name,
+            "executor": parsed.executor,
+            "is_enabled": not parsed.disabled,
+            "is_default": parsed.is_default,
+            "default_model": parsed.default_model,
+            "reasoning_level": parsed.reasoning_level,
+            "env": _parse_key_value_options(parsed.env),
+            "secret_env": _parse_key_value_options(parsed.secret_env),
+        }
+    )
+    return _request(
+        context,
+        "POST",
+        "executor-profiles",
+        json_body=request.model_dump(mode="json"),
+        formatter=_format_profile,
+    )
+
+
+def _handle_profile_update(
+    args: argparse.Namespace,
+    context: CliContext,
+) -> CommandResult:
+    parsed = _ProfileUpdateArgs.model_validate(vars(args))
+    body: dict[str, object] = {"version": parsed.version}
+    if parsed.name is not None:
+        body["name"] = parsed.name
+    if parsed.enabled is not None:
+        body["is_enabled"] = parsed.enabled
+    if parsed.is_default is not None:
+        body["is_default"] = parsed.is_default
+    if parsed.clear_default_model:
+        body["default_model"] = None
+    elif parsed.default_model is not None:
+        body["default_model"] = parsed.default_model
+    if parsed.clear_reasoning_level:
+        body["reasoning_level"] = None
+    elif parsed.reasoning_level is not None:
+        body["reasoning_level"] = parsed.reasoning_level
+    if parsed.env is not None:
+        body["env"] = _parse_key_value_options(parsed.env)
+    secret_patch: dict[str, str | None] = dict(
+        _parse_key_value_options(parsed.secret_env)
+    )
+    for key in parsed.unset_secret_env or []:
+        secret_patch[key] = None
+    if parsed.secret_env is not None or parsed.unset_secret_env is not None:
+        body["secret_env"] = secret_patch
+    request = ExecutorProfileUpdateRequest.model_validate(body)
+    return _request(
+        context,
+        "PATCH",
+        f"executor-profiles/{parsed.profile_id}",
+        json_body=request.model_dump(mode="json", exclude_unset=True),
+        formatter=_format_profile,
+    )
+
+
 type _Handler = Callable[[argparse.Namespace, CliContext], CommandResult]
 
 
@@ -480,6 +609,8 @@ _DISPATCH: Mapping[tuple[str, str], _Handler] = {
     ("run", "events"): _handle_run_events,
     ("executor", "preflight"): _handle_executor_preflight,
     ("profile", "list"): _handle_profile_list,
+    ("profile", "create"): _handle_profile_create,
+    ("profile", "update"): _handle_profile_update,
 }
 
 
@@ -747,8 +878,30 @@ def _format_preflight(body: JsonObject) -> str:
 def _format_profile_list(body: JsonObject) -> str:
     return _table(
         _data_list(body),
-        ["profile_id", "name", "executor", "is_enabled", "is_default", "default_model"],
+        [
+            "profile_id",
+            "name",
+            "executor",
+            "is_enabled",
+            "is_default",
+            "default_model",
+            "reasoning_level",
+        ],
     )
+
+
+def _format_profile(body: JsonObject) -> str:
+    return _format_object("profile", _data_dict(body))
+
+
+def _parse_key_value_options(values: Sequence[str] | None) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in values or []:
+        separator = item.find("=")
+        if separator <= 0:
+            raise CliUsageError(f"expected KEY=VALUE, got {item!r}")
+        result[item[:separator]] = item[separator + 1 :]
+    return result
 
 
 def _format_object(label: str, values: Mapping[str, JsonValue]) -> str:

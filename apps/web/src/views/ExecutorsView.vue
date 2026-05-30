@@ -22,6 +22,7 @@ const editingProfile = ref<ExecutorProfile | null>(null)
 const name = ref('')
 const executor = ref<ExecutorName>('debug_printer')
 const defaultModel = ref('')
+const reasoningLevel = ref('')
 const envText = ref('')
 const secretEnvText = ref('')
 const isEnabled = ref(true)
@@ -54,6 +55,7 @@ function editProfile(profile: ExecutorProfile) {
   name.value = profile.name
   executor.value = profile.executor
   defaultModel.value = profile.default_model ?? ''
+  reasoningLevel.value = profile.reasoning_level ?? ''
   envText.value = mapToLines(profile.env)
   secretEnvText.value = ''
   isEnabled.value = profile.is_enabled
@@ -65,6 +67,7 @@ function resetForm() {
   name.value = ''
   executor.value = 'debug_printer'
   defaultModel.value = ''
+  reasoningLevel.value = ''
   envText.value = ''
   secretEnvText.value = ''
   isEnabled.value = true
@@ -91,7 +94,10 @@ async function saveProfile() {
         version: editingProfile.value.version,
         ...basePayload,
         ...(supportsModelSelection.value
-          ? { default_model: defaultModel.value.trim() || null }
+          ? {
+              default_model: defaultModel.value.trim() || null,
+              reasoning_level: reasoningLevel.value.trim() || null,
+            }
           : {}),
         secret_env: secretEnv,
       })
@@ -100,6 +106,7 @@ async function saveProfile() {
         executor: executor.value,
         ...basePayload,
         default_model: supportsModelSelection.value ? defaultModel.value.trim() || null : null,
+        reasoning_level: supportsModelSelection.value ? reasoningLevel.value.trim() || null : null,
         secret_env: secretEnv,
       })
     }
@@ -171,6 +178,7 @@ function mapToLines(value: Record<string, string>): string {
                 <th class="px-4 py-3">Name</th>
                 <th class="px-4 py-3">Executor</th>
                 <th class="px-4 py-3">Model</th>
+                <th class="px-4 py-3">Reasoning</th>
                 <th class="px-4 py-3">Secrets</th>
                 <th class="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -195,6 +203,9 @@ function mapToLines(value: Record<string, string>): string {
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {{ profile.default_model || 'executor default' }}
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
+                  {{ profile.reasoning_level || 'executor default' }}
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-300">
                   {{ profile.secret_env_keys.join(', ') || 'none' }}
@@ -228,6 +239,12 @@ function mapToLines(value: Record<string, string>): string {
             v-model="defaultModel"
             label="Default Model"
             placeholder="Executor default"
+          />
+          <TextInput
+            v-if="supportsModelSelection"
+            v-model="reasoningLevel"
+            label="Reasoning Level"
+            placeholder="Executor default (for example high)"
           />
           <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input v-model="isEnabled" type="checkbox" />

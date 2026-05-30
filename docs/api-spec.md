@@ -206,7 +206,7 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 
 `task_status` is a server-derived projection; see `docs/domain-model.md` §4.4.
 
-`executor` identifies the resolved coding-agent runtime that will perform this task's runs. `executor_profile_id` identifies the profile that supplied executor-level defaults such as model and environment for future runs. MVP supports:
+`executor` identifies the resolved coding-agent runtime that will perform this task's runs. `executor_profile_id` identifies the profile that supplied executor-level defaults such as model, reasoning level, and environment for future runs. MVP supports:
 
 - `claude_code` — Claude Agent SDK
 - `codex` — Codex CLI non-interactive `codex exec` transport
@@ -216,7 +216,7 @@ Mutating endpoints (any `POST`, `PATCH`, or `DELETE` that changes a resource) en
 
 Clients must pass `executor_profile_id`, pass the legacy `executor` field, or reference a template that supplies a default executor/profile. If only `executor` is provided, the backend resolves that executor's default profile. There is no install-level executor fallback. VesperaFlow does not call LLM APIs directly; the chosen executor runtime performs the work. See `docs/adr/002-execution-engine-choice.md`.
 
-Executor profile responses include `secret_env_keys` only. Secret env values are write-only in the API response even though this local-first v1 stores them in PostgreSQL.
+Executor profile responses include nullable `default_model` and `reasoning_level` metadata plus `secret_env_keys` only. Secret env values are write-only in the API response even though this local-first v1 stores them in PostgreSQL. Blank `reasoning_level` input is normalized to `null`, and VesperaFlow does not enforce a product-level reasoning enum.
 
 `target_working_directory` is the absolute existing directory where the executor performs user work. It is distinct from the per-run artifact workspace used by VesperaFlow to store summaries and transcripts.
 
@@ -313,6 +313,9 @@ executor output.
   "message": "Executor invocation completed successfully.",
   "details": {
     "executor": "debug_printer",
+    "executor_profile_id": "xpr_default_debug_printer",
+    "executor_model": null,
+    "executor_reasoning_level": null,
     "terminal_code": "debug_printer_completed"
   },
   "temporal_workflow_id": "vesperaflow.run.run_123",
@@ -385,6 +388,30 @@ Behavior:
   target workspace is an existing absolute directory visible to the API process
 - live executor auth/configuration/model checks are intentionally not performed
   by the API because executor invocation belongs to Worker Activities
+
+### 5.8 Executor Profile Endpoints
+
+`POST /api/v1/executor-profiles`, `GET /api/v1/executor-profiles`,
+`GET /api/v1/executor-profiles/{profile_id}`, and
+`PATCH /api/v1/executor-profiles/{profile_id}` expose executor profile
+management.
+
+Create/update payload fields:
+
+- `name`, `executor`, `is_enabled`, `is_default`
+- nullable `default_model`
+- nullable free-form `reasoning_level`; blank strings normalize to `null`
+- `env` plain environment values
+- write-only `secret_env` values; responses expose only `secret_env_keys`
+
+When an enabled profile's effective `default_model` or `reasoning_level` is
+explicitly set, create/update validates the effective executor/model/reasoning
+env configuration before committing. Validation fails closed: unsupported
+model/reasoning, missing authentication, executor configuration failures, and
+timeouts return `422 validation_error` and do not create or mutate the active
+profile. Validation secrets are passed to the Worker through a short-lived
+PostgreSQL handoff id; Temporal payloads contain only the handoff id and
+non-secret metadata.
 
 ## 6. Template Endpoints
 

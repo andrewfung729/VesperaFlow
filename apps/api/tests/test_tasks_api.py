@@ -12,9 +12,15 @@ from vesperaflow_api.app import create_app
 from vesperaflow_api.dependencies import set_app_state
 from vesperaflow_api.settings import ApiSettings
 from vesperaflow_api.settings import get_settings as _cached_get_settings
-from vesperaflow_core import RunStatus, occurrence_key_for_datetime
+from vesperaflow_core import (
+    ProfileValidationInput,
+    ProfileValidationResult,
+    RunStatus,
+    occurrence_key_for_datetime,
+)
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
+from vesperaflow_store.errors import NotFoundError
 from vesperaflow_store.models import Run, Task
 from vesperaflow_store.models import Schedule as ProductSchedule
 
@@ -25,6 +31,22 @@ class FakeScheduler:
         self.deleted: list[str] = []
         self.paused: list[str] = []
         self.resumed: list[str] = []
+        self.profile_validation_inputs: list[ProfileValidationInput] = []
+        self.profile_validation_result = ProfileValidationResult(
+            ok=True,
+            code="profile_validation_passed",
+            message="Executor profile validation passed.",
+        )
+        self.profile_validation_exception: Exception | None = None
+
+    async def validate_executor_profile(
+        self,
+        payload: ProfileValidationInput,
+    ) -> ProfileValidationResult:
+        self.profile_validation_inputs.append(payload)
+        if self.profile_validation_exception is not None:
+            raise self.profile_validation_exception
+        return self.profile_validation_result
 
     async def create_one_time_schedule(
         self, *, task: Task, schedule: ProductSchedule, run: Run | None
@@ -240,7 +262,10 @@ async def test_create_task_requires_explicit_executor_or_profile(
 
 
 @pytest.mark.asyncio
-async def test_executor_profile_crud_masks_secret_env(client: AsyncClient) -> None:
+async def test_executor_profile_crud_masks_secret_env(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
     response = await client.post(
         "/api/v1/executor-profiles",
         json={
@@ -249,6 +274,7 @@ async def test_executor_profile_crud_masks_secret_env(client: AsyncClient) -> No
             "is_enabled": True,
             "is_default": False,
             "default_model": "sonnet:high",
+            "reasoning_level": "high",
             "env": {"FOO": "bar"},
             "secret_env": {"TOKEN": "secret"},
         },
@@ -258,15 +284,102 @@ async def test_executor_profile_crud_masks_secret_env(client: AsyncClient) -> No
     data = response.json()["data"]
     assert data["executor"] == "pi"
     assert data["default_model"] == "sonnet:high"
+    assert data["reasoning_level"] == "high"
     assert data["secret_env_keys"] == ["TOKEN"]
     assert "secret_env" not in data
 
+    assert api_context.scheduler.profile_validation_inputs[0].default_model == (
+        "sonnet:high"
+    )
+    assert api_context.scheduler.profile_validation_inputs[0].reasoning_level == "high"
+    assert "secret" not in str(api_context.scheduler.profile_validation_inputs[0])
+    listed = await client.get("/api/v1/executor-profiles")
+    fetched = await client.get(f"/api/v1/executor-profiles/{data['profile_id']}")
+    assert listed.json()["data"][0]["reasoning_level"] == "high"
+    assert fetched.json()["data"]["reasoning_level"] == "high"
+
     updated = await client.patch(
         f"/api/v1/executor-profiles/{data['profile_id']}",
-        json={"version": data["version"], "secret_env": {"TOKEN": None}},
+        json={
+            "version": data["version"],
+            "reasoning_level": None,
+            "secret_env": {"TOKEN": None},
+        },
     )
     assert updated.status_code == 200
+    assert updated.json()["data"]["reasoning_level"] is None
     assert updated.json()["data"]["secret_env_keys"] == []
+
+
+@pytest.mark.asyncio
+async def test_executor_profile_validation_failure_rejects_create(
+    api_context: ApiTestContext,
+) -> None:
+    api_context.scheduler.profile_validation_result = ProfileValidationResult(
+        ok=False,
+        code="executor_misconfigured",
+        message="reasoning level is unsupported",
+    )
+
+    response = await api_context.client.post(
+        "/api/v1/executor-profiles",
+        json={
+            "name": "Bad Codex",
+            "executor": "codex",
+            "is_enabled": True,
+            "is_default": False,
+            "default_model": None,
+            "reasoning_level": "xhigh",
+            "env": {},
+            "secret_env": {"TOKEN": "secret"},
+        },
+    )
+
+    assert response.status_code == 422
+    assert "validation failed" in response.json()["error"]["message"]
+    validation_input = api_context.scheduler.profile_validation_inputs[0]
+    async with api_context.session_factory() as session:
+        page = await repo.list_executor_profiles(session)
+        with pytest.raises(NotFoundError):
+            await repo.get_profile_validation_handoff(
+                session,
+                validation_input.handoff_id,
+            )
+    assert page.total == 0
+
+
+@pytest.mark.asyncio
+async def test_executor_profile_validation_exception_rejects_update_without_mutation(
+    api_context: ApiTestContext,
+) -> None:
+    create_response = await api_context.client.post(
+        "/api/v1/executor-profiles",
+        json={
+            "name": "Codex",
+            "executor": "codex",
+            "is_enabled": True,
+            "is_default": False,
+            "default_model": None,
+            "reasoning_level": None,
+            "env": {},
+            "secret_env": {},
+        },
+    )
+    profile = create_response.json()["data"]
+    api_context.scheduler.profile_validation_exception = TimeoutError(
+        "validation timed out"
+    )
+
+    response = await api_context.client.patch(
+        f"/api/v1/executor-profiles/{profile['profile_id']}",
+        json={"version": profile["version"], "reasoning_level": "high"},
+    )
+
+    assert response.status_code == 422
+    async with api_context.session_factory() as session:
+        stored = await repo.get_executor_profile(session, profile["profile_id"])
+    assert stored.version == profile["version"]
+    assert stored.reasoning_level is None
 
 
 @pytest.mark.asyncio

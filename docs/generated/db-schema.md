@@ -1,6 +1,6 @@
 # Database Schema Snapshot
 
-- Generated: 2026-05-25
+- Generated: 2026-05-30
 - Regenerate: `uv run python scripts/generate_agent_facts.py`
 - Sources: `packages/store/src/vesperaflow_store/models.py`, `packages/store/alembic/versions/`
 - Limitations: generated from importable application metadata, not a live deployment.
@@ -15,6 +15,7 @@
 | `is_enabled` | `BOOLEAN` | no | `True` |
 | `is_default` | `BOOLEAN` | no | `False` |
 | `default_model` | `VARCHAR(160)` | yes | `` |
+| `reasoning_level` | `VARCHAR(160)` | yes | `` |
 | `env` | `JSON` | no | `dict` |
 | `secret_env` | `JSON` | no | `dict` |
 | `version` | `INTEGER` | no | `1` |
@@ -49,6 +50,22 @@
 - Foreign key: `task_id` -> `tasks.task_id`
 - Index `ix_occurrence_overrides_schedule_id`: `schedule_id`
 - Index `ix_occurrence_overrides_task_id`: `task_id`
+
+## `profile_validation_handoffs`
+
+| Column | Type | Nullable | Default |
+|---|---|---:|---|
+| `handoff_id` | `VARCHAR(48)` | no | `` |
+| `executor` | `VARCHAR(64)` | no | `` |
+| `default_model` | `VARCHAR(160)` | yes | `` |
+| `reasoning_level` | `VARCHAR(160)` | yes | `` |
+| `env` | `JSON` | no | `dict` |
+| `secret_env` | `JSON` | no | `dict` |
+| `created_at` | `DATETIME` | no | `` |
+| `expires_at` | `DATETIME` | no | `` |
+
+- Primary key: `handoff_id`
+- Index `ix_profile_validation_handoffs_expires_at`: `expires_at`
 
 ## `run_events`
 

@@ -33,6 +33,7 @@ PermissionMode = Literal[
     "bypassPermissions",
     "plan",
 ]
+ClaudeEffort = Literal["low", "medium", "high", "max"]
 SettingSource = Literal["user", "project", "local"]
 
 CLAUDE_SETTING_SOURCES: tuple[SettingSource, ...] = ("user", "project", "local")
@@ -52,9 +53,7 @@ DEFAULT_CLAUDE_ENV = {
 class ClaudeCodeExecutor(ExecutorAdapter):
     permission_mode: PermissionMode = "bypassPermissions"
     setting_sources: tuple[SettingSource, ...] = CLAUDE_SETTING_SOURCES
-    env: dict[str, str] | None = field(
-        default_factory=lambda: dict(DEFAULT_CLAUDE_ENV)
-    )
+    env: dict[str, str] | None = field(default_factory=lambda: dict(DEFAULT_CLAUDE_ENV))
 
     @override
     async def execute(
@@ -138,12 +137,29 @@ class ClaudeCodeExecutor(ExecutorAdapter):
         runtime_config: ExecutorRuntimeConfig | None,
     ) -> ClaudeSDKClient:
         env = _runtime_env(self.env, runtime_config)
-        if env:
+        reasoning_level = runtime_config.reasoning_level if runtime_config else None
+        effort = cast(ClaudeEffort, reasoning_level) if reasoning_level else None
+        if env and effort:
             options = ClaudeAgentOptions(
                 cwd=str(workspace),
                 permission_mode=self.permission_mode,
                 setting_sources=list(self.setting_sources),
                 env=env,
+                effort=effort,
+            )
+        elif env:
+            options = ClaudeAgentOptions(
+                cwd=str(workspace),
+                permission_mode=self.permission_mode,
+                setting_sources=list(self.setting_sources),
+                env=env,
+            )
+        elif effort:
+            options = ClaudeAgentOptions(
+                cwd=str(workspace),
+                permission_mode=self.permission_mode,
+                setting_sources=list(self.setting_sources),
+                effort=effort,
             )
         else:
             options = ClaudeAgentOptions(

@@ -31,8 +31,9 @@ export function executorSupportsModelSelection(executor: ExecutorName): boolean 
 
 export function executorProfileLabel(profile: ExecutorProfile): string {
   const model = profile.default_model ? ` · ${profile.default_model}` : ''
+  const reasoning = profile.reasoning_level ? ` · ${profile.reasoning_level}` : ''
   const state = profile.is_enabled ? '' : ' · disabled'
-  return `${profile.name} (${executorLabel(profile.executor)}${model})${state}`
+  return `${profile.name} (${executorLabel(profile.executor)}${model}${reasoning})${state}`
 }
 
 export function executorProfileOptions(

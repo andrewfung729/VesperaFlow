@@ -194,6 +194,9 @@ class OpenCodeExecutor(ExecutorAdapter):
         model = runtime_config.default_model if runtime_config else None
         if model:
             args.extend(["--model", model])
+        reasoning_level = runtime_config.reasoning_level if runtime_config else None
+        if reasoning_level:
+            args.extend(["--variant", reasoning_level])
         return tuple(args)
 
 

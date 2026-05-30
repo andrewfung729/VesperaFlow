@@ -190,7 +190,7 @@ describe('App', () => {
     )
   })
 
-  it('submits a custom Pi model through executor profiles', async () => {
+  it('submits custom Pi model and reasoning through executor profiles', async () => {
     const fetchMock = stubFetch()
     const { wrapper } = await mountAppAt('/executors')
 
@@ -201,7 +201,10 @@ describe('App', () => {
     await flushPromises()
     const modelInput = wrapper.find('input[placeholder="Executor default"]')
     if (!modelInput) throw new Error('Expected default model input to render')
-    await modelInput.setValue('sonnet:high')
+    await modelInput.setValue('sonnet')
+    const reasoningInput = wrapper.find('input[placeholder="Executor default (for example high)"]')
+    if (!reasoningInput) throw new Error('Expected reasoning input to render')
+    await reasoningInput.setValue('high')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -211,7 +214,8 @@ describe('App', () => {
     if (!createCall) throw new Error('Expected executor profile create request')
     const body = JSON.parse(String(createCall[1]?.body))
     expect(body.executor).toBe('pi')
-    expect(body.default_model).toBe('sonnet:high')
+    expect(body.default_model).toBe('sonnet')
+    expect(body.reasoning_level).toBe('high')
   })
 
   it('renders the empty history state', async () => {
@@ -1553,6 +1557,7 @@ function executorProfileResponses() {
       is_enabled: true,
       is_default: true,
       default_model: null,
+      reasoning_level: null,
       env: {},
       secret_env_keys: [],
       version: 1,
@@ -1567,6 +1572,7 @@ function executorProfileResponses() {
       is_enabled: true,
       is_default: true,
       default_model: null,
+      reasoning_level: null,
       env: {},
       secret_env_keys: [],
       version: 1,
@@ -1581,6 +1587,7 @@ function executorProfileResponses() {
       is_enabled: true,
       is_default: true,
       default_model: null,
+      reasoning_level: null,
       env: {},
       secret_env_keys: [],
       version: 1,
@@ -1595,6 +1602,7 @@ function executorProfileResponses() {
       is_enabled: true,
       is_default: true,
       default_model: null,
+      reasoning_level: null,
       env: {},
       secret_env_keys: [],
       version: 1,
@@ -1609,6 +1617,7 @@ function executorProfileResponses() {
       is_enabled: true,
       is_default: true,
       default_model: null,
+      reasoning_level: null,
       env: {},
       secret_env_keys: [],
       version: 1,

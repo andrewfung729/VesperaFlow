@@ -26,7 +26,6 @@ _MAX_CAPTURED_LINE_BYTES = 4 * 1024 * 1024
 
 @dataclass(slots=True)
 class CodexExecutor(ExecutorAdapter):
-
     @override
     async def execute(
         self,
@@ -197,6 +196,9 @@ class CodexExecutor(ExecutorAdapter):
         model = runtime_config.default_model if runtime_config else None
         if model:
             args.extend(["--model", model])
+        reasoning_level = runtime_config.reasoning_level if runtime_config else None
+        if reasoning_level:
+            args.extend(["-c", f'model_reasoning_effort="{reasoning_level}"'])
         args.extend(["--dangerously-bypass-approvals-and-sandbox", "-"])
         return tuple(args)
 

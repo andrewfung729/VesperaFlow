@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .enums import ExecutorName, ExecutorPreflightStatus, RunStatus, ScheduleType
 
+type ProfileValidationDetailValue = str | bool | None
+
 
 class ExecutionSnapshot(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
@@ -68,3 +70,21 @@ class ExecutorPreflightResult(BaseModel):
     @property
     def available(self) -> bool:
         return self.status == ExecutorPreflightStatus.AVAILABLE
+
+
+class ProfileValidationInput(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    handoff_id: str
+    executor: ExecutorName
+    default_model: str | None = None
+    reasoning_level: str | None = None
+
+
+class ProfileValidationResult(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
+
+    ok: bool
+    code: str
+    message: str
+    details: dict[str, ProfileValidationDetailValue] = Field(default_factory=dict)

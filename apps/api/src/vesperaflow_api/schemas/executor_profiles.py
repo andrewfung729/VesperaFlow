@@ -14,6 +14,7 @@ class ExecutorProfileResponse(BaseModel):
     is_enabled: bool
     is_default: bool
     default_model: str | None
+    reasoning_level: str | None
     env: dict[str, str]
     secret_env_keys: list[str]
     version: int
@@ -30,6 +31,7 @@ class ExecutorProfileResponse(BaseModel):
             is_enabled=profile.is_enabled,
             is_default=profile.is_default,
             default_model=profile.default_model,
+            reasoning_level=profile.reasoning_level,
             env=dict(profile.env or {}),
             secret_env_keys=sorted((profile.secret_env or {}).keys()),
             version=profile.version,

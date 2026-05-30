@@ -1,8 +1,16 @@
 """Shared executor adapter contracts."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
-from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome
+from vesperaflow_core import (
+    ExecutionSnapshot,
+    ExecutorName,
+    ExecutorOutcome,
+    ProfileValidationResult,
+    RunStatus,
+    utc_now,
+)
 
 
 class ExecutorUnavailableError(RuntimeError):
@@ -14,6 +22,7 @@ class ExecutorRuntimeConfig:
     executor_profile_id: str | None = None
     executor_profile_name: str | None = None
     default_model: str | None = None
+    reasoning_level: str | None = None
     env: dict[str, str] | None = None
 
 
@@ -25,3 +34,37 @@ class ExecutorAdapter:
     ) -> ExecutorOutcome:
         _ = snapshot, runtime_config
         raise NotImplementedError
+
+    async def validate_profile(
+        self,
+        executor: ExecutorName,
+        runtime_config: ExecutorRuntimeConfig,
+        workspace: Path,
+    ) -> ProfileValidationResult:
+        artifact_dir = workspace / ".vesperaflow-validation"
+        snapshot = ExecutionSnapshot(
+            run_id=None,
+            task_id="profile-validation",
+            schedule_id=None,
+            executor=executor,
+            executor_profile_id=runtime_config.executor_profile_id,
+            instruction_source=(
+                "Validate this executor profile by replying with exactly OK. "
+                "Do not inspect, create, modify, or delete files."
+            ),
+            planned_start_at=utc_now(),
+            working_directory=str(artifact_dir),
+            target_working_directory=str(workspace),
+        )
+        outcome = await self.execute(snapshot, runtime_config)
+        if outcome.terminal_status is RunStatus.COMPLETED:
+            return ProfileValidationResult(
+                ok=True,
+                code="profile_validation_passed",
+                message="Executor profile validation passed.",
+            )
+        return ProfileValidationResult(
+            ok=False,
+            code=outcome.terminal_code or "profile_validation_failed",
+            message=outcome.failure_reason or "Executor profile validation failed.",
+        )

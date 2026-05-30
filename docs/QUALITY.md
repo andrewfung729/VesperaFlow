@@ -140,3 +140,6 @@ Update this file when any of these change:
   available only through explicit opt-in.
 - 2026-05-25: Removed unsupported executor integration from public contracts,
   Worker routing, web selection, executor defaults, and current documentation.
+- 2026-05-30: Added executor profile reasoning defaults with save-time Worker
+  validation, transient secret handoff storage, adapter propagation, CLI/Web
+  surfaces, and stable run event metadata.

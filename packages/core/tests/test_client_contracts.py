@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from vesperaflow_core import ExecutionMode, ExecutorName, ScheduleType
 from vesperaflow_core.client_contracts import (
     ExecutorProfileCreateRequest,
+    ExecutorProfileUpdateRequest,
     ScheduleCreate,
     TaskCreateRequest,
 )
@@ -42,4 +43,25 @@ def test_executor_profile_request_validates_env_keys() -> None:
             name="Bad env",
             executor=ExecutorName.CODEX,
             env={"bad-key": "value"},
+        )
+
+
+def test_executor_profile_reasoning_level_is_free_form_and_normalized() -> None:
+    created = ExecutorProfileCreateRequest(
+        name="Future model",
+        executor=ExecutorName.PI,
+        reasoning_level="  provider-specific-xhigh  ",
+    )
+    updated = ExecutorProfileUpdateRequest(reasoning_level="   ")
+
+    assert created.reasoning_level == "provider-specific-xhigh"
+    assert updated.reasoning_level is None
+
+
+def test_executor_profile_reasoning_level_has_conservative_length_limit() -> None:
+    with pytest.raises(ValidationError):
+        ExecutorProfileCreateRequest(
+            name="Too long",
+            executor=ExecutorName.CODEX,
+            reasoning_level="x" * 161,
         )

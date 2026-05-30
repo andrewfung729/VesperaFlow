@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -7,12 +8,15 @@ from vesperaflow_core import (
     ExecutionSnapshot,
     ExecutorName,
     ExecutorOutcome,
+    ProfileValidationInput,
+    ProfileValidationResult,
     RunStatus,
     ScheduleType,
     TaskRunInput,
 )
 from vesperaflow_store import Base, create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
+from vesperaflow_store.errors import NotFoundError
 from vesperaflow_worker.activities import TaskRunActivities
 from vesperaflow_worker.executors.base import ExecutorAdapter, ExecutorRuntimeConfig
 from vesperaflow_worker.settings import WorkerSettings
@@ -21,6 +25,7 @@ from vesperaflow_worker.settings import WorkerSettings
 class FakeExecutor(ExecutorAdapter):
     def __init__(self) -> None:
         self.runtime_config: ExecutorRuntimeConfig | None = None
+        self.validation_runtime_config: ExecutorRuntimeConfig | None = None
 
     async def execute(
         self,
@@ -33,6 +38,22 @@ class FakeExecutor(ExecutorAdapter):
             terminal_status=RunStatus.COMPLETED,
             result_summary="Sensitive executor output",
             terminal_code="fake_completed",
+        )
+
+    async def validate_profile(
+        self,
+        executor: ExecutorName,
+        runtime_config: ExecutorRuntimeConfig,
+        workspace: Path,
+    ) -> ProfileValidationResult:
+        _ = executor
+        if not workspace.exists():
+            raise AssertionError("validation workspace should exist")
+        self.validation_runtime_config = runtime_config
+        return ProfileValidationResult(
+            ok=True,
+            code="profile_validation_passed",
+            message="validated",
         )
 
 
@@ -50,6 +71,7 @@ async def activity_context(tmp_path) -> AsyncIterator[tuple[str, str, str, str]]
                 name="Debug Activity Profile",
                 executor=ExecutorName.DEBUG_PRINTER,
                 default_model="debug-model",
+                reasoning_level="high",
                 env={"VISIBLE": "1"},
                 secret_env={"SECRET": "hidden"},
             )
@@ -118,6 +140,7 @@ async def test_execute_agent_run_records_events_and_sanitized_logs(
     assert outcome.terminal_status is RunStatus.COMPLETED
     assert fake_executor.runtime_config is not None
     assert fake_executor.runtime_config.default_model == "debug-model"
+    assert fake_executor.runtime_config.reasoning_level == "high"
     assert fake_executor.runtime_config.env == {"VISIBLE": "1", "SECRET": "hidden"}
     assert [event.event_type for event in events.items] == [
         "executor.started",
@@ -126,6 +149,7 @@ async def test_execute_agent_run_records_events_and_sanitized_logs(
     assert events.items[1].details["terminal_code"] == "fake_completed"
     assert events.items[0].details["executor_profile_id"] == profile_id
     assert events.items[0].details["executor_model"] == "debug-model"
+    assert events.items[0].details["executor_reasoning_level"] == "high"
     assert "hidden" not in str(events.items[0].details)
     activity_records = [
         record
@@ -139,6 +163,58 @@ async def test_execute_agent_run_records_events_and_sanitized_logs(
     assert "Sensitive prompt text" not in caplog.text
     assert "Sensitive executor output" not in caplog.text
     assert database_url not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_validate_executor_profile_loads_handoff_and_removes_secret_record(
+    tmp_path: Path,
+) -> None:
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'validation.db'}"
+    engine = create_engine(database_url)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = create_session_factory(engine)
+    async with session_factory() as session:
+        async with session.begin():
+            handoff = await repo.create_profile_validation_handoff(
+                session,
+                executor=ExecutorName.CODEX,
+                default_model="gpt-5.2",
+                reasoning_level="xhigh",
+                env={"VISIBLE": "1"},
+                secret_env={"TOKEN": "secret"},
+            )
+            validation_input = ProfileValidationInput(
+                handoff_id=handoff.handoff_id,
+                executor=handoff.executor,
+                default_model=handoff.default_model,
+                reasoning_level=handoff.reasoning_level,
+            )
+    fake_executor = FakeExecutor()
+    activities = TaskRunActivities(
+        database_url=database_url,
+        executor=fake_executor,
+        run_workspace_root="/tmp/vesperaflow-runs",
+    )
+
+    try:
+        result = await activities.validate_executor_profile(validation_input)
+    finally:
+        await activities.close()
+
+    async with session_factory() as session:
+        with pytest.raises(NotFoundError):
+            await repo.get_profile_validation_handoff(session, handoff.handoff_id)
+    await engine.dispose()
+
+    assert result.ok is True
+    assert fake_executor.validation_runtime_config is not None
+    assert fake_executor.validation_runtime_config.default_model == "gpt-5.2"
+    assert fake_executor.validation_runtime_config.reasoning_level == "xhigh"
+    assert fake_executor.validation_runtime_config.env == {
+        "VISIBLE": "1",
+        "TOKEN": "secret",
+    }
 
 
 def test_worker_settings_log_context_is_sanitized() -> None:

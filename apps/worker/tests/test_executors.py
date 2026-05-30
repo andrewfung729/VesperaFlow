@@ -491,9 +491,41 @@ async def test_codex_executor_runs_subprocess_and_writes_artifacts(
         "-",
     )
     assert "--model" not in args
+    assert "model_reasoning_effort" not in " ".join(args)
     assert kwargs["limit"] == 1024 * 1024
     assert proc.stdin_data is not None
     assert proc.stdin_data.decode("utf-8") == "Do work\n"
+
+
+@pytest.mark.asyncio
+async def test_claude_code_executor_passes_runtime_reasoning_effort(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk = _fake_sdk([ResultMessage(result="OK")], monkeypatch=monkeypatch)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    executor = ClaudeCodeExecutor(env=None)
+    runtime_config = ExecutorRuntimeConfig(
+        default_model="claude-sonnet-4-5",
+        reasoning_level="high",
+        env={"ANTHROPIC_API_KEY": "sk-test"},
+    )
+
+    outcome = await executor.execute(
+        snapshot.model_copy(update={"target_working_directory": str(target_dir)}),
+        runtime_config,
+    )
+
+    assert outcome.terminal_status is RunStatus.COMPLETED
+    options = sdk.options
+    assert options is not None
+    assert options.kwargs["effort"] == "high"
+    assert options.kwargs["env"] == {
+        "ANTHROPIC_API_KEY": "sk-test",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-5",
+    }
 
 
 @pytest.mark.asyncio
@@ -512,7 +544,10 @@ async def test_codex_executor_passes_runtime_profile_model(
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
     monkeypatch.setattr("shutil.which", _fake_codex_binary)
     executor = CodexExecutor()
-    runtime_config = ExecutorRuntimeConfig(default_model="gpt-5.2")
+    runtime_config = ExecutorRuntimeConfig(
+        default_model="gpt-5.2",
+        reasoning_level="high",
+    )
 
     outcome = await executor.execute(
         snapshot.model_copy(
@@ -537,6 +572,8 @@ async def test_codex_executor_passes_runtime_profile_model(
         str(target_dir.resolve()),
         "--model",
         "gpt-5.2",
+        "-c",
+        'model_reasoning_effort="high"',
         "--dangerously-bypass-approvals-and-sandbox",
         "-",
     )
@@ -832,6 +869,7 @@ async def test_opencode_executor_runs_subprocess_and_writes_artifacts(
         "run_123",
     )
     assert "--model" not in args
+    assert "--variant" not in args
     assert proc.stdin_data is not None
     assert proc.stdin_data.decode("utf-8") == "Do work\n"
 
@@ -852,7 +890,10 @@ async def test_opencode_executor_passes_runtime_profile_model(
     monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
     monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
     executor = OpenCodeExecutor()
-    runtime_config = ExecutorRuntimeConfig(default_model="anthropic/claude-sonnet-4-5")
+    runtime_config = ExecutorRuntimeConfig(
+        default_model="anthropic/claude-sonnet-4-5",
+        reasoning_level="high",
+    )
 
     outcome = await executor.execute(
         snapshot.model_copy(
@@ -878,6 +919,8 @@ async def test_opencode_executor_passes_runtime_profile_model(
         "run_123",
         "--model",
         "anthropic/claude-sonnet-4-5",
+        "--variant",
+        "high",
     )
 
 
@@ -1087,6 +1130,7 @@ async def test_pi_executor_runs_subprocess_and_writes_artifacts(
         str(run_dir / "pi-sessions"),
     )
     assert "--model" not in args
+    assert "--thinking" not in args
     assert kwargs["cwd"] == str(target_dir.resolve())
     assert kwargs["limit"] == 1024 * 1024
     assert proc.stdin_data is not None
@@ -1124,6 +1168,7 @@ async def test_pi_executor_passes_runtime_model_and_env_without_artifact_leaks(
     monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/pi")
     runtime_config = ExecutorRuntimeConfig(
         default_model="sonnet:high",
+        reasoning_level="high",
         env={"VISIBLE_FLAG": "1", "SECRET_TOKEN": "secret-token"},
     )
     caplog.set_level("DEBUG")
@@ -1150,6 +1195,8 @@ async def test_pi_executor_passes_runtime_model_and_env_without_artifact_leaks(
         str(run_dir / "pi-sessions"),
         "--model",
         "sonnet:high",
+        "--thinking",
+        "high",
     )
     assert env["VISIBLE_FLAG"] == "1"
     assert env["SECRET_TOKEN"] == "secret-token"
@@ -1419,7 +1466,9 @@ async def test_pi_executor_times_out_and_writes_artifacts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     proc = _fake_subprocess(
-        stdout_lines=[b'{"type":"message_update","assistantMessageEvent":{"delta":"partial"}}\n'],
+        stdout_lines=[
+            b'{"type":"message_update","assistantMessageEvent":{"delta":"partial"}}\n'
+        ],
         stderr_lines=[b"still running\n"],
         returncode=None,
         wait_never=True,

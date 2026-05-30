@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import ColumnElement, Select, func, select
+from sqlalchemy import ColumnElement, Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from vesperaflow_core import (
@@ -34,6 +34,7 @@ from .errors import ConflictError, InvalidStateTransitionError, NotFoundError
 from .models import (
     ExecutorProfile,
     OccurrenceOverride,
+    ProfileValidationHandoff,
     Run,
     RunEvent,
     Schedule,
@@ -158,6 +159,9 @@ class ExecutorProfilePage:
     total: int
 
 
+DEFAULT_VALIDATION_HANDOFF_TTL = timedelta(minutes=5)
+
+
 DEFAULT_EXECUTOR_PROFILE_NAMES: dict[ExecutorName, str] = {
     ExecutorName.CLAUDE_CODE: "Claude Code",
     ExecutorName.CODEX: "Codex",
@@ -168,6 +172,66 @@ DEFAULT_EXECUTOR_PROFILE_NAMES: dict[ExecutorName, str] = {
 
 
 RUN_OUTCOME_PREVIEW_LIMIT = 80
+
+
+async def create_profile_validation_handoff(
+    session: AsyncSession,
+    *,
+    executor: ExecutorName,
+    default_model: str | None,
+    reasoning_level: str | None,
+    env: dict[str, str] | None = None,
+    secret_env: dict[str, str] | None = None,
+    ttl: timedelta = DEFAULT_VALIDATION_HANDOFF_TTL,
+) -> ProfileValidationHandoff:
+    await cleanup_expired_profile_validation_handoffs(session)
+    now = utc_now()
+    handoff = ProfileValidationHandoff(
+        handoff_id=new_id("xvh"),
+        executor=executor,
+        default_model=default_model,
+        reasoning_level=reasoning_level,
+        env=dict(env or {}),
+        secret_env=dict(secret_env or {}),
+        created_at=now,
+        expires_at=now + ttl,
+    )
+    session.add(handoff)
+    await session.flush()
+    return handoff
+
+
+async def get_profile_validation_handoff(
+    session: AsyncSession,
+    handoff_id: str,
+) -> ProfileValidationHandoff:
+    handoff = await session.get(ProfileValidationHandoff, handoff_id)
+    if handoff is None:
+        raise NotFoundError(f"profile validation handoff not found: {handoff_id}")
+    if _db_datetime_to_utc(handoff.expires_at) <= utc_now():
+        await delete_profile_validation_handoff(session, handoff_id)
+        raise NotFoundError(f"profile validation handoff expired: {handoff_id}")
+    return handoff
+
+
+async def delete_profile_validation_handoff(
+    session: AsyncSession,
+    handoff_id: str,
+) -> None:
+    handoff = await session.get(ProfileValidationHandoff, handoff_id)
+    if handoff is not None:
+        await session.delete(handoff)
+        await session.flush()
+
+
+async def cleanup_expired_profile_validation_handoffs(
+    session: AsyncSession,
+) -> None:
+    statement = delete(ProfileValidationHandoff).where(
+        ProfileValidationHandoff.expires_at <= utc_now()
+    )
+    _ = await session.execute(statement)
+    await session.flush()
 
 
 async def ensure_default_executor_profiles(session: AsyncSession) -> None:
@@ -184,6 +248,7 @@ async def ensure_default_executor_profiles(session: AsyncSession) -> None:
                 is_enabled=True,
                 is_default=True,
                 default_model=None,
+                reasoning_level=None,
                 env={},
                 secret_env={},
                 version=1,
@@ -203,6 +268,7 @@ async def create_executor_profile(
     is_enabled: bool = True,
     is_default: bool = False,
     default_model: str | None = None,
+    reasoning_level: str | None = None,
     env: dict[str, str] | None = None,
     secret_env: dict[str, str] | None = None,
 ) -> ExecutorProfile:
@@ -216,6 +282,7 @@ async def create_executor_profile(
         is_enabled=is_enabled,
         is_default=is_default,
         default_model=default_model,
+        reasoning_level=reasoning_level,
         env=dict(env or {}),
         secret_env=dict(secret_env or {}),
         version=1,
@@ -277,6 +344,8 @@ async def update_executor_profile(
     is_default: bool | None = None,
     default_model: str | None = None,
     set_default_model: bool = False,
+    reasoning_level: str | None = None,
+    set_reasoning_level: bool = False,
     env: dict[str, str] | None = None,
     set_env: bool = False,
     secret_env: dict[str, str | None] | None = None,
@@ -296,6 +365,8 @@ async def update_executor_profile(
         profile.is_default = is_default
     if set_default_model or default_model is not None:
         profile.default_model = default_model
+    if set_reasoning_level or reasoning_level is not None:
+        profile.reasoning_level = reasoning_level
     if set_env or env is not None:
         profile.env = dict(env or {})
     if secret_env is not None:
@@ -1667,6 +1738,7 @@ async def materialize_run(
         raise InvalidStateTransitionError("only recurring schedules materialize runs")
     if occurrence_key is None:
         occurrence_key = occurrence_key_for_datetime(planned_start_at)
+    assert occurrence_key is not None
     planned_start_at_utc = to_utc(planned_start_at)
     existing = await _get_run_for_occurrence(
         session,

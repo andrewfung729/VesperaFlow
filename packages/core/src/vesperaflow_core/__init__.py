@@ -5,6 +5,8 @@ from .contracts import (
     ExecutorOutcome,
     ExecutorPreflightResult,
     MaterializedRun,
+    ProfileValidationInput,
+    ProfileValidationResult,
     TaskRunInput,
 )
 from .enums import (
@@ -46,6 +48,8 @@ __all__ = [
     "ExecutorPreflightStatus",
     "MaterializedRun",
     "OccurrenceEditScope",
+    "ProfileValidationInput",
+    "ProfileValidationResult",
     "OccurrenceOverrideStatus",
     "RunStatus",
     "ScheduleStatus",

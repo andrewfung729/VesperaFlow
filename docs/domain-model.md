@@ -88,7 +88,7 @@ Fields:
 - `task_status` enum, **derived** from schedule and latest run (see §4.4)
 - `template_id` nullable
 - `executor` enum: `claude_code`, `codex`, `opencode`, `pi`, `debug_printer`; resolved from the request executor/profile or optional template default at task creation time
-- `executor_profile_id` nullable reference to the profile that supplies executor model/env defaults for future runs; existing rows may be null
+- `executor_profile_id` nullable reference to the profile that supplies executor model/reasoning/env defaults for future runs; existing rows may be null
 - `version` monotonically increasing integer, used for optimistic concurrency
 - `created_at`
 - `updated_at`
@@ -103,6 +103,33 @@ Notes:
 - Executor profiles are the primary selection surface for new tasks/templates. The denormalized `executor` remains on tasks for compatibility and read-model clarity.
 - There is no install-level executor fallback; new executable tasks need an executor/profile from the request or template.
 - The target working directory is distinct from a run artifact directory. The target is the user project being changed; the run artifact directory is VesperaFlow-owned storage for executor output.
+
+### 3.2.1 Executor Profile
+
+Represents reusable executor defaults for future task runs.
+
+Fields:
+
+- `profile_id`
+- `name`
+- `executor` enum: `claude_code`, `codex`, `opencode`, `pi`, `debug_printer`
+- `is_enabled`
+- `is_default`
+- `default_model` nullable executor-specific string
+- `reasoning_level` nullable executor-specific string; `null` means use the executor default and there is no product-level reasoning enum
+- `env` plain environment values
+- `secret_env` write-only secret environment values
+- `version` monotonically increasing integer, used for optimistic concurrency
+- `created_at`
+- `updated_at`
+- `archived_at` nullable
+
+Notes:
+
+- Blank `reasoning_level` input is normalized to `null`; non-empty values are stored as trimmed free-form text.
+- Creating or updating an enabled profile with an explicit effective `default_model` or `reasoning_level` validates the effective executor/model/reasoning/env configuration before commit.
+- Validation secrets are stored only in a short-lived transient handoff record. Temporal validation Workflow payloads contain the handoff id and non-secret metadata, not secret values.
+- Worker Activities resolve `reasoning_level` from PostgreSQL immediately before execution; it is not copied into task, template, run, or scheduled Workflow payloads.
 
 ### 3.3 Schedule
 
@@ -187,8 +214,10 @@ Notes:
 
 - Run events support developer and user-facing execution timelines.
 - Event details contain short structured metadata only.
-- Full instructions, credentials, and full executor output must not be stored in
-  run events.
+- Executor started/terminal event details always include stable nullable
+  `executor_model` and `executor_reasoning_level` keys.
+- Full instructions, credentials, environment values, secret environment values,
+  and full executor output must not be stored in run events.
 
 ### 3.5 Occurrence Override
 

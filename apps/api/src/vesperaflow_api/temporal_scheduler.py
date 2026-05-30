@@ -1,7 +1,9 @@
 """Temporal Schedule client for one-time task execution."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 from temporalio.client import (
     Client,
@@ -19,6 +21,8 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.service import RPCError, RPCStatusCode
 from vesperaflow_core import (
     ExecutionSnapshot,
+    ProfileValidationInput,
+    ProfileValidationResult,
     ScheduleType,
     TaskRunInput,
     parse_recurrence_rule,
@@ -43,6 +47,32 @@ class TemporalScheduler:
             namespace=self._settings.temporal_namespace,
             data_converter=pydantic_data_converter,
         )
+
+    async def validate_executor_profile(
+        self,
+        payload: ProfileValidationInput,
+        *,
+        timeout_seconds: float = 95.0,
+    ) -> ProfileValidationResult:
+        client = self._require_client()
+        handle = await client.start_workflow(
+            "ExecutorProfileValidationWorkflow",
+            args=[payload],
+            id=f"vesperaflow.profile-validation.{payload.handoff_id}",
+            task_queue=self._settings.task_queue,
+        )
+        try:
+            raw_result = cast(
+                object,
+                await asyncio.wait_for(handle.result(), timeout=timeout_seconds),
+            )
+        except TimeoutError:
+            return ProfileValidationResult(
+                ok=False,
+                code="profile_validation_timeout",
+                message="Executor profile validation timed out.",
+            )
+        return ProfileValidationResult.model_validate(raw_result)
 
     async def create_one_time_schedule(
         self,
