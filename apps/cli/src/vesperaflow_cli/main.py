@@ -22,6 +22,7 @@ from vesperaflow_core.client_contracts import (
     ScheduleCreate,
     ScheduleUpdateRequest,
     TaskCreateRequest,
+    TaskUpdateRequest,
 )
 
 from vesperaflow_cli import __version__
@@ -113,6 +114,15 @@ class _TaskIdArg(BaseModel):
     task_id: str
 
 
+class _TaskUpdateArgs(BaseModel):
+    model_config: ClassVar[ConfigDict] = _IGNORE_EXTRA
+    task_id: str
+    version: int
+    title: str | None = None
+    instruction: str | None = None
+    instruction_file: str | None = None
+
+
 class _TaskRunsArgs(BaseModel):
     model_config: ClassVar[ConfigDict] = _IGNORE_EXTRA
     task_id: str
@@ -124,6 +134,7 @@ class _TaskRunsArgs(BaseModel):
 class _TaskRescheduleArgs(BaseModel):
     model_config: ClassVar[ConfigDict] = _IGNORE_EXTRA
     task_id: str
+    version: int
     at: str
 
 
@@ -286,6 +297,14 @@ def _add_task_commands(parser: argparse.ArgumentParser) -> None:
     detail = commands.add_parser("detail")
     _ = detail.add_argument("task_id")
 
+    update = commands.add_parser("update")
+    _ = update.add_argument("task_id")
+    _ = update.add_argument("--version", type=int, required=True)
+    _ = update.add_argument("--title")
+    update_instruction = update.add_mutually_exclusive_group()
+    _ = update_instruction.add_argument("--instruction")
+    _ = update_instruction.add_argument("--instruction-file")
+
     run_now = commands.add_parser("run-now")
     _ = run_now.add_argument("task_id")
 
@@ -297,6 +316,7 @@ def _add_task_commands(parser: argparse.ArgumentParser) -> None:
 
     reschedule = commands.add_parser("reschedule")
     _ = reschedule.add_argument("task_id")
+    _ = reschedule.add_argument("--version", type=int, required=True)
     _ = reschedule.add_argument("--at", required=True)
 
 
@@ -427,6 +447,39 @@ def _handle_task_detail(args: argparse.Namespace, context: CliContext) -> Comman
     )
 
 
+def _handle_task_update(args: argparse.Namespace, context: CliContext) -> CommandResult:
+    parsed = _TaskUpdateArgs.model_validate(vars(args))
+    if (
+        parsed.title is None
+        and parsed.instruction is None
+        and parsed.instruction_file is None
+    ):
+        raise CliUsageError(
+            "provide --title, --instruction, or --instruction-file to update a task"
+        )
+
+    body: dict[str, object] = {"version": parsed.version}
+    if parsed.title is not None:
+        body["title"] = parsed.title
+    if parsed.instruction is not None or parsed.instruction_file is not None:
+        body["instruction_source"] = _read_instruction(
+            parsed.instruction,
+            parsed.instruction_file,
+            context.stdin,
+        )
+    try:
+        request = TaskUpdateRequest.model_validate(body)
+    except ValueError as exc:
+        raise CliUsageError(str(exc)) from exc
+    return _request(
+        context,
+        "PATCH",
+        f"tasks/{parsed.task_id}",
+        json_body=request.model_dump(mode="json", exclude_none=True),
+        formatter=_format_task,
+    )
+
+
 def _handle_task_run_now(
     args: argparse.Namespace,
     context: CliContext,
@@ -463,7 +516,9 @@ def _handle_task_reschedule(
 ) -> CommandResult:
     parsed = _TaskRescheduleArgs.model_validate(vars(args))
     _require_timezone(parsed.at)
-    request = ScheduleUpdateRequest.model_validate({"planned_at": parsed.at})
+    request = ScheduleUpdateRequest.model_validate(
+        {"version": parsed.version, "planned_at": parsed.at}
+    )
     payload = request.model_dump(mode="json", exclude_none=True)
     return _request(
         context,
@@ -602,6 +657,7 @@ _DISPATCH: Mapping[tuple[str, str], _Handler] = {
     ("task", "create"): _handle_task_create,
     ("task", "list"): _handle_task_list,
     ("task", "detail"): _handle_task_detail,
+    ("task", "update"): _handle_task_update,
     ("task", "run-now"): _handle_task_run_now,
     ("task", "runs"): _handle_task_runs,
     ("task", "reschedule"): _handle_task_reschedule,
@@ -850,6 +906,10 @@ def _format_task_list(body: JsonObject) -> str:
 
 def _format_task_detail(body: JsonObject) -> str:
     return _format_task_bundle(body)
+
+
+def _format_task(body: JsonObject) -> str:
+    return _format_object("task", _data_dict(body))
 
 
 def _format_run(body: JsonObject) -> str:

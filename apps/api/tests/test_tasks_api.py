@@ -28,6 +28,7 @@ from vesperaflow_store.models import Schedule as ProductSchedule
 class FakeScheduler:
     def __init__(self) -> None:
         self.created: list[str] = []
+        self.updated: list[str] = []
         self.deleted: list[str] = []
         self.paused: list[str] = []
         self.resumed: list[str] = []
@@ -59,10 +60,8 @@ class FakeScheduler:
         self, *, task: Task, schedule: ProductSchedule, run: Run | None
     ) -> str:
         _ = task, run
-        self.deleted.append(schedule.schedule_id)
-        return await self.create_one_time_schedule(
-            task=task, schedule=schedule, run=run
-        )
+        self.updated.append(schedule.schedule_id)
+        return f"vesperaflow.schedule.{schedule.schedule_id}"
 
     async def create_recurring_schedule(
         self, *, task: Task, schedule: ProductSchedule, run: Run | None = None
@@ -75,8 +74,7 @@ class FakeScheduler:
         self, *, task: Task, schedule: ProductSchedule
     ) -> str:
         _ = task
-        self.deleted.append(schedule.schedule_id)
-        self.created.append(schedule.schedule_id)
+        self.updated.append(schedule.schedule_id)
         return f"vesperaflow.schedule.{schedule.schedule_id}"
 
     async def pause_schedule(self, schedule_id: str) -> None:
@@ -181,6 +179,56 @@ async def test_create_task_success(api_context: ApiTestContext) -> None:
     async with api_context.session_factory() as session:
         stored_run = await repo.get_run(session, run["run_id"])
     assert stored_run.instruction_source_snapshot == "Find relevant updates."
+
+
+@pytest.mark.asyncio
+async def test_update_task_instruction_updates_planned_run_snapshot(
+    api_context: ApiTestContext,
+) -> None:
+    client = api_context.client
+    created = await client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    body: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = body["task"]
+    run: dict[str, Any] = body["run"]
+
+    updated = await client.patch(
+        f"/api/v1/tasks/{task['task_id']}",
+        json={
+            "version": task["version"],
+            "instruction_source": "Find better updates.",
+        },
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["data"]["instruction_source"] == "Find better updates."
+    async with api_context.session_factory() as session:
+        stored_run = await repo.get_run(session, run["run_id"])
+    assert stored_run.run_status is RunStatus.PLANNED
+    assert stored_run.instruction_source_snapshot == "Find better updates."
+
+
+@pytest.mark.asyncio
+async def test_reschedule_updates_temporal_schedule_in_place(
+    api_context: ApiTestContext,
+) -> None:
+    created = await api_context.client.post("/api/v1/tasks", json=_create_payload())
+    assert created.status_code == 201
+    data: dict[str, Any] = created.json()["data"]
+    task: dict[str, Any] = data["task"]
+    schedule: dict[str, Any] = data["schedule"]
+
+    updated = await api_context.client.patch(
+        f"/api/v1/tasks/{task['task_id']}/schedule",
+        json={
+            "version": schedule["version"],
+            "planned_at": (datetime.now(UTC) + timedelta(hours=2)).isoformat(),
+        },
+    )
+
+    assert updated.status_code == 200
+    assert api_context.scheduler.updated == [schedule["schedule_id"]]
+    assert api_context.scheduler.deleted == []
 
 
 @pytest.mark.asyncio

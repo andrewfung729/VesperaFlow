@@ -13,7 +13,11 @@ from typing import cast, override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
 
-from .base import ExecutorAdapter, ExecutorRuntimeConfig
+from .base import (
+    ExecutorAdapter,
+    ExecutorRuntimeConfig,
+    build_subprocess_environment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,39 +72,34 @@ class CodexExecutor(ExecutorAdapter):
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=_subprocess_env(runtime_config),
+                env=build_subprocess_environment(runtime_config),
                 limit=_SUBPROCESS_STREAM_LIMIT,
                 start_new_session=True,
             )
 
-            stdin_task = asyncio.create_task(
-                _write_stdin(proc, snapshot.instruction_source)
-            )
-            stdout_task = asyncio.create_task(_read_stdout(proc, stdout_lines))
-            stderr_task = asyncio.create_task(_read_stderr(proc, stderr_lines))
-
-            await stdin_task
-            await stdout_task
-            await stderr_task
-
-            if proc.returncode is None:
-                try:
-                    _ = await asyncio.wait_for(
-                        proc.wait(), timeout=_DEFAULT_SUBPROCESS_TIMEOUT
-                    )
-                except TimeoutError:
-                    _kill_proc(proc)
-                    _ = _write_codex_artifacts(
-                        events_path=events_path,
-                        stderr_path=stderr_path,
-                        last_message_path=last_message_path,
+            try:
+                await asyncio.wait_for(
+                    _run_subprocess(
+                        proc,
+                        instruction=snapshot.instruction_source,
                         stdout_lines=stdout_lines,
                         stderr_lines=stderr_lines,
-                    )
-                    return _failed_outcome(
-                        terminal_code="executor_error",
-                        failure_reason="Codex CLI process did not exit within timeout",
-                    )
+                    ),
+                    timeout=_DEFAULT_SUBPROCESS_TIMEOUT,
+                )
+            except TimeoutError:
+                _kill_proc(proc)
+                _ = _write_codex_artifacts(
+                    events_path=events_path,
+                    stderr_path=stderr_path,
+                    last_message_path=last_message_path,
+                    stdout_lines=stdout_lines,
+                    stderr_lines=stderr_lines,
+                )
+                return _failed_outcome(
+                    terminal_code="executor_error",
+                    failure_reason="Codex CLI process did not exit within timeout",
+                )
 
             artifact_ref = _write_codex_artifacts(
                 events_path=events_path,
@@ -203,22 +202,38 @@ class CodexExecutor(ExecutorAdapter):
         return tuple(args)
 
 
-def _subprocess_env(
-    runtime_config: ExecutorRuntimeConfig | None,
-) -> dict[str, str] | None:
-    if runtime_config is None or not runtime_config.env:
-        return None
-    env = dict(os.environ)
-    env.update(runtime_config.env)
-    return env
-
-
 async def _write_stdin(proc: asyncio.subprocess.Process, instruction: str) -> None:
     if proc.stdin is None:
         return
     proc.stdin.write(instruction.encode("utf-8") + b"\n")
     await proc.stdin.drain()
     proc.stdin.close()
+
+
+async def _run_subprocess(
+    proc: asyncio.subprocess.Process,
+    *,
+    instruction: str,
+    stdout_lines: list[str],
+    stderr_lines: list[str],
+) -> None:
+    tasks = [
+        asyncio.create_task(_write_stdin(proc, instruction)),
+        asyncio.create_task(_read_stdout(proc, stdout_lines)),
+        asyncio.create_task(_read_stderr(proc, stderr_lines)),
+        asyncio.create_task(_wait_for_process(proc)),
+    ]
+    try:
+        _ = await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            if not task.done():
+                _ = task.cancel()
+        _ = await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _wait_for_process(proc: asyncio.subprocess.Process) -> None:
+    _ = await proc.wait()
 
 
 async def _read_stdout(

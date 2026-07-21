@@ -69,15 +69,20 @@ Input:
 - `schedule_id`
 - `planned_start_at`
 - `occurrence_key`, when started by a recurring Temporal Schedule before a product Run exists
-- immutable execution snapshot derived from the Task and Schedule at run creation time
+- an initial execution snapshot; for an existing one-time run, the persistence
+  Activity atomically claims the run and returns the authoritative snapshot so a
+  task instruction edit made while the run was still planned reaches execution
 
 Behavior:
 
 1. materialize or load the product Run through a persistence Activity
-2. mark the run as `running` through a persistence Activity
-3. execute the agent through an executor Activity using the configured executor SDK
-4. persist successful result summary through a persistence Activity
-5. persist failed or canceled outcome through a persistence Activity
+2. call the versioned claim Activity before waiting and again after each timer;
+   it atomically queues a due run and returns the latest authoritative planned
+   time and execution snapshot
+3. mark the claimed run as `running` through a persistence Activity
+4. execute the agent through an executor Activity using the configured executor SDK
+5. persist successful result summary through a persistence Activity
+6. persist failed or canceled outcome through a persistence Activity
 
 Rules:
 
@@ -85,6 +90,11 @@ Rules:
 - The Workflow must not read PostgreSQL directly.
 - The Workflow must not invoke the executor directly by importing an SDK; all executor invocation runs inside an Executor Activity.
 - The Workflow must receive the execution snapshot it needs at start time or through deterministic Activity results.
+- For an existing one-time run, PostgreSQL is authoritative at the execution
+  boundary; the Temporal Schedule action payload is not used after the claim
+  Activity returns a snapshot.
+- The authoritative claim path is guarded by a Workflow patch marker so
+  histories created before the additional Activity command continue to replay.
 
 ### 3.2 Deferred One-Time Work
 
@@ -210,7 +220,8 @@ Supported executor:
 - `codex` via Codex CLI `codex exec --json`
 - `opencode` via OpenCode CLI `opencode run --format json`
 - `pi` via Pi CLI `pi --mode json --session-dir <run_artifact_dir>/pi-sessions`
-- `debug_printer` as a local runtime simulator that logs the execution snapshot and returns a completed outcome
+- `debug_printer` as a local runtime simulator that logs correlation metadata
+  without the instruction body and returns a completed outcome
 
 Candidate Activities:
 
@@ -219,8 +230,13 @@ Candidate Activities:
 
 General rules:
 
-- The default idempotency key for an executor invocation is `run_id`; it is used to name the run's working directory and any on-disk artifacts, so a retried Activity attempt resumes or overwrites the same working directory deterministically.
-- Each attempt of `execute_agent_run` must reuse or recreate the same `run_id`-scoped working directory; attempts must not be directed to ephemeral temp paths that disappear between retries.
+- The executor invocation uses `run_id` to name its working directory and
+  artifacts, but that does not make arbitrary target-workspace side effects
+  idempotent.
+- `execute_agent_run` therefore has `maximum_attempts = 1` for MVP. Temporal
+  must not automatically invoke a coding agent again after an ambiguous Worker
+  loss; a future resume protocol must provide explicit side-effect fencing
+  before retries are enabled.
 - Activity timeouts must be large enough to accommodate long-running coding-agent sessions; use `heartbeat_timeout` with regular heartbeats while the executor is active.
 - After Activity cancellation propagates to the executor, the Activity must not retry.
 - Terminal outcomes are normalized: successful executor completion maps to `completed`; SDK exceptions or non-zero CLI exits map to `failed` with a `failure_reason` category derived from the SDK error type or CLI diagnostics; cancellations map to `canceled`.
@@ -238,7 +254,10 @@ Executor integration rules:
 Secrets handling rules for Executor Activities:
 
 - VesperaFlow stores executor profile secret env values in PostgreSQL for the local-first v1, but API/UI responses expose only secret keys. Secret values must not be written to structured logs, run events, or Temporal Workflow history.
-- the Worker may pass explicit executor profile environment settings, such as Claude SDK env values, into the executor process environment; it must not pass the full Worker environment
+- the Worker may pass explicit executor profile environment settings into the
+  executor process environment; CLI adapters inherit only an allowlist of OS
+  launch/configuration fields such as `PATH`, `HOME`, locale, temp, shell, and
+  XDG paths, never the full Worker environment
 - the Worker may also pass non-secret Claude Code runtime flags for disabling telemetry, error reporting, feedback prompts, autoupdates, nonessential traffic, and flicker, and for enabling local executor capabilities such as the LSP tool
 - Codex authentication and provider configuration are handled by the `codex` CLI itself, such as through ChatGPT login, API-key setup, or CLI-supported configuration; the Worker may pass the executor profile `default_model` as the `codex exec --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
 - OpenCode authentication and provider configuration are handled by the `opencode` CLI itself, such as through `opencode auth`, provider environment variables, or CLI-supported project configuration; the Worker may pass the executor profile `default_model` as the `opencode run --model` value, and the API preflight checks binary and workspace availability but does not perform live auth checks
@@ -329,7 +348,8 @@ Recommended defaults:
 
 - `schedule_to_close_timeout`: end-to-end cap for a single executor invocation
 - `start_to_close_timeout`: executor-specific bounded attempt duration
-- retry: enabled only when duplicate execution is safe; default executor idempotency is keyed by `run_id` and the run's working directory
+- retry: disabled for MVP (`maximum_attempts = 1`) because coding-agent
+  workspace and external side effects cannot be proven idempotent
 - non-retryable: user input validation errors, unknown executor, missing or unauthenticated executor SDK, unsupported executor version, inaccessible run working directory
 
 Long-running Executor Activities should use heartbeat timeout and call `activity.heartbeat()` while the executor is active to keep cancellation responsive.

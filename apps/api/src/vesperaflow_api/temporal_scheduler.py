@@ -98,10 +98,18 @@ class TemporalScheduler:
         schedule: ProductSchedule,
         run: Run | None,
     ) -> str:
-        await self.delete_schedule(schedule.schedule_id)
-        return await self.create_one_time_schedule(
-            task=task, schedule=schedule, run=run
-        )
+        if run is None:
+            raise ValueError("one-time Temporal schedule requires run")
+        client = self._require_client()
+        schedule_ref = temporal_schedule_id(schedule.schedule_id)
+        handle = client.get_schedule_handle(schedule_ref)
+        new_schedule = self._build_schedule(task=task, schedule=schedule, run=run)
+
+        async def updater(_: object) -> ScheduleUpdate:
+            return ScheduleUpdate(schedule=new_schedule)
+
+        await handle.update(updater)
+        return schedule_ref
 
     async def create_recurring_schedule(
         self,
@@ -433,8 +441,6 @@ def _recurrence_rule_to_cron_expression(recurrence_rule: str) -> str:
         )
     minutes = _cron_field(spec.minutes)
     hours = _cron_field(spec.hours)
-    if spec.freq == "MINUTELY":
-        return "* * * * *"
     if spec.freq == "HOURLY":
         return f"{minutes} * * * *"
     if spec.freq == "DAILY":

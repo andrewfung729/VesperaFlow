@@ -4,6 +4,7 @@ from datetime import timedelta
 from typing import cast
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 from vesperaflow_core.contracts import ExecutorOutcome, MaterializedRun, TaskRunInput
 from vesperaflow_core.enums import RunStatus, ScheduleType
 from vesperaflow_core.temporal_ids import occurrence_key_for_datetime
@@ -58,6 +59,7 @@ class TaskRunWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                 ),
             )
+        use_authoritative_claim = workflow.patched("authoritative-run-claim-v1")
         if isinstance(materialized, str):
             if payload.run_id is None:
                 raise ValueError("materialize_run returned no run_id")
@@ -84,27 +86,65 @@ class TaskRunWorkflow:
                 extra=_workflow_log_context(execution_payload, run_id=run_id),
             )
             return
-        workflow_now = workflow.now()
-        if execution_payload.planned_start_at > workflow_now:
-            workflow.logger.info(
-                "workflow.task_run.sleep_scheduled",
-                extra=_workflow_log_context(execution_payload, run_id=run_id),
-            )
-            await workflow.sleep(execution_payload.planned_start_at - workflow_now)
-            workflow.logger.info(
-                "workflow.task_run.sleep_completed",
-                extra=_workflow_log_context(execution_payload, run_id=run_id),
-            )
+        if use_authoritative_claim:
+            while True:
+                claim_at = workflow.now()
+                claimed = cast(
+                    MaterializedRun,
+                    await workflow.execute_activity(
+                        "claim_run_for_execution",
+                        args=[run_id, workflow.info().workflow_id, claim_at],
+                        start_to_close_timeout=timedelta(seconds=30),
+                    ),
+                )
+                if isinstance(claimed, dict):
+                    claimed = MaterializedRun.model_validate(claimed)
+                execution_payload = _with_materialized_run(execution_payload, claimed)
+                if claimed.run_status is RunStatus.CANCELED:
+                    workflow.logger.info(
+                        "workflow.task_run.pre_execution_canceled",
+                        extra=_workflow_log_context(execution_payload, run_id=run_id),
+                    )
+                    return
+                if claimed.run_status is RunStatus.QUEUED:
+                    break
+                if claimed.run_status is not RunStatus.PLANNED:
+                    raise ValueError(
+                        f"run cannot be claimed from status {claimed.run_status.value}"
+                    )
+                if execution_payload.planned_start_at <= claim_at:
+                    raise ValueError("due run remained planned after execution claim")
+                workflow.logger.info(
+                    "workflow.task_run.sleep_scheduled",
+                    extra=_workflow_log_context(execution_payload, run_id=run_id),
+                )
+                await workflow.sleep(execution_payload.planned_start_at - claim_at)
+                workflow.logger.info(
+                    "workflow.task_run.sleep_completed",
+                    extra=_workflow_log_context(execution_payload, run_id=run_id),
+                )
+        else:
+            workflow_now = workflow.now()
+            if execution_payload.planned_start_at > workflow_now:
+                workflow.logger.info(
+                    "workflow.task_run.sleep_scheduled",
+                    extra=_workflow_log_context(execution_payload, run_id=run_id),
+                )
+                await workflow.sleep(execution_payload.planned_start_at - workflow_now)
+                workflow.logger.info(
+                    "workflow.task_run.sleep_completed",
+                    extra=_workflow_log_context(execution_payload, run_id=run_id),
+                )
 
-        workflow.logger.info(
-            "workflow.task_run.queueing_run",
-            extra=_workflow_log_context(execution_payload, run_id=run_id),
-        )
-        await workflow.execute_activity(
-            "mark_run_queued",
-            args=[run_id, workflow.info().workflow_id],
-            start_to_close_timeout=timedelta(seconds=30),
-        )
+            workflow.logger.info(
+                "workflow.task_run.queueing_run",
+                extra=_workflow_log_context(execution_payload, run_id=run_id),
+            )
+            await workflow.execute_activity(
+                "mark_run_queued",
+                args=[run_id, workflow.info().workflow_id],
+                start_to_close_timeout=timedelta(seconds=30),
+            )
         workflow.logger.info(
             "workflow.task_run.marking_running",
             extra=_workflow_log_context(execution_payload, run_id=run_id),
@@ -126,6 +166,11 @@ class TaskRunWorkflow:
                 execution_payload,
                 schedule_to_close_timeout=timedelta(hours=6),
                 heartbeat_timeout=timedelta(minutes=30),
+                retry_policy=(
+                    RetryPolicy(maximum_attempts=1)
+                    if use_authoritative_claim
+                    else None
+                ),
             ),
         )
         if isinstance(outcome, dict):
@@ -181,6 +226,19 @@ class TaskRunWorkflow:
             "workflow.task_run.completed",
             extra=_workflow_log_context(execution_payload, run_id=run_id),
         )
+
+
+def _with_materialized_run(
+    payload: TaskRunInput,
+    materialized: MaterializedRun,
+) -> TaskRunInput:
+    return payload.model_copy(
+        update={
+            "run_id": materialized.run_id,
+            "planned_start_at": materialized.execution_snapshot.planned_start_at,
+            "execution_snapshot": materialized.execution_snapshot,
+        }
+    )
 
 
 def _workflow_log_context(

@@ -13,7 +13,11 @@ from typing import cast, override
 
 from vesperaflow_core import ExecutionSnapshot, ExecutorOutcome, RunStatus
 
-from .base import ExecutorAdapter, ExecutorRuntimeConfig
+from .base import (
+    ExecutorAdapter,
+    ExecutorRuntimeConfig,
+    build_subprocess_environment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +83,7 @@ class PiExecutor(ExecutorAdapter):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(workspace),
-                env=_subprocess_env(runtime_config),
+                env=build_subprocess_environment(runtime_config),
                 limit=_SUBPROCESS_STREAM_LIMIT,
                 start_new_session=True,
             )
@@ -217,16 +221,6 @@ class PiExecutor(ExecutorAdapter):
         if reasoning_level:
             args.extend(["--thinking", reasoning_level])
         return tuple(args)
-
-
-def _subprocess_env(
-    runtime_config: ExecutorRuntimeConfig | None,
-) -> dict[str, str] | None:
-    if runtime_config is None or not runtime_config.env:
-        return None
-    env = dict(os.environ)
-    env.update(runtime_config.env)
-    return env
 
 
 def _capture_raw_events_enabled(

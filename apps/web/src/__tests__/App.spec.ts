@@ -918,8 +918,9 @@ function stubFetch(options: StubFetchOptions = {}) {
       latest_run_id: 'run-recurring-1',
       latest_run_outcome: 'failed',
       latest_run_finished_at: '2026-04-25T11:00:00+08:00',
-      result_summary: null,
-      failure_reason: 'Executor failed',
+      outcome_preview: 'Executor failed',
+      outcome_truncated: false,
+      outcome_source: 'failure_reason',
     },
     {
       item_id: 'todo_task-recurring-2',
@@ -934,8 +935,9 @@ function stubFetch(options: StubFetchOptions = {}) {
       latest_run_id: null,
       latest_run_outcome: null,
       latest_run_finished_at: null,
-      result_summary: null,
-      failure_reason: null,
+      outcome_preview: null,
+      outcome_truncated: false,
+      outcome_source: null,
     },
   ]
   const calendarItems = options.calendarItems ?? [

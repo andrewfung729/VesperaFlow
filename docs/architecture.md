@@ -786,7 +786,10 @@ MVP security posture:
 
 - authentication and authorization are intentionally out of scope for the single-local-user MVP, but the domain model must preserve a clean extension point for a future `user_id` association
 - VesperaFlow may store executor profile env overrides, including write-only secret env values in the local PostgreSQL database for v1. These values are resolved only inside Worker Activities and must not be logged or serialized into Workflow history.
-- Worker Activities may pass explicit executor profile environment values into the executor invocation, but these values must not be logged, serialized into Temporal payloads, or expanded to the full Worker process environment
+- Worker Activities may pass explicit executor profile environment values into
+  the executor invocation, but these values must not be logged or serialized
+  into Temporal payloads. CLI subprocesses inherit only an allowlist of OS
+  launch/configuration fields and never the full Worker process environment.
 - task `instruction_source` and executor output may contain sensitive content; they must not be serialized into Temporal Workflow input payloads beyond what is strictly required, and structured logs must not emit full instruction or output bodies at default log levels
 - PostgreSQL is assumed to be on trusted local storage for MVP; at-rest encryption is a deployment concern tracked in `docs/adr/004-security-posture.md`
 
@@ -824,11 +827,23 @@ These items were previously open and are now architectural decisions for MVP:
 - Recurring future occurrences are generated on demand for bounded calendar windows. PostgreSQL persists the parent `Schedule`, completed or in-flight `Run`s, and explicit `OccurrenceOverride`s; it does not eagerly materialize all future recurring occurrences.
 - A one-off exception to a recurring occurrence is modeled as `OccurrenceOverride` keyed by `schedule_id` and the original occurrence time. The parent recurring `Schedule` remains unchanged.
 - Run detail preserves normalized executor metadata only: executor name, SDK adapter version, terminal status, terminal code or SDK error category, short result summary, artifact references, timestamps, and run working-directory reference. Raw SDK event streams and bulky outputs stay in the run working directory unless a later feature explicitly promotes them.
-- Task creation stores both `instruction_source` and `normalized_instruction` as first-class fields. A `Run` stores an immutable execution snapshot so later task edits do not rewrite historical execution intent.
+- Task creation stores both `instruction_source` and `normalized_instruction`
+  as first-class fields. A `Run` stores an immutable execution snapshot so
+  later task edits do not rewrite historical execution intent. The one
+  exception is a not-yet-started one-time planned run: editing the task
+  instruction refreshes that planned run's snapshot before execution. At the
+  execution boundary, a versioned persistence Activity locks the Task and Run,
+  atomically claims a due Run as queued, and returns the authoritative
+  PostgreSQL planned time and snapshot to the Workflow. A reschedule discovered
+  during the claim causes another durable timer and claim; later edits cannot
+  rewrite a queued snapshot.
 - MVP resolves the executor from the task/template executor profile or explicit request executor and stores the resolved value on `Task.executor`. There is no install-level executor fallback. Supported MVP values are `claude_code`, `codex`, `opencode`, `pi`, and `debug_printer`.
 - The API preflight checks target working-directory access. Codex Worker execution uses `codex exec` in full-permission bypass mode, OpenCode Worker execution uses `opencode run --format json`, and Pi Worker execution uses `pi --mode json --session-dir <run_artifact_dir>/pi-sessions`; these CLI adapters may pass the executor profile `default_model` through as `--model` when supported. CLI authentication and provider configuration remain owned by the CLIs. Claude Agent SDK import is a normal Worker dependency, while authentication/configuration/model failures are mapped during task execution to actionable product errors such as `executor_not_authenticated`, `executor_misconfigured`, and `executor_workspace_unavailable`.
 - Archived tasks remain queryable through the normal task detail endpoint by id. Default active lists exclude them unless `include_archived` is requested.
 - The 15-minute recurrence frequency bound is fixed for MVP and is not configurable per deployment.
+- Side-effecting executor Activities use one attempt in MVP. Reusing a run
+  artifact directory is not treated as sufficient idempotency for arbitrary
+  edits or external actions in the target workspace.
 - The Claude Agent SDK compatibility policy is dependency-lock driven: the Worker pins the validated SDK version and imports it normally instead of reimplementing package-version or optional-import policy at runtime.
 
 ## 16. Recommended Next Documents

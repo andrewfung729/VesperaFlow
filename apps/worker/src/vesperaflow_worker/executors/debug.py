@@ -18,7 +18,15 @@ class DebugPrinterExecutor(ExecutorAdapter):
         runtime_config: ExecutorRuntimeConfig | None = None,
     ) -> ExecutorOutcome:
         _ = runtime_config
-        logger.info("debug_printer_snapshot %s", snapshot.model_dump_json())
+        logger.info(
+            "debug_printer_execution",
+            extra={
+                "run_id": snapshot.run_id,
+                "task_id": snapshot.task_id,
+                "schedule_id": snapshot.schedule_id,
+                "executor": snapshot.executor.value,
+            },
+        )
         return ExecutorOutcome(
             terminal_status=RunStatus.COMPLETED,
             result_summary=(

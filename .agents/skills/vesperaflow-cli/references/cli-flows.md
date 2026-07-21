@@ -12,9 +12,10 @@ acceptable fallback when the global tool is not installed.
 - `vespera --json task create --title <title> --instruction-file <path-or-> --cwd <path> --executor-profile <profile_id> --rrule <rrule> --timezone <zone>`
 - `vespera --json task list [--status <status>] [--execution-mode <mode>]`
 - `vespera --json task detail <task_id>`
+- `vespera --json task update <task_id> --version <version> [--title <title>] [--instruction <text> | --instruction-file <path-or->]`
 - `vespera --json task run-now <task_id>`
 - `vespera --json task runs <task_id> [--status <status>]`
-- `vespera --json task reschedule <task_id> --at <timestamp>`
+- `vespera --json task reschedule <task_id> --version <version> --at <timestamp>`
 - `vespera --json run get <run_id>`
 - `vespera --json run events <run_id>`
 
@@ -122,12 +123,14 @@ vespera --json task runs task_123
 Use for pending one-time tasks only. Recurring schedules are not supported.
 
 ```bash
-vespera --json task reschedule task_123 --at "2026-06-01T10:00:00+08:00"
+vespera --json task reschedule task_123 --version 3 --at "2026-06-01T10:00:00+08:00"
 ```
 
 Rules:
 
 - Only one-time tasks with a future planned run can be rescheduled.
+- Read the current schedule version from `task detail` and pass it with
+  `--version`; on `409 conflict`, reload detail before retrying.
 - Use explicit timezone offset in the timestamp.
 - `--rrule` and `--timezone` are not accepted.
 

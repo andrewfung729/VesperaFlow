@@ -1,5 +1,7 @@
 """Shared executor adapter contracts."""
 
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +12,23 @@ from vesperaflow_core import (
     ProfileValidationResult,
     RunStatus,
     utc_now,
+)
+
+_INHERITED_ENV_KEYS = frozenset(
+    {
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LOGNAME",
+        "PATH",
+        "SHELL",
+        "TERM",
+        "TMPDIR",
+        "USER",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+    }
 )
 
 
@@ -24,6 +43,20 @@ class ExecutorRuntimeConfig:
     default_model: str | None = None
     reasoning_level: str | None = None
     env: dict[str, str] | None = None
+
+
+def build_subprocess_environment(
+    runtime_config: ExecutorRuntimeConfig | None,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    source = os.environ if environ is None else environ
+    subprocess_env = {
+        key: value for key, value in source.items() if key in _INHERITED_ENV_KEYS
+    }
+    if runtime_config is not None and runtime_config.env is not None:
+        subprocess_env.update(runtime_config.env)
+    return subprocess_env
 
 
 class ExecutorAdapter:

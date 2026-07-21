@@ -20,9 +20,15 @@ from vesperaflow_worker.executors import (
     codex_cli as codex_cli_module,
 )
 from vesperaflow_worker.executors import (
+    opencode_cli as opencode_cli_module,
+)
+from vesperaflow_worker.executors import (
     pi as pi_module,
 )
-from vesperaflow_worker.executors.base import ExecutorRuntimeConfig
+from vesperaflow_worker.executors.base import (
+    ExecutorRuntimeConfig,
+    build_subprocess_environment,
+)
 from vesperaflow_worker.executors.claude_code import (
     DEFAULT_CLAUDE_ENV,
     ClaudeCodeExecutor,
@@ -71,6 +77,25 @@ def test_worker_package_and_workflows_do_not_import_claude_sdk() -> None:
     )
 
     assert loaded == {"root_loaded": False, "workflow_loaded": False}
+
+
+def test_subprocess_environment_does_not_inherit_worker_secrets() -> None:
+    env = build_subprocess_environment(
+        ExecutorRuntimeConfig(env={"OPENAI_API_KEY": "profile-key"}),
+        environ={
+            "HOME": "/Users/test",
+            "PATH": "/usr/bin",
+            "VESPERAFLOW_DATABASE_URL": "postgresql://secret",
+            "UNRELATED_SECRET": "hidden",
+            "OPENAI_API_KEY": "ambient-key",
+        },
+    )
+
+    assert env == {
+        "HOME": "/Users/test",
+        "PATH": "/usr/bin",
+        "OPENAI_API_KEY": "profile-key",
+    }
 
 
 def _fake_codex_binary(_cmd: str) -> str:
@@ -199,7 +224,7 @@ def test_worker_package_and_workflows_do_not_import_pi_module() -> None:
 
 
 @pytest.mark.asyncio
-async def test_debug_printer_executor_logs_snapshot(
+async def test_debug_printer_executor_logs_metadata_without_instruction(
     snapshot: ExecutionSnapshot,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -215,7 +240,14 @@ async def test_debug_printer_executor_logs_snapshot(
     assert outcome.result_summary == (
         "Debug printer completed run run_123 for task task_123."
     )
-    assert debug_snapshot.model_dump_json() in caplog.text
+    record = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "debug_printer_execution"
+    )
+    assert getattr(record, "run_id", None) == "run_123"
+    assert getattr(record, "task_id", None) == "task_123"
+    assert debug_snapshot.instruction_source not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -803,6 +835,42 @@ async def test_codex_executor_cancels_on_cancelled_error(
 
 
 @pytest.mark.asyncio
+async def test_codex_executor_timeout_bounds_stream_reads(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[b'{"msg":"agent_message","message":"partial"}\n'],
+        stderr_lines=[b"still running\n"],
+        returncode=None,
+        hang_streams=True,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", _fake_codex_binary)
+    monkeypatch.setattr(codex_cli_module, "_DEFAULT_SUBPROCESS_TIMEOUT", 0.01)
+    monkeypatch.setattr(codex_cli_module, "_kill_proc", lambda _proc: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await asyncio.wait_for(
+        CodexExecutor().execute(
+            snapshot.model_copy(
+                update={
+                    "executor": ExecutorName.CODEX,
+                    "working_directory": str(tmp_path / "run"),
+                    "target_working_directory": str(target_dir),
+                }
+            )
+        ),
+        timeout=0.2,
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.failure_reason == "Codex CLI process did not exit within timeout"
+
+
+@pytest.mark.asyncio
 async def test_executor_router_dispatches_pi(
     snapshot: ExecutionSnapshot,
     monkeypatch: pytest.MonkeyPatch,
@@ -1062,6 +1130,42 @@ async def test_opencode_executor_cancels_on_cancelled_error(
 
     assert outcome.terminal_status is RunStatus.CANCELED
     assert outcome.terminal_code == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_opencode_executor_timeout_bounds_stream_reads(
+    snapshot: ExecutionSnapshot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc = _fake_subprocess(
+        stdout_lines=[b'{"type":"text","part":{"text":"partial"}}\n'],
+        stderr_lines=[b"still running\n"],
+        returncode=None,
+        hang_streams=True,
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", proc.factory)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/bin/opencode")
+    monkeypatch.setattr(opencode_cli_module, "_DEFAULT_SUBPROCESS_TIMEOUT", 0.01)
+    monkeypatch.setattr(opencode_cli_module, "_kill_proc", lambda _proc: None)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+
+    outcome = await asyncio.wait_for(
+        OpenCodeExecutor().execute(
+            snapshot.model_copy(
+                update={
+                    "executor": ExecutorName.OPENCODE,
+                    "working_directory": str(tmp_path / "run"),
+                    "target_working_directory": str(target_dir),
+                }
+            )
+        ),
+        timeout=0.2,
+    )
+
+    assert outcome.terminal_status is RunStatus.FAILED
+    assert outcome.failure_reason == "OpenCode CLI process did not exit within timeout"
 
 
 @pytest.mark.asyncio
@@ -1728,6 +1832,21 @@ class FakeCancellingStreamReader(FakeStreamReader):
         raise asyncio.CancelledError
 
 
+class FakeHangingStreamReader(FakeStreamReader):
+    @override
+    async def readline(self) -> bytes:
+        line = await super().readline()
+        if line:
+            return line
+        return await asyncio.Future()
+
+    @override
+    async def read(self, n: int = -1) -> bytes:
+        chunk = await super().read(n)
+        if chunk:
+            return chunk
+        return await asyncio.Future()
+
 class FakeSubprocess:
     def __init__(
         self,
@@ -1737,12 +1856,14 @@ class FakeSubprocess:
         returncode: int | None = 0,
         cancel_on_stdout: bool = False,
         wait_never: bool = False,
+        hang_streams: bool = False,
     ) -> None:
         self.stdout_lines = stdout_lines
         self.stderr_lines = stderr_lines or []
         self._returncode = returncode
         self.cancel_on_stdout = cancel_on_stdout
         self.wait_never = wait_never
+        self.hang_streams = hang_streams
         self.calls: list[dict[str, object]] = []
         self.stdin: FakeStreamWriter | None = None
         self.stdout: FakeStreamReader | None = None
@@ -1771,9 +1892,15 @@ class FakeSubprocess:
         self.stdin = FakeStreamWriter()
         if self.cancel_on_stdout:
             self.stdout = FakeCancellingStreamReader(self.stdout_lines)
+        elif self.hang_streams:
+            self.stdout = FakeHangingStreamReader(self.stdout_lines)
         else:
             self.stdout = FakeStreamReader(self.stdout_lines)
-        self.stderr = FakeStreamReader(self.stderr_lines)
+        self.stderr = (
+            FakeHangingStreamReader(self.stderr_lines)
+            if self.hang_streams
+            else FakeStreamReader(self.stderr_lines)
+        )
         returncode = kwargs.get("returncode")
         if isinstance(returncode, int):
             self._returncode = returncode
@@ -1799,6 +1926,7 @@ def _fake_subprocess(
     returncode: int | None = 0,
     cancel_on_stdout: bool = False,
     wait_never: bool = False,
+    hang_streams: bool = False,
 ) -> FakeSubprocess:
     return FakeSubprocess(
         stdout_lines=stdout_lines,
@@ -1806,4 +1934,5 @@ def _fake_subprocess(
         returncode=returncode,
         cancel_on_stdout=cancel_on_stdout,
         wait_never=wait_never,
+        hang_streams=hang_streams,
     )

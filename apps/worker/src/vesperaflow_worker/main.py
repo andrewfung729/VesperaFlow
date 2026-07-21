@@ -88,6 +88,7 @@ async def run_worker() -> None:
         activities=[
             activities.validate_executor_profile,
             activities.materialize_run,
+            activities.claim_run_for_execution,
             activities.mark_run_queued,
             activities.mark_run_running,
             activities.execute_agent_run,

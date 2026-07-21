@@ -184,11 +184,14 @@ Notes:
 - A one-time task typically results in one run.
 - A recurring task may generate many runs over time.
 - Recurring schedule-fired runs are idempotent by `(schedule_id, occurrence_key)`.
-- Runs are append-only historical records except for status updates during execution.
+- Runs are append-only historical records after execution is claimed, except for
+  status and execution-result updates.
 - `instruction_source_snapshot` stores the effective user instruction for the run.
-  One-time runs snapshot the task instruction at run creation, recurring
-  materialization snapshots the occurrence override instruction when present,
-  and recurring run-now snapshots the current task instruction.
+  A planned one-time run tracks task instruction edits until the persistence
+  Activity atomically claims it as `queued` and returns the authoritative
+  snapshot to the Workflow. Recurring materialization snapshots the occurrence
+  override instruction when present, and recurring run-now snapshots the current
+  task instruction.
 
 ### 3.4.1 Run Event
 
@@ -318,7 +321,7 @@ Derivation table for one-time tasks:
 | Latest run `run_status = running` | `running` |
 | Latest run `run_status = completed` | `completed` |
 | Latest run `run_status = failed` | `failed` |
-| Latest run `run_status = canceled` and schedule `canceled` | `canceled` |
+| Latest run `run_status = canceled` | `canceled` |
 | No run yet, schedule `active` or `pending` | `scheduled` |
 | Schedule `canceled` and no terminal run | `canceled` |
 
@@ -691,7 +694,16 @@ Task(scheduled)
 
 ### 12.5 Frequency Bounds
 
-- MVP rejects recurrence rules with an effective frequency more often than once per 15 minutes
+- MVP accepts only `FREQ=HOURLY`, `FREQ=DAILY`, and `FREQ=WEEKLY` with
+  `INTERVAL=1` (or no `INTERVAL`). Daily and weekly rules require `BYHOUR`;
+  weekly rules also require `BYDAY`.
+- Supported fields are `FREQ`, `INTERVAL`, `BYSECOND=0`, `BYMINUTE`, `BYHOUR`,
+  and `BYDAY`, where each field must be meaningful for the selected frequency.
+  Unsupported fields such as `COUNT`, `UNTIL`, and `BYMONTH` are rejected rather
+  than silently ignored.
+- `FREQ=MINUTELY` is rejected, and expanded `BY*` combinations are checked
+  across hour/day/week boundaries so no accepted occurrences are less than 15
+  minutes apart.
 - The bound exists to prevent accidental high-frequency scheduling
 - The bound is fixed for MVP and is not configurable per deployment
 

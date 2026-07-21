@@ -203,6 +203,139 @@ async def test_reschedule_requires_observed_schedule_version(
 
 
 @pytest.mark.asyncio
+async def test_reschedule_refreshes_a_preloaded_schedule_before_version_check(
+    session: AsyncSession,
+) -> None:
+    first_planned_at = datetime.now(UTC) + timedelta(hours=1)
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=first_planned_at,
+        )
+        stale_version = bundle.schedule.version
+
+    bind = session.bind
+    if bind is None:
+        raise AssertionError("test session requires a database bind")
+    async with AsyncSession(bind=bind, expire_on_commit=False) as other_session:
+        async with other_session.begin():
+            _ = await repo.reschedule_one_time_task(
+                other_session,
+                task_id=bundle.task.task_id,
+                version=stale_version,
+                planned_at=first_planned_at + timedelta(hours=1),
+            )
+
+    assert bundle.schedule.version == stale_version
+    async with session.begin():
+        with pytest.raises(ConflictError):
+            await repo.reschedule_one_time_task(
+                session,
+                task_id=bundle.task.task_id,
+                version=stale_version,
+                planned_at=first_planned_at + timedelta(hours=2),
+            )
+
+
+@pytest.mark.asyncio
+async def test_one_time_execution_claim_uses_latest_instruction_and_freezes_snapshot(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        assert bundle.run is not None
+        updated = await repo.update_task(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.task.version,
+            instruction_source="Find better updates",
+        )
+        materialized = await repo.materialize_run(
+            session,
+            payload_task_id=bundle.task.task_id,
+            payload_schedule_id=bundle.schedule.schedule_id,
+            payload_run_id=bundle.run.run_id,
+            planned_start_at=bundle.run.planned_start_at,
+            occurrence_key=None,
+            workflow_id="vesperaflow.run.test",
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        assert materialized.run_status is RunStatus.PLANNED
+        claimed = await repo.claim_run_for_execution(
+            session,
+            run_id=bundle.run.run_id,
+            workflow_id="vesperaflow.run.test",
+            claim_at=bundle.run.planned_start_at,
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        task_version_after_claim = bundle.task.version
+        edited_after_claim = await repo.update_task(
+            session,
+            task_id=bundle.task.task_id,
+            version=updated.version,
+            instruction_source="Too late to change this run",
+        )
+        claimed_run = await repo.get_run(session, bundle.run.run_id)
+
+    assert claimed.run_status is RunStatus.QUEUED
+    assert claimed.execution_snapshot.instruction_source == "Find better updates"
+    assert edited_after_claim.version == task_version_after_claim + 1
+    assert edited_after_claim.instruction_source == "Too late to change this run"
+    assert claimed_run.run_status is RunStatus.QUEUED
+    assert claimed_run.instruction_source_snapshot == "Find better updates"
+
+
+@pytest.mark.asyncio
+async def test_one_time_execution_claim_waits_for_latest_planned_time(
+    session: AsyncSession,
+) -> None:
+    first_planned_at = datetime.now(UTC) + timedelta(hours=1)
+    later_planned_at = first_planned_at + timedelta(hours=1)
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=first_planned_at,
+        )
+        assert bundle.run is not None
+        _ = await repo.reschedule_one_time_task(
+            session,
+            task_id=bundle.task.task_id,
+            version=bundle.schedule.version,
+            planned_at=later_planned_at,
+        )
+        before_due = await repo.claim_run_for_execution(
+            session,
+            run_id=bundle.run.run_id,
+            workflow_id="vesperaflow.run.test",
+            claim_at=first_planned_at,
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+        at_due = await repo.claim_run_for_execution(
+            session,
+            run_id=bundle.run.run_id,
+            workflow_id="vesperaflow.run.test",
+            claim_at=later_planned_at,
+            run_workspace_root="/tmp/vesperaflow-runs",
+        )
+
+    assert before_due.run_status is RunStatus.PLANNED
+    assert before_due.execution_snapshot.planned_start_at == later_planned_at
+    assert at_due.run_status is RunStatus.QUEUED
+
+
+@pytest.mark.asyncio
 async def test_terminal_run_updates_task_and_schedule_state(
     session: AsyncSession,
 ) -> None:
@@ -232,6 +365,37 @@ async def test_terminal_run_updates_task_and_schedule_state(
     assert detail.schedule.schedule_status is ScheduleStatus.COMPLETED
     assert detail.latest_run is not None
     assert detail.latest_run.result_summary == "Done"
+
+
+@pytest.mark.asyncio
+async def test_canceled_one_time_execution_stays_canceled_when_schedule_completes(
+    session: AsyncSession,
+) -> None:
+    async with session.begin():
+        bundle = await repo.create_one_time_task(
+            session,
+            title="Research",
+            instruction_source="Find updates",
+            target_working_directory="/tmp",
+            planned_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        assert bundle.run is not None
+        _ = await repo.mark_run_queued(session, run_id=bundle.run.run_id)
+        _ = await repo.mark_run_running(session, run_id=bundle.run.run_id)
+        _ = await repo.mark_run_canceled(
+            session,
+            run_id=bundle.run.run_id,
+            failure_reason="executor_canceled",
+        )
+        _ = await repo.complete_single_run_schedule(
+            session,
+            schedule_id=bundle.schedule.schedule_id,
+        )
+
+    detail = await repo.get_task_detail(session, bundle.task.task_id)
+    assert detail.task.task_status is TaskStatus.CANCELED
+    assert detail.schedule is not None
+    assert detail.schedule.schedule_status is ScheduleStatus.COMPLETED
 
 
 @pytest.mark.asyncio

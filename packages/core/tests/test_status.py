@@ -38,3 +38,15 @@ def test_one_time_failed_run_is_failed() -> None:
         )
         is TaskStatus.FAILED
     )
+
+
+def test_canceled_one_time_run_stays_canceled_after_schedule_completes() -> None:
+    assert (
+        derive_task_status(
+            execution_mode=ExecutionMode.ONE_TIME,
+            archived_at=None,
+            schedule_status=ScheduleStatus.COMPLETED,
+            latest_run_status=RunStatus.CANCELED,
+        )
+        is TaskStatus.CANCELED
+    )

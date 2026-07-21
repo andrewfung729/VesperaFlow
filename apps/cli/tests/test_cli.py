@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import io
 import json
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 import httpx
 from vesperaflow_cli.main import main
@@ -13,7 +14,7 @@ from vesperaflow_cli.main import main
 @contextmanager
 def _mock_transport(
     response: httpx.Response | Exception,
-) -> Iterator[tuple[httpx.MockTransport, list[httpx.Request]]]:
+) -> Generator[tuple[httpx.MockTransport, list[httpx.Request]]]:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -521,10 +522,23 @@ def test_profile_validation_error_is_clear_in_text_output() -> None:
     assert "executor profile validation failed: timed out" in stderr
 
 
-def test_read_commands_call_expected_routes() -> None:
+def test_commands_call_expected_routes() -> None:
     commands = [
         (["--json", "task", "list"], "/api/v1/tasks"),
         (["--json", "task", "detail", "task_1"], "/api/v1/tasks/task_1/detail"),
+        (
+            [
+                "--json",
+                "task",
+                "update",
+                "task_1",
+                "--version",
+                "2",
+                "--instruction",
+                "Updated instruction.",
+            ],
+            "/api/v1/tasks/task_1",
+        ),
         (["--json", "task", "run-now", "task_1"], "/api/v1/tasks/task_1/run-now"),
         (["--json", "task", "runs", "task_1"], "/api/v1/tasks/task_1/runs"),
         (
@@ -533,6 +547,8 @@ def test_read_commands_call_expected_routes() -> None:
                 "task",
                 "reschedule",
                 "task_1",
+                "--version",
+                "1",
                 "--at",
                 "2026-06-01T10:00:00+08:00",
             ],
@@ -549,6 +565,82 @@ def test_read_commands_call_expected_routes() -> None:
         assert requests[0].url.path == path
 
 
+def test_task_update_sends_instruction_payload() -> None:
+    task = {
+        "task_id": "task_123",
+        "version": 8,
+        "title": "Daily triage",
+        "instruction_source": "Updated instructions.",
+    }
+    with _mock_transport(_success(task)) as (transport, requests):
+        exit_code, stdout, stderr = _run(
+            [
+                "task",
+                "update",
+                "task_123",
+                "--version",
+                "7",
+                "--instruction",
+                "Updated instructions.",
+            ],
+            transport=transport,
+        )
+
+    assert exit_code == 0
+    assert stderr == ""
+    assert requests[0].method == "PATCH"
+    assert requests[0].url.path == "/api/v1/tasks/task_123"
+    sent = cast(dict[str, object], json.loads(requests[0].content))
+    assert sent == {"version": 7, "instruction_source": "Updated instructions."}
+    assert "task: " in stdout
+    assert "task_123" in stdout
+
+
+def test_task_update_reads_instruction_file_and_sends_title(tmp_path: Path) -> None:
+    instruction_file = tmp_path / "updated.md"
+    _ = instruction_file.write_text("File updated prompt", encoding="utf-8")
+
+    with _mock_transport(_success({"task_id": "task_123"})) as (
+        transport,
+        requests,
+    ):
+        exit_code, _, _ = _run(
+            [
+                "--json",
+                "task",
+                "update",
+                "task_123",
+                "--version",
+                "7",
+                "--title",
+                "Updated title",
+                "--instruction-file",
+                str(instruction_file),
+            ],
+            transport=transport,
+        )
+
+    assert exit_code == 0
+    sent = cast(dict[str, object], json.loads(requests[0].content))
+    assert sent == {
+        "version": 7,
+        "title": "Updated title",
+        "instruction_source": "File updated prompt",
+    }
+
+
+def test_task_update_requires_a_field_to_change() -> None:
+    with _mock_transport(_success({})) as (transport, requests):
+        exit_code, _, stderr = _run(
+            ["task", "update", "task_123", "--version", "7"],
+            transport=transport,
+        )
+
+    assert exit_code == 2
+    assert requests == []
+    assert "provide --title" in stderr
+
+
 def test_task_reschedule_happy_path() -> None:
     bundle = {
         "task": {"task_id": "task_123", "title": "Test"},
@@ -556,7 +648,15 @@ def test_task_reschedule_happy_path() -> None:
     }
     with _mock_transport(_success(bundle)) as (transport, requests):
         exit_code, stdout, stderr = _run(
-            ["task", "reschedule", "task_123", "--at", "2026-06-01T10:00:00+08:00"],
+            [
+                "task",
+                "reschedule",
+                "task_123",
+                "--version",
+                "4",
+                "--at",
+                "2026-06-01T10:00:00+08:00",
+            ],
             transport=transport,
         )
     assert exit_code == 0
@@ -564,6 +664,7 @@ def test_task_reschedule_happy_path() -> None:
     assert requests[0].method == "PATCH"
     assert requests[0].url.path == "/api/v1/tasks/task_123/schedule"
     sent = json.loads(requests[0].content or b"{}")
+    assert sent.get("version") == 4
     assert sent.get("planned_at") == "2026-06-01T10:00:00+08:00"
     assert "task: " in stdout
     assert "schedule: " in stdout
@@ -590,6 +691,8 @@ def test_task_reschedule_usage_and_api_errors() -> None:
                 "task",
                 "reschedule",
                 "task_123",
+                "--version",
+                "4",
                 "--at",
                 "2026-06-01T10:00:00+08:00",
             ],
@@ -606,7 +709,15 @@ def test_task_reschedule_usage_and_api_errors() -> None:
     )
     with _mock_transport(conflict) as (transport, _):
         exit_code, _, _ = _run(
-            ["task", "reschedule", "task_123", "--at", "2026-06-01T10:00:00+08:00"],
+            [
+                "task",
+                "reschedule",
+                "task_123",
+                "--version",
+                "4",
+                "--at",
+                "2026-06-01T10:00:00+08:00",
+            ],
             transport=transport,
         )
     assert exit_code == 1

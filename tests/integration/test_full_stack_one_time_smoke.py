@@ -90,7 +90,7 @@ async def test_one_time_debug_printer_reaches_terminal_state(
     schedule: dict[str, Any] = detail["schedule"]
     assert detail["task"]["task_status"] == "completed"
     assert latest_run["run_status"] == "completed"
-    assert latest_run["result_summary"].startswith("Debug printer completed run")
+    assert latest_run["outcome_preview"].startswith("Debug printer completed run")
     assert schedule["schedule_status"] == "completed"
 
 

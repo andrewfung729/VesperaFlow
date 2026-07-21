@@ -1375,20 +1375,46 @@ async def update_task(
     title: str | None = None,
     instruction_source: str | None = None,
 ) -> Task:
-    task = await get_task(session, task_id)
+    task = await _get_task_for_update(session, task_id)
     _require_version(task.version, version)
     if task.archived_at is not None or task.task_status is TaskStatus.RUNNING:
         raise InvalidStateTransitionError("task cannot be edited in its current state")
     if task.task_status is TaskStatus.COMPLETED:
         raise InvalidStateTransitionError("completed tasks cannot be edited")
+    now = utc_now()
     if title is not None:
         task.title = title
     if instruction_source is not None:
         task.instruction_source = instruction_source
+        await _sync_planned_one_time_run_instruction(
+            session,
+            task=task,
+            instruction_source=instruction_source,
+            now=now,
+        )
     task.version += 1
-    task.updated_at = utc_now()
+    task.updated_at = now
     await session.flush()
     return task
+
+
+async def _sync_planned_one_time_run_instruction(
+    session: AsyncSession,
+    *,
+    task: Task,
+    instruction_source: str,
+    now: datetime,
+) -> None:
+    if task.execution_mode is not ExecutionMode.ONE_TIME:
+        return
+    schedule = await _get_schedule_for_task_or_none(session, task.task_id)
+    if schedule is None or schedule.schedule_type is not ScheduleType.SINGLE_RUN:
+        return
+    run = await _get_planned_run_for_schedule_or_none(session, schedule.schedule_id)
+    if run is None:
+        return
+    run.instruction_source_snapshot = instruction_source
+    run.updated_at = now
 
 
 async def archive_task(
@@ -1433,8 +1459,8 @@ async def reschedule_one_time_task(
     version: int,
     planned_at: datetime,
 ) -> TaskBundle:
-    task = await get_task(session, task_id)
-    schedule = await get_schedule_for_task(session, task_id)
+    task = await _get_task_for_update(session, task_id)
+    schedule = await _get_schedule_for_task_for_update(session, task_id)
     run = await _get_planned_run_for_schedule(session, schedule.schedule_id)
     _require_version(schedule.version, version)
     if task.execution_mode is not ExecutionMode.ONE_TIME:
@@ -1464,8 +1490,8 @@ async def cancel_one_time_task(
     task_id: str,
     version: int,
 ) -> TaskBundle:
-    task = await get_task(session, task_id)
-    schedule = await get_schedule_for_task(session, task_id)
+    task = await _get_task_for_update(session, task_id)
+    schedule = await _get_schedule_for_task_for_update(session, task_id)
     run = await _get_planned_run_for_schedule(session, schedule.schedule_id)
     _require_version(schedule.version, version)
     if task.execution_mode is not ExecutionMode.ONE_TIME:
@@ -1493,13 +1519,13 @@ async def run_one_time_now(
     *,
     task_id: str,
 ) -> TaskBundle:
-    task = await get_task(session, task_id)
-    schedule = await get_schedule_for_task(session, task_id)
+    task = await _get_task_for_update(session, task_id)
+    schedule = await _get_schedule_for_task_for_update(session, task_id)
     if task.execution_mode is not ExecutionMode.ONE_TIME:
         raise InvalidStateTransitionError("only one-time tasks can be run now")
     if schedule.schedule_status is not ScheduleStatus.ACTIVE:
         raise InvalidStateTransitionError("only active schedules can be run now")
-    run = await get_latest_run(session, task_id)
+    run = await _get_latest_run_for_update(session, task_id)
     if run is None or run.run_status is not RunStatus.PLANNED:
         raise InvalidStateTransitionError("only planned runs can be run now")
 
@@ -1709,10 +1735,18 @@ async def materialize_run(
     occurrence_key: str | None,
     workflow_id: str,
     run_workspace_root: str,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
 ) -> MaterializedRun:
     if payload_run_id is not None:
-        run = await get_run(session, payload_run_id)
-        task = await get_task(session, run.task_id)
+        task_id = await session.scalar(
+            select(Run.task_id).where(Run.run_id == payload_run_id)
+        )
+        if task_id is None:
+            raise NotFoundError(f"run not found: {payload_run_id}")
+        task = await _get_task_for_update(session, task_id)
+        run = await _get_run_for_update(session, payload_run_id)
         _ = await record_run_event(
             session,
             run_id=run.run_id,
@@ -1720,6 +1754,9 @@ async def materialize_run(
             message="Existing run loaded for execution.",
             details={"run_status": run.run_status.value},
             temporal_workflow_id=workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
         )
         return _materialized_run_response(
             run=run,
@@ -1904,6 +1941,41 @@ async def materialize_run(
     )
 
 
+async def claim_run_for_execution(
+    session: AsyncSession,
+    *,
+    run_id: str,
+    workflow_id: str,
+    claim_at: datetime,
+    run_workspace_root: str,
+    temporal_workflow_run_id: str | None = None,
+    activity_type: str | None = None,
+    activity_attempt: int | None = None,
+) -> MaterializedRun:
+    task = await _get_task_for_run_for_update(session, run_id)
+    run = await _get_run_for_update(session, run_id)
+    if (
+        run.run_status is RunStatus.PLANNED
+        and _db_datetime_to_utc(run.planned_start_at)
+        <= _db_datetime_to_utc(claim_at)
+    ):
+        run = await mark_run_queued(
+            session,
+            run_id=run_id,
+            external_execution_ref=workflow_id,
+            temporal_workflow_id=workflow_id,
+            temporal_workflow_run_id=temporal_workflow_run_id,
+            activity_type=activity_type,
+            activity_attempt=activity_attempt,
+        )
+    return _materialized_run_response(
+        run=run,
+        task=task,
+        workflow_id=workflow_id,
+        run_workspace_root=run_workspace_root,
+    )
+
+
 async def mark_run_queued(
     session: AsyncSession,
     *,
@@ -1914,6 +1986,7 @@ async def mark_run_queued(
     activity_type: str | None = None,
     activity_attempt: int | None = None,
 ) -> Run:
+    _ = await _get_task_for_run_for_update(session, run_id)
     status_changed = await _run_status_will_change(
         session,
         run_id=run_id,
@@ -1937,7 +2010,7 @@ async def mark_run_queued(
             activity_type=activity_type,
             activity_attempt=activity_attempt,
         )
-    await _recompute_task_status_by_id(session, run.task_id)
+        await _recompute_task_status_by_id(session, run.task_id)
     return run
 
 
@@ -1950,6 +2023,7 @@ async def mark_run_running(
     activity_type: str | None = None,
     activity_attempt: int | None = None,
 ) -> Run:
+    _ = await _get_task_for_run_for_update(session, run_id)
     status_changed = await _run_status_will_change(
         session,
         run_id=run_id,
@@ -1983,6 +2057,7 @@ async def mark_run_completed(
     activity_type: str | None = None,
     activity_attempt: int | None = None,
 ) -> Run:
+    _ = await _get_task_for_run_for_update(session, run_id)
     status_changed = await _run_status_will_change(
         session,
         run_id=run_id,
@@ -2018,6 +2093,7 @@ async def mark_run_failed(
     activity_type: str | None = None,
     activity_attempt: int | None = None,
 ) -> Run:
+    _ = await _get_task_for_run_for_update(session, run_id)
     status_changed = await _run_status_will_change(
         session,
         run_id=run_id,
@@ -2053,6 +2129,7 @@ async def mark_run_canceled(
     activity_type: str | None = None,
     activity_attempt: int | None = None,
 ) -> Run:
+    _ = await _get_task_for_run_for_update(session, run_id)
     status_changed = await _run_status_will_change(
         session,
         run_id=run_id,
@@ -2083,7 +2160,13 @@ async def complete_single_run_schedule(
     *,
     schedule_id: str,
 ) -> Schedule:
-    schedule = await get_schedule(session, schedule_id)
+    task_id = await session.scalar(
+        select(Schedule.task_id).where(Schedule.schedule_id == schedule_id)
+    )
+    if task_id is None:
+        raise NotFoundError(f"schedule not found: {schedule_id}")
+    task = await _get_task_for_update(session, task_id)
+    schedule = await _get_schedule_for_update(session, schedule_id)
     if schedule.schedule_type is not ScheduleType.SINGLE_RUN:
         raise InvalidStateTransitionError("only single-run schedules can complete")
     if schedule.schedule_status is ScheduleStatus.COMPLETED:
@@ -2094,7 +2177,7 @@ async def complete_single_run_schedule(
     schedule.next_run_at = None
     schedule.version += 1
     schedule.updated_at = utc_now()
-    await _recompute_task_status_by_id(session, schedule.task_id)
+    await _recompute_task_status(session, task)
     await session.flush()
     return schedule
 
@@ -2521,14 +2604,103 @@ async def _get_planned_run_for_schedule(
     session: AsyncSession,
     schedule_id: str,
 ) -> Run:
-    statement = select(Run).where(
-        Run.schedule_id == schedule_id,
-        Run.run_status == RunStatus.PLANNED,
-    )
-    run = (await session.scalars(statement)).one_or_none()
+    run = await _get_planned_run_for_schedule_or_none(session, schedule_id)
     if run is None:
         raise NotFoundError(f"planned run not found for schedule: {schedule_id}")
     return run
+
+
+async def _get_planned_run_for_schedule_or_none(
+    session: AsyncSession,
+    schedule_id: str,
+) -> Run | None:
+    statement = (
+        select(Run)
+        .where(
+            Run.schedule_id == schedule_id,
+            Run.run_status == RunStatus.PLANNED,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return (await session.scalars(statement)).one_or_none()
+
+
+async def _get_run_for_update(session: AsyncSession, run_id: str) -> Run:
+    statement = (
+        select(Run)
+        .where(Run.run_id == run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    run = await session.scalar(statement)
+    if run is None:
+        raise NotFoundError(f"run not found: {run_id}")
+    return run
+
+
+async def _get_task_for_update(session: AsyncSession, task_id: str) -> Task:
+    statement = (
+        select(Task)
+        .where(Task.task_id == task_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    task = await session.scalar(statement)
+    if task is None:
+        raise NotFoundError(f"task not found: {task_id}")
+    return task
+
+
+async def _get_schedule_for_task_for_update(
+    session: AsyncSession, task_id: str
+) -> Schedule:
+    statement = (
+        select(Schedule)
+        .where(Schedule.task_id == task_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    schedule = (await session.scalars(statement)).one_or_none()
+    if schedule is None:
+        raise NotFoundError(f"schedule not found for task: {task_id}")
+    return schedule
+
+
+async def _get_schedule_for_update(
+    session: AsyncSession, schedule_id: str
+) -> Schedule:
+    statement = (
+        select(Schedule)
+        .where(Schedule.schedule_id == schedule_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    schedule = await session.scalar(statement)
+    if schedule is None:
+        raise NotFoundError(f"schedule not found: {schedule_id}")
+    return schedule
+
+
+async def _get_latest_run_for_update(
+    session: AsyncSession, task_id: str
+) -> Run | None:
+    statement = (
+        select(Run)
+        .where(Run.task_id == task_id)
+        .order_by(Run.created_at.desc(), Run.run_id.desc())
+        .limit(1)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return await session.scalar(statement)
+
+
+async def _get_task_for_run_for_update(session: AsyncSession, run_id: str) -> Task:
+    task_id = await session.scalar(select(Run.task_id).where(Run.run_id == run_id))
+    if task_id is None:
+        raise NotFoundError(f"run not found: {run_id}")
+    return await _get_task_for_update(session, task_id)
 
 
 async def _get_run_for_occurrence(
@@ -2666,7 +2838,7 @@ def _materialized_run_response(
             executor=task.executor,
             executor_profile_id=task.executor_profile_id,
             instruction_source=instruction_source or run.instruction_source_snapshot,
-            planned_start_at=run.planned_start_at,
+            planned_start_at=_db_datetime_to_utc(run.planned_start_at),
             working_directory=str(Path(run_workspace_root) / run.run_id),
             target_working_directory=task.target_working_directory,
         ),

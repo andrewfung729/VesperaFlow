@@ -13,6 +13,16 @@ _WEEKDAYS = {
     "SA": 5,
     "SU": 6,
 }
+_SUPPORTED_FIELDS = frozenset(
+    {"FREQ", "INTERVAL", "BYSECOND", "BYMINUTE", "BYHOUR", "BYDAY"}
+)
+_FIELDS_BY_FREQUENCY = {
+    "HOURLY": frozenset({"FREQ", "INTERVAL", "BYSECOND", "BYMINUTE"}),
+    "DAILY": frozenset(
+        {"FREQ", "INTERVAL", "BYSECOND", "BYMINUTE", "BYHOUR"}
+    ),
+    "WEEKLY": _SUPPORTED_FIELDS,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,12 +43,24 @@ def parse_recurrence_rule(value: str) -> RecurrenceSpec:
         key, separator, raw_value = raw_part.partition("=")
         if not separator or not key or not raw_value:
             raise ValueError("recurrence_rule must be an iCalendar RRULE string")
-        parts[key.upper()] = raw_value.upper()
+        normalized_key = key.upper()
+        if normalized_key in parts:
+            raise ValueError(
+                f"recurrence_rule contains duplicate field {normalized_key}"
+            )
+        parts[normalized_key] = raw_value.upper()
+
+    unsupported_fields = sorted(set(parts) - _SUPPORTED_FIELDS)
+    if unsupported_fields:
+        raise ValueError(
+            "recurrence_rule contains unsupported field(s): "
+            + ", ".join(unsupported_fields)
+        )
 
     freq = parts.get("FREQ")
-    if freq not in {"MINUTELY", "HOURLY", "DAILY", "WEEKLY"}:
+    if freq not in _FIELDS_BY_FREQUENCY:
         raise ValueError(
-            "recurrence_rule FREQ must be MINUTELY, HOURLY, DAILY, or WEEKLY"
+            "recurrence_rule FREQ must be HOURLY, DAILY, or WEEKLY"
         )
     if parts.get("INTERVAL", "1") != "1":
         raise ValueError(
@@ -46,6 +68,16 @@ def parse_recurrence_rule(value: str) -> RecurrenceSpec:
         )
     if freq == "WEEKLY" and "BYDAY" not in parts:
         raise ValueError("weekly recurrence_rule requires BYDAY")
+    if freq in {"DAILY", "WEEKLY"} and "BYHOUR" not in parts:
+        raise ValueError(f"{freq.lower()} recurrence_rule requires BYHOUR")
+
+    ignored_fields = sorted(set(parts) - _FIELDS_BY_FREQUENCY[freq])
+    if ignored_fields:
+        raise ValueError(
+            "recurrence_rule field(s) "
+            + ", ".join(ignored_fields)
+            + f" are not supported for {freq}"
+        )
 
     seconds = _parse_int_list(parts.get("BYSECOND"), minimum=0, maximum=59) or (0,)
     if seconds != (0,):
@@ -53,13 +85,25 @@ def parse_recurrence_rule(value: str) -> RecurrenceSpec:
             "recurrence_rule BYSECOND values other than 0 are not supported"
         )
 
+    hours = (
+        _parse_int_list(parts.get("BYHOUR"), minimum=0, maximum=23)
+        or tuple(range(24))
+    )
+    minutes = _parse_int_list(parts.get("BYMINUTE"), minimum=0, maximum=59) or (0,)
+    weekdays = _parse_weekdays(parts.get("BYDAY"))
+    _require_minimum_occurrence_spacing(
+        freq=freq,
+        hours=hours,
+        minutes=minutes,
+        seconds=seconds,
+        weekdays=weekdays,
+    )
     return RecurrenceSpec(
         freq=freq,
-        hours=_parse_int_list(parts.get("BYHOUR"), minimum=0, maximum=23)
-        or tuple(range(24)),
-        minutes=_parse_int_list(parts.get("BYMINUTE"), minimum=0, maximum=59) or (0,),
+        hours=hours,
+        minutes=minutes,
         seconds=seconds,
-        weekdays=_parse_weekdays(parts.get("BYDAY")),
+        weekdays=weekdays,
     )
 
 
@@ -79,12 +123,6 @@ def next_occurrence_after(
     spec = parse_recurrence_rule(recurrence_rule)
     require_iana_timezone(recurrence_timezone)
     local_after = after.astimezone(ZoneInfo(recurrence_timezone))
-
-    if spec.freq == "MINUTELY":
-        candidate = local_after.replace(microsecond=0)
-        if candidate <= local_after:
-            candidate += timedelta(minutes=1)
-        return candidate.astimezone(UTC)
 
     if spec.freq == "HOURLY":
         hour_start = local_after.replace(minute=0, second=0, microsecond=0)
@@ -133,3 +171,41 @@ def _parse_weekdays(value: str | None) -> tuple[int, ...]:
         return tuple(sorted({_WEEKDAYS[item] for item in value.split(",") if item}))
     except KeyError as exc:
         raise ValueError("recurrence_rule BYDAY contains an invalid weekday") from exc
+
+
+def _require_minimum_occurrence_spacing(
+    *,
+    freq: str,
+    hours: tuple[int, ...],
+    minutes: tuple[int, ...],
+    seconds: tuple[int, ...],
+    weekdays: tuple[int, ...],
+) -> None:
+    if freq == "HOURLY":
+        period_seconds = 60 * 60
+        offsets = {minute * 60 + second for minute in minutes for second in seconds}
+    elif freq == "DAILY":
+        period_seconds = 24 * 60 * 60
+        offsets = {
+            hour * 60 * 60 + minute * 60 + second
+            for hour in hours
+            for minute in minutes
+            for second in seconds
+        }
+    else:
+        period_seconds = 7 * 24 * 60 * 60
+        offsets = {
+            weekday * 24 * 60 * 60 + hour * 60 * 60 + minute * 60 + second
+            for weekday in weekdays
+            for hour in hours
+            for minute in minutes
+            for second in seconds
+        }
+
+    ordered = sorted(offsets)
+    cyclic = [*ordered[1:], ordered[0] + period_seconds]
+    gaps = (next_offset - offset for offset, next_offset in zip(ordered, cyclic))
+    if any(gap < 15 * 60 for gap in gaps):
+        raise ValueError(
+            "recurrence_rule must not fire more often than once every 15 minutes"
+        )

@@ -17,6 +17,7 @@ from vesperaflow_core import (
     ProfileValidationResult,
     RunStatus,
     TaskRunInput,
+    workflow_id_for_run,
 )
 from vesperaflow_store import create_engine, create_session_factory
 from vesperaflow_store import repositories as repo
@@ -79,17 +80,15 @@ class TaskRunActivities:
                             details={"run_status": run.run_status.value},
                             **_activity_event_context(),
                         )
-                        logger.info(
-                            "activity.materialize_run.succeeded",
-                            extra=_activity_log_context(
-                                payload=payload,
-                                run_id=run.run_id,
-                                run_status=run.run_status.value,
-                            ),
-                        )
                         return run.run_status.value
-            if workflow_id is None or workflow_start_time is None:
+            event_context = _activity_event_context()
+            workflow_id = workflow_id or event_context.get("temporal_workflow_id")
+            if workflow_id is None and payload.run_id is not None:
+                workflow_id = workflow_id_for_run(payload.run_id)
+            if workflow_id is None:
                 raise ValueError("recurring materialization requires workflow metadata")
+            if workflow_start_time is None:
+                workflow_start_time = payload.planned_start_at
             async with self._session_factory() as session:
                 async with session.begin():
                     materialized = await repo.materialize_run(
@@ -101,6 +100,11 @@ class TaskRunActivities:
                         occurrence_key=payload.occurrence_key,
                         workflow_id=workflow_id,
                         run_workspace_root=self._run_workspace_root,
+                        temporal_workflow_run_id=event_context.get(
+                            "temporal_workflow_run_id"
+                        ),
+                        activity_type=event_context.get("activity_type"),
+                        activity_attempt=event_context.get("activity_attempt"),
                     )
                     logger.info(
                         "activity.materialize_run.succeeded",
@@ -115,6 +119,50 @@ class TaskRunActivities:
             logger.exception(
                 "activity.materialize_run.failed",
                 extra=_activity_log_context(payload=payload),
+            )
+            raise
+
+    @activity.defn(name="claim_run_for_execution")
+    async def claim_run_for_execution(
+        self,
+        run_id: str,
+        workflow_id: str,
+        claim_at: datetime,
+    ) -> MaterializedRun:
+        logger.info(
+            "activity.claim_run_for_execution.starting",
+            extra=_activity_log_context(run_id=run_id),
+        )
+        try:
+            event_context = _activity_event_context()
+            async with self._session_factory() as session:
+                async with session.begin():
+                    claimed = await repo.claim_run_for_execution(
+                        session,
+                        run_id=run_id,
+                        workflow_id=workflow_id,
+                        claim_at=claim_at,
+                        run_workspace_root=self._run_workspace_root,
+                        temporal_workflow_run_id=event_context.get(
+                            "temporal_workflow_run_id"
+                        ),
+                        activity_type=event_context.get("activity_type"),
+                        activity_attempt=event_context.get("activity_attempt"),
+                    )
+                    logger.info(
+                        "activity.claim_run_for_execution.succeeded",
+                        extra=_activity_log_context(
+                            run_id=run_id,
+                            task_id=claimed.execution_snapshot.task_id,
+                            schedule_id=claimed.execution_snapshot.schedule_id,
+                            run_status=claimed.run_status.value,
+                        ),
+                    )
+                    return claimed
+        except Exception:
+            logger.exception(
+                "activity.claim_run_for_execution.failed",
+                extra=_activity_log_context(run_id=run_id),
             )
             raise
 

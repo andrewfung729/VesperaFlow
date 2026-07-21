@@ -616,6 +616,8 @@ Validation:
 - `execution_mode` is required
 - one-time tasks must provide `planned_at` with a timezone offset in the future
 - recurring tasks must provide `recurrence_rule` and `recurrence_timezone`
+- recurrence supports the documented hourly/daily/weekly RRULE subset only;
+  unsupported or frequency-inapplicable fields are rejected instead of ignored
 - `schedule.schedule_type` must match `execution_mode`
 - recurrence frequency must not exceed once per 15 minutes (see `docs/domain-model.md` §12.5)
 - `executor`, if provided, must be `claude_code`, `codex`, `opencode`, `pi`, or `debug_printer`; if omitted the request or template must provide `executor_profile_id`
@@ -659,6 +661,7 @@ Request:
 
 ```json
 {
+  "version": 3,
   "title": "Updated Title",
   "instruction_source": "Updated instructions..."
 }
@@ -668,6 +671,11 @@ Validation:
 
 - task must not be archived
 - execution-critical edits may be rejected when task is `running`
+- for a one-time task with a not-yet-started planned run, updating
+  `instruction_source` also refreshes that planned run's
+  `instruction_source_snapshot`; the Worker atomically claims that snapshot when
+  execution begins, after which in-flight and terminal run snapshots remain
+  immutable
 
 ### 7.5 Archive Task
 
@@ -767,7 +775,8 @@ Request:
 Validation:
 
 - task must be `recurring`
-- recurrence rule must be valid
+- recurrence rule must match the documented hourly/daily/weekly RRULE subset;
+  unsupported or frequency-inapplicable fields are rejected
 - recurrence frequency must not exceed once per 15 minutes
 - if `recurrence_timezone` is omitted the server keeps the prior value
 - if `target_working_directory` is provided it must be an absolute existing directory
@@ -1128,8 +1137,9 @@ Response:
       "latest_run_id": "run_789",
       "latest_run_outcome": "completed",
       "latest_run_finished_at": "2026-04-24T08:02:00+08:00",
-      "result_summary": "Digest completed",
-      "failure_reason": null
+      "outcome_preview": "Digest completed",
+      "outcome_truncated": false,
+      "outcome_source": "result_summary"
     }
   ],
   "meta": {

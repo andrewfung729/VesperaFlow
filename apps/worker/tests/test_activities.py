@@ -8,6 +8,7 @@ from vesperaflow_core import (
     ExecutionSnapshot,
     ExecutorName,
     ExecutorOutcome,
+    MaterializedRun,
     ProfileValidationInput,
     ProfileValidationResult,
     RunStatus,
@@ -163,6 +164,46 @@ async def test_execute_agent_run_records_events_and_sanitized_logs(
     assert "Sensitive prompt text" not in caplog.text
     assert "Sensitive executor output" not in caplog.text
     assert database_url not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_claim_existing_run_uses_latest_database_snapshot(
+    activity_context: tuple[str, str, str, str],
+) -> None:
+    database_url, task_id, run_id, _ = activity_context
+    engine = create_engine(database_url)
+    session_factory = create_session_factory(engine)
+    async with session_factory() as session:
+        async with session.begin():
+            task = await repo.get_task(session, task_id)
+            run = await repo.get_run(session, run_id)
+            updated_instruction = "Updated after Temporal schedule creation"
+            _ = await repo.update_task(
+                session,
+                task_id=task_id,
+                version=task.version,
+                instruction_source=updated_instruction,
+            )
+            planned_start_at = run.planned_start_at
+    await engine.dispose()
+
+    activities = TaskRunActivities(
+        database_url=database_url,
+        executor=FakeExecutor(),
+        run_workspace_root="/tmp/vesperaflow-runs",
+    )
+    try:
+        materialized = await activities.claim_run_for_execution(
+            run_id,
+            "vesperaflow.run.test",
+            planned_start_at,
+        )
+    finally:
+        await activities.close()
+
+    assert isinstance(materialized, MaterializedRun)
+    assert materialized.run_status is RunStatus.QUEUED
+    assert materialized.execution_snapshot.instruction_source == updated_instruction
 
 
 @pytest.mark.asyncio

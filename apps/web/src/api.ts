@@ -186,8 +186,9 @@ export interface RecurringTodoItem {
   latest_run_id: string | null
   latest_run_outcome: RunStatus | null
   latest_run_finished_at: string | null
-  result_summary: string | null
-  failure_reason: string | null
+  outcome_preview: string | null
+  outcome_truncated: boolean
+  outcome_source: 'result_summary' | 'failure_reason' | null
 }
 
 export interface CalendarItem {

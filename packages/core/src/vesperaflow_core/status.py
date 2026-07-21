@@ -28,10 +28,7 @@ def derive_task_status(
         return TaskStatus.COMPLETED
     if latest_run_status is RunStatus.FAILED:
         return TaskStatus.FAILED
-    if (
-        latest_run_status is RunStatus.CANCELED
-        and schedule_status is ScheduleStatus.CANCELED
-    ):
+    if latest_run_status is RunStatus.CANCELED:
         return TaskStatus.CANCELED
     if schedule_status is ScheduleStatus.CANCELED:
         return TaskStatus.CANCELED

@@ -1,6 +1,6 @@
 # Codebase Quality
 
-_Last updated: 2026-05-21. Update this whenever a major area improves or
+_Last updated: 2026-06-03. Update this whenever a major area improves or
 degrades._
 
 Scores: A excellent, B solid, C needs work, D problematic, F broken.
@@ -21,11 +21,11 @@ Update this file when any of these change:
 
 | Domain | Score | Notes |
 |---|---|---|
-| `packages/core` | B | Small domain layer with tests, including recurrence validation, occurrence-key helpers, occurrence edit enums, Codex/OpenCode/Claude/Pi/debug executor contracts, executor preflight contracts, shared API request DTOs, and template default validation. Keep Temporal-import safety explicit. |
-| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, runs snapshot their effective instruction source, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
-| `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, run detail/reader snapshot, executor preflight, and template endpoints are tested with a fake scheduler, including template target-directory defaults; broader API contract coverage is still thin. |
-| `apps/cli` | C | Agent-facing API-only CLI covers task creation, task/run reads, run-now, executor preflight, and profile listing with JSON output and mocked HTTP tests. Destructive/versioned commands are intentionally deferred. |
-| `apps/worker` | C | Workflow and executor structure exists; import hygiene, one-time replay, recurring materialization replay, structured Worker logging, persisted run event timelines, Claude Code executor tests, Codex CLI JSONL executor tests, OpenCode CLI JSON event executor tests, and Pi CLI JSON executor tests are covered. Authenticated live executor and recurring smokes are opt-in local verification paths; they are not in automated CI coverage. |
+| `packages/core` | B | Small domain layer with tests, including fail-closed hourly/daily/weekly recurrence validation, occurrence-key helpers, occurrence edit enums, task status derivation, executor contracts, shared API request DTOs, and template default validation. Keep Temporal-import safety explicit. |
+| `packages/store` | C | Models and repositories are covered, generated schema docs exist, terminal-run history has a focused query/index, planned one-time runs atomically claim their latest instruction snapshot at execution, recurring run materialization is idempotent by `occurrence_key`, recurring todo/calendar have derived read models, occurrence overrides are scoped by schedule/original occurrence, and template archive/copy semantics are tested. |
+| `apps/api` | C | One-time, recurring lifecycle, occurrence edit/cancel, calendar, recurring todo, history, run detail/reader snapshot, executor preflight, and template endpoints are tested with a fake scheduler; one-time reschedule updates its Temporal Schedule in place. Broader live API/Temporal contract coverage is still thin. |
+| `apps/cli` | C | Agent-facing API-only CLI covers task creation and versioned instruction updates, task/run reads, run-now, rescheduling, executor preflight, and profile listing with JSON output and mocked HTTP tests. Other destructive commands remain deferred. |
+| `apps/worker` | C | Workflow and executor structure exists; replay-safe authoritative claims include a generated pre-patch history test, executor invocation is single-attempt, and sanitized logging, subprocess env allowlisting, bounded CLI timeouts, persisted timelines, and all adapters have focused tests. Authenticated live executor and recurring smokes remain opt-in local verification paths. |
 | `apps/web` | C | Vue surface has composer, board, detail, history, recurring todo, calendar, template, executor preflight, and MVP navigation smoke coverage; common alert, form, recurrence, status badge, and recurring action patterns are shared; `apps/web/README.md` now captures local conventions. UI behavior coverage is still shallow. |
 | `infra` | C | Local Temporal/Postgres stack exists; env handling now uses an example file. |
 | `docs` | B | Strong architecture and product docs; navigation, active-plan structure, generated facts, CLI executor ADRs through ADR 007, executor/profile rules, frontend guide, and local full-stack runbooks are now present. |
@@ -143,3 +143,11 @@ Update this file when any of these change:
 - 2026-05-30: Added executor profile reasoning defaults with save-time Worker
   validation, transient secret handoff storage, adapter propagation, CLI/Web
   surfaces, and stable run event metadata.
+- 2026-06-03: Added CLI task instruction updates backed by the existing task
+  update API, including serialized planned snapshot refresh and an authoritative
+  one-time execution claim before the executor starts.
+- 2026-07-21: Hardened run claiming and execution: versioned Workflow claims
+  re-read planned time/instructions at the execution boundary, executor
+  Activities are single-attempt, CLI subprocesses use an environment allowlist
+  and bounded stream/process timeouts, canceled runs remain canceled, and
+  unsupported RRULE semantics fail closed.
